@@ -496,87 +496,97 @@ export default function DashboardClient({
         .owner-dashboard {
           display: flex;
           flex-direction: column;
-          gap: 2rem;
+          gap: 2.25rem;
+          padding: 0.5rem;
         }
 
         .header-section {
-          margin-bottom: 0.5rem;
-          padding: 0 0.5rem;
+          margin-bottom: 1.5rem;
+          position: relative;
         }
 
         .page-title {
           font-family: var(--font-heading);
           font-size: 2.75rem;
-          font-weight: 400;
-          letter-spacing: -0.03em;
-          margin-bottom: 0.4rem;
-          background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-gold) 100%);
+          font-weight: 500;
+          letter-spacing: -0.02em;
+          margin-bottom: 0.5rem;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 100%);
           -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
+          -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 30px rgba(229, 193, 125, 0.15);
         }
 
         .subtitle {
-          color: var(--text-secondary);
-          font-size: 0.98rem;
-          font-weight: 400;
+          font-family: var(--font-body);
+          color: rgba(229, 193, 125, 0.6);
+          font-size: 1.05rem;
+          letter-spacing: 0.2px;
         }
 
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 1.5rem;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 1.75rem;
         }
 
         /* ============================================================
-           STAT CARDS — Premium 3D glass with embossed champagne edge
+           STAT CARDS — Premium 3D glass with Glowing Caps
            ============================================================ */
         .stat-card {
-          padding: 1.75rem !important;
+          padding: 2.25rem 1.75rem !important;
           position: relative;
+          background: rgba(10, 8, 7, 0.85) !important;
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(229, 193, 125, 0.12) !important;
+          border-radius: 16px !important;
+          box-shadow: 
+            0 15px 35px rgba(0, 0, 0, 0.7),
+            inset 0 0 20px rgba(0, 0, 0, 0.95) !important;
           overflow: hidden;
-          background:
-            linear-gradient(165deg, rgba(48, 38, 30, 0.92) 0%, rgba(20, 16, 13, 0.96) 100%) !important;
-          border: 1px solid rgba(212, 180, 106, 0.2) !important;
-          border-radius: var(--radius-lg) !important;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 240, 200, 0.1),
-            inset 0 0 0 1px rgba(255, 240, 200, 0.02),
-            0 1px 2px rgba(0, 0, 0, 0.3),
-            0 12px 30px -8px rgba(0, 0, 0, 0.65),
-            0 4px 8px -2px rgba(0, 0, 0, 0.4) !important;
           transition: var(--transition);
-          backdrop-filter: blur(16px);
         }
 
+        /* Top glowing golden cap */
         .stat-card::before {
           content: '';
           position: absolute;
-          top: 0; left: 10%; right: 10%;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
-          opacity: 0.6;
+          top: 0; left: 0; right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
+          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
+          opacity: 0.75;
+          transition: var(--transition);
+          z-index: 2;
         }
 
+        /* Bottom glowing golden cap */
         .stat-card::after {
           content: '';
           position: absolute;
-          top: 0; left: 0; right: 0;
-          height: 50%;
-          background: radial-gradient(ellipse at 50% 0%, rgba(212, 180, 106, 0.08), transparent 70%);
-          pointer-events: none;
+          bottom: 0; left: 0; right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
+          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
+          opacity: 0.75;
+          transition: var(--transition);
+          z-index: 2;
         }
 
         .stat-card:hover {
-          background:
-            linear-gradient(165deg, rgba(58, 46, 36, 0.95) 0%, rgba(24, 19, 15, 0.98) 100%) !important;
-          border-color: rgba(212, 180, 106, 0.4) !important;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 240, 200, 0.15),
-            0 1px 2px rgba(0, 0, 0, 0.3),
-            0 24px 50px -10px rgba(0, 0, 0, 0.8),
-            0 0 50px -10px rgba(212, 180, 106, 0.3) !important;
-          transform: translateY(-4px);
+          transform: translateY(-5px);
+          border-color: rgba(229, 193, 125, 0.3) !important;
+          box-shadow: 
+            0 20px 45px rgba(0, 0, 0, 0.8),
+            0 0 30px rgba(229, 193, 125, 0.1),
+            inset 0 0 20px rgba(0, 0, 0, 0.9) !important;
+        }
+
+        .stat-card:hover::before, .stat-card:hover::after {
+          opacity: 1;
+          background: linear-gradient(90deg, transparent 0%, var(--accent-gold) 50%, transparent 100%);
+          box-shadow: 0 0 20px var(--accent-gold), 0 0 8px #ffffff;
         }
 
         .stat-card.active-rentals-card {
@@ -599,8 +609,8 @@ export default function DashboardClient({
 
         .leaf {
           position: absolute;
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.4) 0%, rgba(138, 109, 53, 0.2) 100%);
-          border: 1px solid rgba(212, 180, 106, 0.5);
+          background: linear-gradient(135deg, rgba(229, 193, 125, 0.45) 0%, rgba(138, 109, 53, 0.2) 100%);
+          border: 1px solid rgba(229, 193, 125, 0.5);
           border-radius: 85% 0% 70% 55% / 70% 0% 85% 55%;
           box-shadow:
             inset 0 1px 0 rgba(255, 240, 200, 0.3),
@@ -617,50 +627,47 @@ export default function DashboardClient({
            Stat icon — embossed gem
            ============================================================ */
         .stat-icon-wrapper {
-          width: 36px !important;
-          height: 36px !important;
-          border-radius: 10px !important;
+          width: 42px !important;
+          height: 42px !important;
+          border-radius: 12px !important;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 1.05rem !important;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.3),
-            inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-            0 6px 14px rgba(0, 0, 0, 0.4) !important;
-          line-height: 1;
+          font-size: 1.2rem !important;
+          box-shadow: 
+            0 8px 20px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+          transition: var(--transition);
         }
 
         .rev-icon {
-          background: linear-gradient(135deg, #4ade80 0%, #166534 100%) !important;
-          border: 1px solid rgba(74, 222, 128, 0.5) !important;
+          background: linear-gradient(135deg, #10b981 0%, #064e3b 100%) !important;
+          border: 1px solid rgba(16, 185, 129, 0.4) !important;
         }
         .exp-icon {
-          background: linear-gradient(135deg, #fb7185 0%, #9f1239 100%) !important;
-          border: 1px solid rgba(251, 113, 133, 0.5) !important;
+          background: linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%) !important;
+          border: 1px solid rgba(239, 68, 68, 0.4) !important;
         }
         .real-icon {
           background: linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold-deep) 100%) !important;
-          border: 1px solid rgba(212, 180, 106, 0.6) !important;
+          border: 1px solid rgba(229, 193, 125, 0.4) !important;
         }
         .fleet-icon {
-          background: linear-gradient(135deg, #60a5fa 0%, #1e40af 100%) !important;
-          border: 1px solid rgba(96, 165, 250, 0.5) !important;
+          background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%) !important;
+          border: 1px solid rgba(59, 130, 246, 0.4) !important;
         }
         .active-icon {
-          background: linear-gradient(135deg, #fbbf24 0%, #92400e 100%) !important;
-          border: 1px solid rgba(251, 191, 36, 0.5) !important;
+          background: linear-gradient(135deg, #f59e0b 0%, #78350f 100%) !important;
+          border: 1px solid rgba(245, 158, 11, 0.4) !important;
         }
-
-        .stat-icon-dot { display: none; }
 
         .stat-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 1.5rem;
-          color: var(--text-muted);
-          font-size: 0.72rem;
+          margin-bottom: 1.25rem;
+          color: rgba(229, 193, 125, 0.55);
+          font-size: 0.8rem;
           text-transform: uppercase;
           letter-spacing: 2px;
           font-weight: 600;
@@ -669,34 +676,40 @@ export default function DashboardClient({
         }
 
         .stat-value {
-          font-size: 2.5rem;
+          font-size: 2.8rem;
           font-weight: 500;
           font-family: var(--font-heading);
           letter-spacing: -0.03em;
-          margin-bottom: 0.5rem;
-          color: var(--text-primary);
+          margin-bottom: 0.75rem;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 50%, var(--accent-gold-deep) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 20px rgba(229, 193, 125, 0.2);
           position: relative;
           z-index: 1;
         }
 
         .stat-trend {
-          font-size: 0.85rem;
-          font-weight: 500;
-          color: var(--text-muted);
+          font-size: 0.9rem;
+          font-family: var(--font-body);
+          color: rgba(229, 193, 125, 0.5);
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
           position: relative;
           z-index: 1;
         }
 
-        .positive { color: #4ade80; }
-        .negative { color: #fb7185; }
+        .positive { color: #10b981 !important; }
+        .negative { color: #ef4444 !important; }
 
         /* ============================================================
-           MAIN GRID
+           MAIN GRID & PANELS
            ============================================================ */
         .main-grid {
           display: grid;
           grid-template-columns: 2fr 1fr;
-          gap: 1.5rem;
+          gap: 1.75rem;
         }
 
         @media (max-width: 1024px) {
@@ -706,7 +719,7 @@ export default function DashboardClient({
         }
 
         .chart-section {
-          padding: 2rem;
+          padding: 2.25rem;
           display: flex;
           flex-direction: column;
           gap: 1.5rem;
@@ -723,107 +736,123 @@ export default function DashboardClient({
           width: 100%;
           height: 100%;
           overflow: visible;
-          filter: drop-shadow(0 8px 24px rgba(212, 180, 106, 0.15));
+          filter: drop-shadow(0 8px 30px rgba(229, 193, 125, 0.1));
         }
 
         .section-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          margin-bottom: 0.5rem;
         }
 
         .section-header h3 {
           font-family: var(--font-heading);
-          font-size: 1.35rem;
+          font-size: 1.5rem;
           font-weight: 500;
           letter-spacing: -0.02em;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
         }
 
         .filters {
           display: flex;
-          background: linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-full);
-          padding: 0.3rem;
-          box-shadow: var(--shadow-inset);
+          background: rgba(18, 15, 13, 0.85);
+          border: 1px solid rgba(229, 193, 125, 0.15);
+          border-radius: 30px;
+          padding: 0.35rem;
+          box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
         }
 
         .filter {
-          padding: 0.4rem 1.1rem;
+          padding: 0.5rem 1.25rem;
           font-size: 0.8rem;
           font-weight: 600;
-          border-radius: var(--radius-full);
+          border-radius: 20px;
           cursor: pointer;
-          color: var(--text-muted);
-          transition: var(--transition-fast);
+          color: rgba(229, 193, 125, 0.55);
+          transition: var(--transition);
           letter-spacing: 0.3px;
         }
 
-        .filter.active {
-          background: linear-gradient(180deg, var(--accent-gold-hover), var(--accent-gold));
-          color: #1a1410;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.3),
-            0 4px 10px rgba(212, 180, 106, 0.35);
+        .filter:hover {
+          color: #ffffff;
         }
 
+        .filter.active {
+          background: linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold) 100%);
+          color: #1a1410 !important;
+          box-shadow: 
+            0 4px 12px rgba(229, 193, 125, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        /* Recent Activity / Bookings */
         .recent-activity {
-          padding: 2rem;
+          padding: 2.25rem;
         }
 
         .activity-list {
           display: flex;
           flex-direction: column;
-          gap: 0.85rem;
+          gap: 1rem;
         }
 
         .activity-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1.1rem 1.25rem;
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.04), rgba(212, 180, 106, 0.01));
-          border-radius: var(--radius-md);
-          border: 1px solid rgba(212, 180, 106, 0.08);
+          padding: 1.25rem 1.5rem;
+          background: rgba(18, 15, 13, 0.65);
+          border-radius: 12px;
+          border: 1px solid rgba(229, 193, 125, 0.08);
           transition: var(--transition);
         }
 
         .activity-item:hover {
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.1), rgba(212, 180, 106, 0.03));
-          border-color: rgba(212, 180, 106, 0.25);
-          transform: translateX(2px);
+          background: rgba(229, 193, 125, 0.06);
+          border-color: rgba(229, 193, 125, 0.25);
+          transform: translateX(4px);
         }
 
         .client-name {
           font-weight: 600;
-          margin-bottom: 0.25rem;
-          color: var(--text-primary);
+          font-size: 1rem;
+          margin-bottom: 0.3rem;
+          color: #ffffff;
         }
 
         .car-name {
-          font-size: 0.82rem;
-          color: var(--text-muted);
+          font-size: 0.85rem;
+          color: rgba(229, 193, 125, 0.6);
         }
 
         .activity-meta {
           text-align: right;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 0.4rem;
         }
 
         .price {
           font-weight: 500;
           font-family: var(--font-heading);
-          font-size: 1.15rem;
-          color: var(--accent-gold);
+          font-size: 1.2rem;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
         }
 
         /* ============================================================
-           CALENDAR
+           CALENDAR SECTION
            ============================================================ */
         .calendar-section {
-          padding: 2rem;
+          padding: 2.5rem;
           display: flex;
           flex-direction: column;
-          gap: 1.5rem;
+          gap: 2rem;
         }
 
         .calendar-header-panel {
@@ -832,31 +861,34 @@ export default function DashboardClient({
           align-items: center;
           flex-wrap: wrap;
           gap: 1.5rem;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 1.5rem;
+          border-bottom: 1px solid rgba(229, 193, 125, 0.12);
+          padding-bottom: 1.75rem;
         }
 
         .calendar-title-group h3 {
           font-family: var(--font-heading);
-          font-size: 1.5rem;
+          font-size: 1.65rem;
           font-weight: 500;
-          margin-bottom: 0.25rem;
+          margin-bottom: 0.35rem;
           letter-spacing: -0.02em;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
         }
 
         .calendar-actions {
           display: flex;
           align-items: center;
-          gap: 1rem;
+          gap: 1.25rem;
           flex-wrap: wrap;
         }
 
         .vehicle-dropdown {
-          background: linear-gradient(180deg, var(--bg-elevated), var(--bg-tertiary));
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          padding: 0.7rem 1.25rem;
-          color: var(--text-primary);
+          background: rgba(18, 15, 13, 0.85);
+          border: 1px solid rgba(229, 193, 125, 0.15);
+          border-radius: 30px;
+          padding: 0.75rem 1.5rem;
+          color: #ffffff;
           font-size: 0.88rem;
           font-weight: 500;
           font-family: var(--font-body);
@@ -873,20 +905,19 @@ export default function DashboardClient({
 
         .vehicle-dropdown:focus {
           border-color: var(--accent-gold);
-          box-shadow:
+          box-shadow: 
             inset 0 1px 0 rgba(255, 255, 255, 0.04),
-            0 0 0 3px rgba(212, 180, 106, 0.15);
+            0 0 0 3px rgba(229, 193, 125, 0.25);
         }
 
         .month-navigator {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          background: linear-gradient(180deg, var(--bg-elevated), var(--bg-tertiary));
+          background: rgba(18, 15, 13, 0.85);
           padding: 0.4rem;
-          border-radius: var(--radius-md);
-          border: 1px solid var(--border-color);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          border-radius: 30px;
+          border: 1px solid rgba(229, 193, 125, 0.15);
         }
 
         .nav-btn {
@@ -896,28 +927,29 @@ export default function DashboardClient({
           font-size: 0.85rem;
           font-weight: 600;
           cursor: pointer;
-          padding: 0.45rem 0.85rem;
-          border-radius: var(--radius-sm);
+          padding: 0.45rem 1rem;
+          border-radius: 20px;
           transition: var(--transition-fast);
         }
 
         .nav-btn:hover {
-          background: rgba(212, 180, 106, 0.12);
+          background: rgba(229, 193, 125, 0.15);
         }
 
         .current-date-label {
           font-family: var(--font-heading);
           font-weight: 500;
-          font-size: 1rem;
-          min-width: 130px;
+          font-size: 1.05rem;
+          min-width: 140px;
           text-align: center;
           letter-spacing: -0.01em;
+          color: #ffffff;
         }
 
         .calendar-layout-grid {
           display: grid;
           grid-template-columns: 2fr 1fr;
-          gap: 2rem;
+          gap: 2.25rem;
         }
 
         @media (max-width: 900px) {
@@ -929,7 +961,7 @@ export default function DashboardClient({
         .grid-container {
           display: flex;
           flex-direction: column;
-          gap: 1rem;
+          gap: 1.25rem;
         }
 
         .weekdays-grid {
@@ -937,7 +969,7 @@ export default function DashboardClient({
           grid-template-columns: repeat(7, 1fr);
           text-align: center;
           font-weight: 600;
-          font-size: 0.72rem;
+          font-size: 0.75rem;
           text-transform: uppercase;
           letter-spacing: 1.5px;
           color: var(--accent-gold);
@@ -947,18 +979,18 @@ export default function DashboardClient({
         .days-grid {
           display: grid;
           grid-template-columns: repeat(7, 1fr);
-          gap: 0.5rem;
+          gap: 0.65rem;
         }
 
         .day-cell {
-          aspect-ratio: 1.1;
-          background: linear-gradient(165deg, rgba(34, 28, 24, 0.5), rgba(13, 11, 10, 0.6));
-          border: 1px solid rgba(212, 180, 106, 0.08);
-          border-radius: var(--radius-md);
+          aspect-ratio: 1.15;
+          background: rgba(18, 15, 13, 0.45);
+          border: 1px solid rgba(229, 193, 125, 0.08);
+          border-radius: 10px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          padding: 0.65rem;
+          padding: 0.75rem;
           cursor: pointer;
           position: relative;
           transition: var(--transition);
@@ -967,12 +999,12 @@ export default function DashboardClient({
         }
 
         .day-cell:hover:not(.empty) {
-          background: linear-gradient(165deg, rgba(48, 38, 30, 0.7), rgba(20, 16, 13, 0.8));
-          border-color: rgba(212, 180, 106, 0.25);
-          transform: translateY(-2px);
-          box-shadow:
+          background: rgba(229, 193, 125, 0.06);
+          border-color: rgba(229, 193, 125, 0.3);
+          transform: translateY(-3px);
+          box-shadow: 
             inset 0 1px 0 rgba(255, 240, 200, 0.08),
-            0 8px 16px -4px rgba(0, 0, 0, 0.5);
+            0 10px 20px -5px rgba(0, 0, 0, 0.7);
         }
 
         .day-cell.empty {
@@ -984,17 +1016,17 @@ export default function DashboardClient({
 
         .day-cell.selected {
           border-color: var(--accent-gold) !important;
-          background: linear-gradient(165deg, rgba(212, 180, 106, 0.18), rgba(212, 180, 106, 0.04)) !important;
-          box-shadow:
+          background: rgba(229, 193, 125, 0.15) !important;
+          box-shadow: 
             inset 0 1px 0 rgba(255, 240, 200, 0.15),
-            0 0 24px -4px rgba(212, 180, 106, 0.4) !important;
+            0 0 24px -4px rgba(229, 193, 125, 0.35) !important;
         }
 
         .day-number {
           font-family: var(--font-heading);
           font-weight: 500;
-          font-size: 1rem;
-          color: var(--text-primary);
+          font-size: 1.05rem;
+          color: #ffffff;
         }
 
         .booking-indicator-dot {
@@ -1005,21 +1037,21 @@ export default function DashboardClient({
         }
 
         .booking-indicator-dot.green {
-          background: #4ade80;
-          box-shadow: 0 0 10px rgba(74, 222, 128, 0.6), inset 0 0 2px rgba(255, 255, 255, 0.4);
+          background: #10b981;
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
         }
 
         .booking-indicator-dot.red {
           background: #ef4444;
-          box-shadow: 0 0 10px rgba(239, 68, 68, 0.6), inset 0 0 2px rgba(255, 255, 255, 0.4);
+          box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
         }
 
         .calendar-legends {
           display: flex;
           gap: 1.5rem;
           margin-top: 1rem;
-          font-size: 0.82rem;
-          color: var(--text-muted);
+          font-size: 0.85rem;
+          color: rgba(229, 193, 125, 0.55);
           flex-wrap: wrap;
         }
 
@@ -1035,52 +1067,59 @@ export default function DashboardClient({
           border-radius: 50%;
         }
 
-        .legend-color.green { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+        .legend-color.green { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
         .legend-color.red { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
 
         /* ============================================================
            DETAILS INSPECTOR
            ============================================================ */
         .details-panel {
-          padding: 1.75rem !important;
-          background: linear-gradient(165deg, rgba(34, 28, 24, 0.6), rgba(13, 11, 10, 0.7)) !important;
-          border: 1px solid var(--border-color) !important;
+          padding: 2.25rem 1.75rem !important;
+          background: rgba(10, 8, 7, 0.85) !important;
+          border: 1px solid rgba(229, 193, 125, 0.12) !important;
+          border-radius: 16px !important;
+          box-shadow: 
+            0 15px 35px rgba(0, 0, 0, 0.7),
+            inset 0 0 20px rgba(0, 0, 0, 0.95) !important;
           display: flex;
           flex-direction: column;
-          gap: 1.2rem;
+          gap: 1.25rem;
           min-height: 300px;
         }
 
         .panel-title {
           font-family: var(--font-heading);
-          font-size: 1.2rem;
+          font-size: 1.3rem;
           font-weight: 500;
           letter-spacing: -0.01em;
-          border-bottom: 1px solid var(--border-color);
+          border-bottom: 1px solid rgba(229, 193, 125, 0.12);
           padding-bottom: 0.85rem;
           margin: 0;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
         }
 
         .status-message {
           font-size: 0.78rem;
           font-weight: 600;
-          padding: 0.55rem 0.9rem;
-          border-radius: var(--radius-sm);
+          padding: 0.65rem 1rem;
+          border-radius: 8px;
           margin-bottom: 1rem;
           text-transform: uppercase;
           letter-spacing: 1px;
         }
 
         .status-message.occupied {
-          background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.04));
+          background: rgba(239, 68, 68, 0.1);
           color: #ef4444;
           border: 1px solid rgba(239, 68, 68, 0.25);
         }
 
         .inspector-booking-card {
-          background: linear-gradient(165deg, rgba(212, 180, 106, 0.06), rgba(212, 180, 106, 0.01));
-          border: 1px solid rgba(212, 180, 106, 0.15);
-          border-radius: var(--radius-md);
+          background: rgba(18, 15, 13, 0.65);
+          border: 1px solid rgba(229, 193, 125, 0.15);
+          border-radius: 12px;
           padding: 1.25rem;
           margin-bottom: 1rem;
           box-shadow: inset 0 1px 0 rgba(255, 240, 200, 0.05);
@@ -1096,15 +1135,15 @@ export default function DashboardClient({
         .vehicle-tag {
           font-family: var(--font-heading);
           font-weight: 600;
-          font-size: 1rem;
+          font-size: 1.05rem;
           color: var(--accent-gold);
           letter-spacing: -0.01em;
         }
 
         .card-body p {
-          margin: 0.3rem 0;
-          font-size: 0.85rem;
-          color: var(--text-secondary);
+          margin: 0.35rem 0;
+          font-size: 0.88rem;
+          color: rgba(229, 193, 125, 0.6);
         }
 
         .empty-slot-congratulations {
@@ -1118,48 +1157,47 @@ export default function DashboardClient({
 
         .sparkle-icon {
           font-size: 2.75rem;
-          filter: drop-shadow(0 0 16px rgba(74, 222, 128, 0.5));
+          filter: drop-shadow(0 0 16px rgba(16, 185, 129, 0.5));
         }
 
         .empty-slot-congratulations h5 {
           font-family: var(--font-heading);
           font-size: 1.35rem;
           font-weight: 500;
-          color: #4ade80;
+          color: #10b981;
           margin: 0;
           letter-spacing: -0.02em;
         }
 
         .available-desc {
           font-size: 0.85rem;
-          color: var(--text-muted);
+          color: rgba(229, 193, 125, 0.55);
           margin-bottom: 1rem;
         }
 
         .rate-info-card {
-          background: linear-gradient(165deg, rgba(74, 222, 128, 0.1), rgba(74, 222, 128, 0.02));
-          border: 1px solid rgba(74, 222, 128, 0.2);
-          padding: 1rem 1.5rem;
-          border-radius: var(--radius-md);
+          background: rgba(16, 185, 129, 0.08);
+          border: 1px solid rgba(16, 185, 129, 0.2);
+          padding: 1.25rem;
+          border-radius: 12px;
           margin-bottom: 1rem;
           width: 100%;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }
 
         .rate-title {
           font-size: 0.7rem;
           text-transform: uppercase;
           letter-spacing: 1.5px;
-          color: var(--text-muted);
+          color: rgba(229, 193, 125, 0.55);
           font-weight: 600;
           margin: 0 0 0.3rem 0;
         }
 
         .rate-value {
           font-family: var(--font-heading);
-          font-size: 1.75rem;
+          font-size: 1.85rem;
           font-weight: 500;
-          color: #4ade80;
+          color: #10b981;
           margin: 0;
           letter-spacing: -0.02em;
         }
@@ -1167,35 +1205,29 @@ export default function DashboardClient({
         .rate-unit {
           font-size: 0.85rem;
           font-weight: 400;
-          color: var(--text-muted);
+          color: rgba(229, 193, 125, 0.55);
           font-family: var(--font-body);
         }
 
         .confirm-offer-btn {
-          background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, transparent 50%),
-            linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold) 50%, var(--accent-gold-deep) 100%);
+          background: linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold) 50%, var(--accent-gold-deep) 100%) !important;
           border: none;
-          border-radius: var(--radius-md);
-          padding: 0.9rem 1.5rem;
-          color: #1a1410;
+          border-radius: 12px;
+          padding: 1rem 1.5rem;
+          color: #1a1410 !important;
           font-weight: 700;
-          font-size: 0.88rem;
+          font-size: 0.9rem;
           letter-spacing: 0.5px;
           text-transform: uppercase;
           cursor: pointer;
           transition: var(--transition);
           width: 100%;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.4),
-            0 6px 16px -3px rgba(212, 180, 106, 0.4);
+          box-shadow: 0 6px 16px -3px rgba(229, 193, 125, 0.35);
         }
 
         .confirm-offer-btn:hover {
           transform: translateY(-2px);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.5),
-            0 10px 24px -4px rgba(212, 180, 106, 0.55);
+          box-shadow: 0 10px 24px -4px rgba(229, 193, 125, 0.5);
         }
 
         .no-day-selected-prompt {
@@ -1204,8 +1236,8 @@ export default function DashboardClient({
           justify-content: center;
           height: 200px;
           text-align: center;
-          color: var(--text-muted);
-          font-size: 0.9rem;
+          color: rgba(229, 193, 125, 0.5);
+          font-size: 0.95rem;
           font-style: italic;
         }
       `}</style>
