@@ -105,7 +105,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         .layout-container {
           display: flex;
           min-height: 100vh;
-          background: var(--bg-primary);
+          background: #070504;
+          background-image: 
+            radial-gradient(circle at 15% 15%, rgba(229, 193, 125, 0.06) 0%, transparent 50%),
+            radial-gradient(circle at 85% 85%, rgba(229, 193, 125, 0.03) 0%, transparent 50%),
+            radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.2) 0%, transparent 100%);
           position: relative;
         }
 
@@ -117,15 +121,15 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           top: 1rem;
           display: flex;
           flex-direction: column;
-          border-radius: var(--radius-xl);
-          background:
-            linear-gradient(165deg, rgba(34, 28, 24, 0.85) 0%, rgba(13, 11, 10, 0.92) 100%);
-          backdrop-filter: blur(28px) saturate(160%);
-          -webkit-backdrop-filter: blur(28px) saturate(160%);
-          border: 1px solid var(--border-color);
+          border-radius: 20px;
+          background: rgba(10, 8, 7, 0.92);
+          backdrop-filter: blur(30px) saturate(150%);
+          -webkit-backdrop-filter: blur(30px) saturate(150%);
+          border: 1px solid rgba(229, 193, 125, 0.2);
           box-shadow:
-            inset 0 1px 0 rgba(255, 240, 200, 0.06),
-            var(--shadow-lg);
+            0 20px 50px rgba(0, 0, 0, 0.8),
+            inset 0 0 25px rgba(0, 0, 0, 0.95),
+            0 0 30px rgba(229, 193, 125, 0.03);
           transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
           z-index: 100;
           overflow: hidden;
@@ -138,13 +142,17 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           height: 1px;
           background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
           opacity: 0.5;
+          pointer-events: none;
         }
 
+        /* Gold glowing neon bottom bar */
         .sidebar::after {
           content: '';
           position: absolute;
-          inset: 0;
-          background: radial-gradient(circle at 50% 0%, rgba(212, 180, 106, 0.08), transparent 60%);
+          bottom: 0; left: 15%; right: 15%;
+          height: 3px;
+          background: linear-gradient(90deg, transparent, var(--accent-gold-hover), transparent);
+          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
           pointer-events: none;
         }
 
@@ -168,27 +176,25 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
         .brand {
           font-family: var(--font-heading);
-          font-size: 1.6rem;
+          font-size: 1.7rem;
           font-weight: 500;
-          color: var(--text-primary);
-          letter-spacing: -0.02em;
-          font-style: italic;
+          letter-spacing: 0.5px;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 50%, var(--accent-gold-deep) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 20px rgba(229, 193, 125, 0.15);
         }
 
         .brand-accent {
-          background: linear-gradient(135deg, var(--accent-gold-hover), var(--accent-gold-deep));
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
+          color: inherit;
           font-style: normal;
-          font-weight: 600;
         }
 
         .sidebar-nav {
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 0.35rem;
+          gap: 0.65rem;
           padding: 1rem;
           position: relative;
           z-index: 1;
@@ -197,32 +203,32 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         .nav-item {
           display: flex;
           align-items: center;
-          gap: 1rem;
-          padding: 0.95rem 1.1rem;
+          gap: 1.2rem;
+          padding: 0.9rem 1.25rem;
           border-radius: var(--radius-md);
-          color: var(--text-secondary);
-          font-size: 0.92rem;
-          font-weight: 500;
-          letter-spacing: 0.2px;
-          border: 1px solid transparent;
+          color: rgba(229, 193, 125, 0.7);
           transition: var(--transition);
+          font-family: var(--font-body);
+          font-size: 0.95rem;
+          font-weight: 500;
+          border: 1px solid transparent;
           position: relative;
         }
 
         .nav-item:hover {
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.08), rgba(212, 180, 106, 0.02));
-          color: var(--text-primary);
-          border-color: rgba(212, 180, 106, 0.12);
-          transform: translateX(2px);
+          background: rgba(229, 193, 125, 0.06);
+          color: var(--accent-gold-hover);
+          border-color: rgba(229, 193, 125, 0.12);
+          transform: translateX(4px);
         }
 
         .nav-item.active {
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.18) 0%, rgba(212, 180, 106, 0.04) 100%);
-          color: var(--accent-gold);
-          border-color: rgba(212, 180, 106, 0.35);
+          background: linear-gradient(90deg, rgba(229, 193, 125, 0.16) 0%, rgba(229, 193, 125, 0.02) 100%);
+          color: var(--accent-gold-hover);
+          border-color: rgba(229, 193, 125, 0.35);
           box-shadow:
-            inset 0 1px 0 rgba(255, 240, 200, 0.1),
-            0 4px 16px -4px rgba(212, 180, 106, 0.25);
+            0 4px 20px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
         .nav-item.active::before {
@@ -234,37 +240,47 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           width: 3px;
           background: linear-gradient(180deg, var(--accent-gold-hover), var(--accent-gold));
           border-radius: 0 var(--radius-full) var(--radius-full) 0;
-          box-shadow: 0 0 12px var(--accent-gold-glow);
+          box-shadow: 0 0 12px var(--accent-gold);
         }
 
         .sidebar-footer {
-          padding: 1rem;
-          border-top: 1px solid var(--border-color);
+          padding: 1.25rem 1.5rem;
+          border-top: 1px solid rgba(229, 193, 125, 0.15);
           position: relative;
           z-index: 1;
+        }
+
+        .sidebar-footer::before {
+          content: '';
+          position: absolute;
+          top: -1px; left: 10%; right: 10%;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, var(--accent-gold-hover), transparent);
+          box-shadow: 0 0 10px var(--accent-gold-hover);
+          opacity: 0.7;
         }
 
         .logout-btn {
           width: 100%;
           display: flex;
           align-items: center;
-          gap: 1rem;
-          padding: 0.95rem 1.1rem;
+          gap: 1.2rem;
+          padding: 0.9rem 1.25rem;
           background: transparent;
           border: 1px solid transparent;
-          color: var(--text-secondary);
+          color: rgba(229, 193, 125, 0.7);
           cursor: pointer;
           transition: var(--transition);
           font-family: var(--font-body);
-          font-size: 0.92rem;
+          font-size: 0.95rem;
           font-weight: 500;
           border-radius: var(--radius-md);
         }
 
         .logout-btn:hover {
-          background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.02));
-          border-color: rgba(239, 68, 68, 0.25);
-          color: var(--danger);
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
         }
 
         .main-content {
@@ -281,13 +297,15 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1.25rem 2rem;
+          padding: 1.25rem 2.25rem;
           margin-bottom: 1.5rem;
-          background: linear-gradient(155deg, rgba(34, 28, 24, 0.6), rgba(13, 11, 10, 0.7));
+          background: rgba(10, 8, 7, 0.85);
           backdrop-filter: blur(20px);
-          border: 1px solid var(--border-color);
+          border: 1px solid rgba(229, 193, 125, 0.15);
           border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-md);
+          box-shadow: 
+            0 10px 30px rgba(0, 0, 0, 0.6),
+            inset 0 0 15px rgba(0, 0, 0, 0.8);
         }
 
         .topbar-left {
@@ -315,29 +333,37 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           display: flex;
           align-items: center;
           gap: 0.6rem;
-          color: var(--text-secondary);
+          color: rgba(229, 193, 125, 0.7);
           font-size: 0.88rem;
           font-weight: 500;
+          font-family: var(--font-body);
         }
 
         .status-indicator {
           width: 8px;
           height: 8px;
-          background: var(--success);
+          background: #10b981;
           border-radius: 50%;
-          box-shadow: 0 0 14px var(--success), inset 0 0 4px rgba(255, 255, 255, 0.5);
-          animation: pulse 2s ease-in-out infinite;
+          box-shadow: 0 0 14px #10b981, inset 0 0 4px rgba(255, 255, 255, 0.5);
+          animation: pulseStatusIndicator 2s ease-in-out infinite;
         }
 
-        @keyframes pulse {
+        @keyframes pulseStatusIndicator {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(0.9); }
+          50% { opacity: 0.6; transform: scale(0.85); }
         }
 
         .topbar-profile {
           display: flex;
           align-items: center;
-          gap: 1rem;
+          gap: 1.1rem;
+        }
+
+        .topbar-profile span {
+          font-family: var(--font-heading);
+          color: var(--accent-gold-hover);
+          font-size: 1.05rem;
+          letter-spacing: 0.3px;
         }
 
         .avatar {
@@ -345,17 +371,23 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           height: 42px;
           border-radius: 50%;
           background: linear-gradient(135deg, var(--accent-gold-deep), var(--bg-tertiary));
-          border: 1px solid var(--accent-gold);
+          border: 2px solid var(--accent-gold);
           color: var(--text-primary);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: 600;
+          font-weight: 700;
           font-family: var(--font-heading);
-          font-size: 1.1rem;
+          font-size: 1.15rem;
           box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.2),
-            0 6px 16px rgba(212, 180, 106, 0.3);
+            0 0 15px rgba(229, 193, 125, 0.45),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2);
+          transition: var(--transition);
+        }
+
+        .avatar:hover {
+          transform: scale(1.06) rotate(5deg);
+          box-shadow: 0 0 25px rgba(229, 193, 125, 0.7);
         }
 
         .content-area {
@@ -374,6 +406,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             border-radius: 0;
             transform: translateX(-100%);
             opacity: 0;
+            background: rgba(10, 8, 7, 0.98);
             z-index: 1000;
           }
 
@@ -387,7 +420,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           .sidebar-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(8, 6, 5, 0.7);
+            background: rgba(8, 6, 5, 0.75);
             backdrop-filter: blur(8px);
             z-index: 999;
           }

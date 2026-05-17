@@ -83,78 +83,200 @@ export default function AdminDashboardClient({ stats }: AdminDashboardClientProp
         .admin-dashboard {
           display: flex;
           flex-direction: column;
-          gap: 2rem;
+          gap: 2.25rem;
+          padding: 0.5rem;
         }
 
         .header-section {
-          margin-bottom: 1rem;
+          margin-bottom: 1.5rem;
+          position: relative;
         }
 
         .page-title {
-          font-size: 2rem;
+          font-family: var(--font-heading);
+          font-size: 2.5rem;
+          font-weight: 500;
+          letter-spacing: -0.02em;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 30px rgba(229, 193, 125, 0.15);
           margin-bottom: 0.5rem;
         }
 
         .subtitle {
-          color: var(--text-muted);
+          font-family: var(--font-body);
+          color: rgba(229, 193, 125, 0.6);
+          font-size: 1.05rem;
+          letter-spacing: 0.2px;
         }
 
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 1.5rem;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 1.75rem;
         }
 
+        /* stat cards with top/bottom glowing caps */
         .stat-card {
-          padding: 1.5rem;
+          padding: 2.25rem 1.75rem;
+          position: relative;
+          background: rgba(10, 8, 7, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(229, 193, 125, 0.12);
+          border-radius: 16px;
+          box-shadow: 
+            0 15px 35px rgba(0, 0, 0, 0.7),
+            inset 0 0 20px rgba(0, 0, 0, 0.95);
+          overflow: hidden;
+          transition: var(--transition);
+        }
+
+        .stat-card:hover {
+          transform: translateY(-5px);
+          border-color: rgba(229, 193, 125, 0.3);
+          box-shadow: 
+            0 20px 45px rgba(0, 0, 0, 0.8),
+            0 0 30px rgba(229, 193, 125, 0.1),
+            inset 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+
+        /* Top glowing golden cap */
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
+          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
+          opacity: 0.75;
+          transition: var(--transition);
+        }
+
+        /* Bottom glowing golden cap */
+        .stat-card::after {
+          content: '';
+          position: absolute;
+          bottom: 0; left: 0; right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
+          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
+          opacity: 0.75;
+          transition: var(--transition);
+        }
+
+        .stat-card:hover::before, .stat-card:hover::after {
+          opacity: 1;
+          background: linear-gradient(90deg, transparent 0%, var(--accent-gold) 50%, transparent 100%);
+          box-shadow: 0 0 20px var(--accent-gold), 0 0 8px #ffffff;
         }
 
         .stat-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 1rem;
-          color: var(--text-secondary);
+          margin-bottom: 1.25rem;
+          color: rgba(229, 193, 125, 0.55);
+        }
+
+        .stat-header :global(svg) {
+          color: var(--accent-gold-hover);
+          filter: drop-shadow(0 0 8px rgba(229, 193, 125, 0.4));
         }
 
         .stat-value {
-          font-size: 2.5rem;
-          font-weight: 700;
+          font-size: 2.8rem;
+          font-weight: 500;
           font-family: var(--font-heading);
-          margin-bottom: 0.5rem;
-          background: linear-gradient(135deg, #fff, var(--accent-gold));
+          margin-bottom: 0.75rem;
+          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 50%, var(--accent-gold-deep) 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 20px rgba(229, 193, 125, 0.2);
         }
 
         .stat-trend {
           font-size: 0.9rem;
+          font-family: var(--font-body);
+          color: rgba(229, 193, 125, 0.5);
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
         }
 
-        .positive { color: var(--success); }
+        .stat-trend.positive {
+          color: #10b981;
+          text-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+        }
 
         .charts-section {
           display: grid;
           grid-template-columns: 2fr 1fr;
-          gap: 1.5rem;
+          gap: 1.75rem;
+        }
+
+        @media (max-width: 992px) {
+          .charts-section {
+            grid-template-columns: 1fr;
+          }
         }
 
         .chart-card {
-          padding: 1.5rem;
-          min-height: 300px;
+          padding: 2.25rem;
+          min-height: 340px;
+          background: rgba(10, 8, 7, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(229, 193, 125, 0.12);
+          border-radius: 16px;
+          box-shadow: 
+            0 15px 35px rgba(0, 0, 0, 0.7),
+            inset 0 0 20px rgba(0, 0, 0, 0.95);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .chart-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
+          box-shadow: 0 0 15px var(--accent-gold-hover);
         }
 
         .chart-card h3 {
-          margin-bottom: 1.5rem;
-          color: var(--text-secondary);
+          font-family: var(--font-heading);
+          font-size: 1.4rem;
+          font-weight: 500;
+          color: var(--accent-gold-hover);
+          margin-bottom: 2rem;
+          letter-spacing: 0.3px;
         }
 
+        /* Vertical gradient bars chart with animated dot sparkles matching photo reference */
         .mock-chart {
-          height: 200px;
+          height: 220px;
           display: flex;
           align-items: flex-end;
-          padding-top: 2rem;
-          border-bottom: 1px solid var(--border-color);
+          padding-top: 2.5rem;
+          border-bottom: 2px solid rgba(229, 193, 125, 0.2);
+          position: relative;
+          background-image: 
+            radial-gradient(circle at 10% 40%, rgba(229, 193, 125, 0.25) 1px, transparent 1.5px),
+            radial-gradient(circle at 35% 20%, rgba(229, 193, 125, 0.2) 1.5px, transparent 2px),
+            radial-gradient(circle at 55% 45%, rgba(229, 193, 125, 0.25) 1px, transparent 1.5px),
+            radial-gradient(circle at 80% 25%, rgba(229, 193, 125, 0.3) 1.5px, transparent 2.5px),
+            radial-gradient(circle at 20% 70%, rgba(229, 193, 125, 0.15) 1px, transparent 1px),
+            radial-gradient(circle at 70% 60%, rgba(229, 193, 125, 0.2) 1.5px, transparent 2px);
+          background-size: 100% 100%;
+          animation: floatSparkles 10s ease-in-out infinite alternate;
+        }
+
+        @keyframes floatSparkles {
+          0% { background-position: 0% 0%; }
+          100% { background-position: 5% 8%; }
         }
 
         .chart-bars {
@@ -163,11 +285,12 @@ export default function AdminDashboardClient({ stats }: AdminDashboardClientProp
           width: 100%;
           height: 100%;
           align-items: flex-end;
+          z-index: 5;
         }
 
         .bar-wrapper {
           flex: 1;
-          margin: 0 0.5rem;
+          margin: 0 0.8rem;
           height: 100%;
           display: flex;
           align-items: flex-end;
@@ -175,33 +298,84 @@ export default function AdminDashboardClient({ stats }: AdminDashboardClientProp
 
         .bar {
           width: 100%;
-          background: linear-gradient(to top, var(--accent-gold-dim), var(--accent-gold));
-          border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+          background: linear-gradient(to top, rgba(229, 193, 125, 0.05) 0%, rgba(229, 193, 125, 0.45) 60%, var(--accent-gold-hover) 100%);
+          border-radius: 6px 6px 0 0;
+          border-top: 2px solid #ffffff;
+          box-shadow: 
+            0 0 15px rgba(229, 193, 125, 0.3),
+            0 -5px 10px rgba(255, 255, 255, 0.15);
+          transition: var(--transition);
+          position: relative;
+        }
+
+        .bar::after {
+          content: '';
+          position: absolute;
+          top: -5px; left: 50%;
+          width: 6px; height: 6px;
+          background: #ffffff;
+          border-radius: 50%;
+          transform: translateX(-50%);
+          box-shadow: 0 0 10px #ffffff, 0 0 20px var(--accent-gold);
+          opacity: 0.85;
           transition: var(--transition);
         }
 
         .bar:hover {
-          background: var(--accent-gold-hover);
-          box-shadow: var(--shadow-glow);
+          background: linear-gradient(to top, rgba(229, 193, 125, 0.15) 0%, rgba(229, 193, 125, 0.65) 60%, var(--accent-gold-hover) 100%);
+          box-shadow: 
+            0 0 25px rgba(229, 193, 125, 0.6),
+            0 -8px 20px rgba(255, 255, 255, 0.4);
+          transform: scaleY(1.02);
+        }
+
+        .bar:hover::after {
+          opacity: 1;
+          transform: translateX(-50%) scale(1.3);
+          box-shadow: 0 0 15px #ffffff, 0 0 30px var(--accent-gold);
         }
 
         .mock-map {
-          height: 200px;
-          background: radial-gradient(circle at center, var(--accent-gold-dim) 0%, transparent 70%);
-          border-radius: var(--radius-md);
+          height: 220px;
+          background: radial-gradient(circle at center, rgba(229, 193, 125, 0.15) 0%, transparent 80%);
+          border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           position: relative;
           overflow: hidden;
+          border: 1px solid rgba(229, 193, 125, 0.12);
         }
 
+        /* Dotted gold world map watermark with hotspots matching reference photo */
         .map-dots {
           width: 100%;
           height: 100%;
-          background-image: radial-gradient(var(--text-muted) 1px, transparent 1px);
-          background-size: 10px 10px;
-          opacity: 0.3;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450' fill='%23e5c17d' opacity='0.3'%3E%3Cg%3E%3C!-- North America --%3E%3Ccircle cx='80' cy='120' r='2.5'/%3E%3Ccircle cx='100' cy='100' r='2.5'/%3E%3Ccircle cx='120' cy='110' r='2.5'/%3E%3Ccircle cx='140' cy='100' r='2.5'/%3E%3Ccircle cx='160' cy='120' r='2.5'/%3E%3Ccircle cx='180' cy='130' r='2.5'/%3E%3Ccircle cx='90' cy='140' r='2.5'/%3E%3Ccircle cx='110' cy='130' r='2.5'/%3E%3Ccircle cx='130' cy='120' r='2.5'/%3E%3Ccircle cx='150' cy='130' r='2.5'/%3E%3Ccircle cx='170' cy='140' r='2.5'/%3E%3Ccircle cx='100' cy='160' r='2.5'/%3E%3Ccircle cx='120' cy='150' r='2.5'/%3E%3Ccircle cx='140' cy='140' r='2.5'/%3E%3Ccircle cx='160' cy='150' r='2.5'/%3E%3Ccircle cx='180' cy='160' r='2.5'/%3E%3Ccircle cx='200' cy='150' r='2.5'/%3E%3Ccircle cx='220' cy='140' r='2.5'/%3E%3Ccircle cx='130' cy='170' r='2.5'/%3E%3Ccircle cx='150' cy='160' r='2.5'/%3E%3Ccircle cx='170' cy='170' r='2.5'/%3E%3Ccircle cx='190' cy='160' r='2.5'/%3E%3Ccircle cx='210' cy='170' r='2.5'/%3E%3Ccircle cx='230' cy='160' r='2.5'/%3E%3Ccircle cx='250' cy='150' r='2.5'/%3E%3C!-- South America --%3E%3Ccircle cx='200' cy='220' r='2.5'/%3E%3Ccircle cx='220' cy='210' r='2.5'/%3E%3Ccircle cx='240' cy='230' r='2.5'/%3E%3Ccircle cx='210' cy='240' r='2.5'/%3E%3Ccircle cx='230' cy='250' r='2.5'/%3E%3Ccircle cx='220' cy='270' r='2.5'/%3E%3Ccircle cx='240' cy='280' r='2.5'/%3E%3Ccircle cx='230' cy='300' r='2.5'/%3E%3Ccircle cx='250' cy='310' r='2.5'/%3E%3Ccircle cx='240' cy='330' r='2.5'/%3E%3Ccircle cx='250' cy='350' r='2.5'/%3E%3Ccircle cx='260' cy='370' r='2.5'/%3E%3C!-- Europe --%3E%3Ccircle cx='420' cy='110' r='2.5'/%3E%3Ccircle cx='440' cy='100' r='2.5'/%3E%3Ccircle cx='460' cy='120' r='2.5'/%3E%3Ccircle cx='430' cy='130' r='2.5'/%3E%3Ccircle cx='450' cy='120' r='2.5'/%3E%3Ccircle cx='470' cy='130' r='2.5'/%3E%3Ccircle cx='440' cy='150' r='2.5'/%3E%3Ccircle cx='460' cy='140' r='2.5'/%3E%3Ccircle cx='480' cy='150' r='2.5'/%3E%3Ccircle cx='500' cy='140' r='2.5'/%3E%3C!-- Africa --%3E%3Ccircle cx='440' cy='190' r='2.5'/%3E%3Ccircle cx='460' cy='180' r='2.5'/%3E%3Ccircle cx='480' cy='200' r='2.5'/%3E%3Ccircle cx='450' cy='210' r='2.5'/%3E%3Ccircle cx='470' cy='220' r='2.5'/%3E%3Ccircle cx='490' cy='210' r='2.5'/%3E%3Ccircle cx='460' cy='230' r='2.5'/%3E%3Ccircle cx='480' cy='240' r='2.5'/%3E%3Ccircle cx='470' cy='260' r='2.5'/%3E%3Ccircle cx='490' cy='270' r='2.5'/%3E%3Ccircle cx='480' cy='290' r='2.5'/%3E%3Ccircle cx='500' cy='300' r='2.5'/%3E%3Ccircle cx='510' cy='320' r='2.5'/%3E%3C!-- Asia --%3E%3Ccircle cx='540' cy='100' r='2.5'/%3E%3Ccircle cx='560' cy='90' r='2.5'/%3E%3Ccircle cx='580' cy='110' r='2.5'/%3E%3Ccircle cx='600' cy='100' r='2.5'/%3E%3Ccircle cx='620' cy='90' r='2.5'/%3E%3Ccircle cx='640' cy='110' r='2.5'/%3E%3Ccircle cx='660' cy='100' r='2.5'/%3E%3Ccircle cx='680' cy='90' r='2.5'/%3E%3Ccircle cx='700' cy='100' r='2.5'/%3E%3Ccircle cx='720' cy='110' r='2.5'/%3E%3Ccircle cx='550' cy='130' r='2.5'/%3E%3Ccircle cx='570' cy='120' r='2.5'/%3E%3Ccircle cx='590' cy='130' r='2.5'/%3E%3Ccircle cx='610' cy='120' r='2.5'/%3E%3Ccircle cx='630' cy='130' r='2.5'/%3E%3Ccircle cx='650' cy='120' r='2.5'/%3E%3Ccircle cx='670' cy='130' r='2.5'/%3E%3Ccircle cx='690' cy='140' r='2.5'/%3E%3Ccircle cx='710' cy='130' r='2.5'/%3E%3Ccircle cx='730' cy='140' r='2.5'/%3E%3Ccircle cx='750' cy='130' r='2.5'/%3E%3Ccircle cx='560' cy='160' r='2.5'/%3E%3Ccircle cx='580' cy='150' r='2.5'/%3E%3Ccircle cx='600' cy='160' r='2.5'/%3E%3Ccircle cx='620' cy='150' r='2.5'/%3E%3Ccircle cx='640' cy='160' r='2.5'/%3E%3Ccircle cx='660' cy='150' r='2.5'/%3E%3Ccircle cx='680' cy='160' r='2.5'/%3E%3Ccircle cx='700' cy='170' r='2.5'/%3E%3Ccircle cx='720' cy='160' r='2.5'/%3E%3Ccircle cx='740' cy='170' r='2.5'/%3E%3Ccircle cx='760' cy='160' r='2.5'/%3E%3Ccircle cx='580' cy='190' r='2.5'/%3E%3Ccircle cx='600' cy='180' r='2.5'/%3E%3Ccircle cx='620' cy='190' r='2.5'/%3E%3Ccircle cx='640' cy='180' r='2.5'/%3E%3Ccircle cx='660' cy='190' r='2.5'/%3E%3Ccircle cx='680' cy='180' r='2.5'/%3E%3Ccircle cx='700' cy='190' r='2.5'/%3E%3Ccircle cx='720' cy='200' r='2.5'/%3E%3C!-- Australia --%3E%3Ccircle cx='700' cy='280' r='2.5'/%3E%3Ccircle cx='720' cy='270' r='2.5'/%3E%3Ccircle cx='740' cy='290' r='2.5'/%3E%3Ccircle cx='710' cy='310' r='2.5'/%3E%3Ccircle cx='730' cy='320' r='2.5'/%3E%3Ccircle cx='750' cy='310' r='2.5'/%3E%3C/g%3E%3C/svg%3E") !important;
+          background-size: contain;
+          background-repeat: no-repeat;
+          background-position: center;
+          opacity: 0.6;
+        }
+
+        /* Pulsing hotspots corresponding to main global hubs */
+        .mock-map::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image:
+            radial-gradient(circle 5px at 18% 30%, #ffffff 0%, var(--accent-gold) 40%, transparent 80%),
+            radial-gradient(circle 5px at 58% 28%, #ffffff 0%, var(--accent-gold) 40%, transparent 80%),
+            radial-gradient(circle 5px at 78% 32%, #ffffff 0%, var(--accent-gold) 40%, transparent 80%),
+            radial-gradient(circle 5px at 88% 68%, #ffffff 0%, var(--accent-gold) 40%, transparent 80%);
+          pointer-events: none;
+          animation: pulseMapHotspots 2s cubic-bezier(0.4, 0, 0.6, 1) infinite alternate;
+          z-index: 10;
+        }
+
+        @keyframes pulseMapHotspots {
+          0% { opacity: 0.45; filter: drop-shadow(0 0 2px var(--accent-gold-hover)); }
+          100% { opacity: 0.95; filter: drop-shadow(0 0 8px var(--accent-gold-hover)); }
         }
       `}</style>
     </div>
