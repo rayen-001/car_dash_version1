@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server'
+import { createAdminClient } from '@/utils/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 // --- VEHICLE ACTIONS ---
@@ -16,14 +17,138 @@ export async function addVehicle(formData: FormData) {
   const price_per_day = parseFloat(formData.get('price_per_day') as string)
   const availability = formData.get('availability') === 'on' || formData.get('availability') === 'true'
 
+  // Handle image uploads
+  const imageFiles = formData.getAll('images') as File[]
+  const imageUrls: string[] = []
+  
+  if (imageFiles && imageFiles.length > 0) {
+    const adminClient = createAdminClient()
+    for (const file of imageFiles) {
+      if (file && file.size > 0 && file.name) {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`
+        const filePath = `${user.id}/${fileName}`
+        
+        // Convert File to Buffer for upload
+        const bytes = await file.arrayBuffer()
+        const buffer = Buffer.from(bytes)
+        
+        const { error: uploadError } = await adminClient.storage
+          .from('vehicle-images')
+          .upload(filePath, buffer, {
+            contentType: file.type,
+            upsert: true
+          })
+          
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError.message)
+        } else {
+          const { data: { publicUrl } } = adminClient.storage
+            .from('vehicle-images')
+            .getPublicUrl(filePath)
+          imageUrls.push(publicUrl)
+        }
+      }
+    }
+  }
+
   const { error } = await supabase.from('vehicles').insert({
     owner_id: user.id,
     brand,
     model,
     year,
     price_per_day,
-    availability
+    availability,
+    images: imageUrls
   })
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/fleet')
+}
+
+export async function updateVehicle(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const id = formData.get('id') as string
+  const brand = formData.get('brand') as string
+  const model = formData.get('model') as string
+  const year = parseInt(formData.get('year') as string)
+  const price_per_day = parseFloat(formData.get('price_per_day') as string)
+  const availability = formData.get('availability') === 'on' || formData.get('availability') === 'true'
+  
+  // Existing images kept
+  const existingImagesJson = formData.get('existing_images') as string
+  const keptImages: string[] = existingImagesJson ? JSON.parse(existingImagesJson) : []
+
+  // Fetch current vehicle to delete removed images from storage
+  const { data: currentCar } = await supabase
+    .from('vehicles')
+    .select('images')
+    .eq('id', id)
+    .single()
+
+  const adminClient = createAdminClient()
+
+  if (currentCar && currentCar.images) {
+    const removedImages = currentCar.images.filter((img: string) => !keptImages.includes(img))
+    for (const imgUrl of removedImages) {
+      const pathParts = imgUrl.split('/vehicle-images/')
+      if (pathParts.length > 1) {
+        const storagePath = pathParts[1]
+        await adminClient.storage.from('vehicle-images').remove([storagePath])
+      }
+    }
+  }
+
+  // Handle new image uploads
+  const newImageFiles = formData.getAll('new_images') as File[]
+  const newImageUrls: string[] = []
+
+  if (newImageFiles && newImageFiles.length > 0) {
+    for (const file of newImageFiles) {
+      if (file && file.size > 0 && file.name) {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`
+        const filePath = `${user.id}/${fileName}`
+        
+        const bytes = await file.arrayBuffer()
+        const buffer = Buffer.from(bytes)
+        
+        const { error: uploadError } = await adminClient.storage
+          .from('vehicle-images')
+          .upload(filePath, buffer, {
+            contentType: file.type,
+            upsert: true
+          })
+          
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError.message)
+        } else {
+          const { data: { publicUrl } } = adminClient.storage
+            .from('vehicle-images')
+            .getPublicUrl(filePath)
+          newImageUrls.push(publicUrl)
+        }
+      }
+    }
+  }
+
+  const finalImageUrls = [...keptImages, ...newImageUrls]
+
+  const { error } = await supabase
+    .from('vehicles')
+    .update({
+      brand,
+      model,
+      year,
+      price_per_day,
+      availability,
+      images: finalImageUrls
+    })
+    .eq('id', id)
+    .eq('owner_id', user.id)
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/fleet')
@@ -34,10 +159,30 @@ export async function deleteVehicle(id: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
+  // Fetch vehicle images to clean up storage
+  const { data: car } = await supabase
+    .from('vehicles')
+    .select('images')
+    .eq('id', id)
+    .eq('owner_id', user.id)
+    .single()
+
+  if (car && car.images && car.images.length > 0) {
+    const adminClient = createAdminClient()
+    for (const imgUrl of car.images) {
+      const pathParts = imgUrl.split('/vehicle-images/')
+      if (pathParts.length > 1) {
+        const storagePath = pathParts[1]
+        await adminClient.storage.from('vehicle-images').remove([storagePath])
+      }
+    }
+  }
+
   const { error } = await supabase.from('vehicles').delete().eq('id', id).eq('owner_id', user.id)
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/fleet')
 }
+
 
 // --- BOOKING ACTIONS ---
 
@@ -127,8 +272,6 @@ export async function addMaintenance(formData: FormData) {
 }
 
 // --- ADMIN ACTIONS ---
-
-import { createAdminClient } from '@/utils/supabase/admin'
 
 export async function addOwner(formData: FormData) {
   const supabase = await createClient()
