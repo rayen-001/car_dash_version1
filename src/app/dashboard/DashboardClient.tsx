@@ -83,7 +83,7 @@ export default function DashboardClient({
 
       <TodayOperations allBookings={allBookings} />
 
-      <DashboardCharts recentBookings={recentBookings} />
+      <DashboardCharts recentBookings={recentBookings} allBookings={allBookings} />
 
       <DashboardCalendar vehicles={vehicles} allBookings={allBookings} />
     </div>

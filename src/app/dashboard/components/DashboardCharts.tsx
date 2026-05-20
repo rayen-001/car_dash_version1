@@ -1,8 +1,77 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid
+} from 'recharts'
 import styles from '../dashboard.module.css'
 
-export default function DashboardCharts({ recentBookings }: { recentBookings: any[] }) {
+export default function DashboardCharts({ recentBookings, allBookings = [] }: { recentBookings: any[], allBookings?: any[] }) {
   const [chartFilter, setChartFilter] = useState<'weekly' | 'monthly'>('weekly')
+
+  const weeklyData = useMemo(() => {
+    const data = []
+    const today = new Date()
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toISOString().split('T')[0]
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' })
+      const dayBookings = allBookings.filter(b => b.created_at?.startsWith(dateStr) && b.status !== 'cancelled')
+      const total = dayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
+      data.push({ name: dayName, revenue: total })
+    }
+    return data
+  }, [allBookings])
+
+  const monthlyData = useMemo(() => {
+    const data = []
+    const today = new Date()
+    for (let i = 3; i >= 0; i--) {
+      const weekStart = new Date(today)
+      weekStart.setDate(today.getDate() - (i * 7 + 6))
+      const weekEnd = new Date(today)
+      weekEnd.setDate(today.getDate() - (i * 7))
+      const weekStartStr = weekStart.toISOString().split('T')[0]
+      const weekEndStr = weekEnd.toISOString().split('T')[0]
+      const weekBookings = allBookings.filter(b => {
+        if (!b.created_at || b.status === 'cancelled') return false
+        const bDate = b.created_at.split('T')[0]
+        return bDate >= weekStartStr && bDate <= weekEndStr
+      })
+      const total = weekBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
+      data.push({ name: `W${4-i}`, revenue: total })
+    }
+    return data
+  }, [allBookings])
+
+  const chartData = chartFilter === 'weekly' ? weeklyData : monthlyData
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{
+          background: 'rgba(26, 22, 17, 0.95)',
+          border: '1px solid rgba(229, 193, 125, 0.3)',
+          padding: '8px 12px',
+          borderRadius: '8px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          color: 'var(--text-primary)',
+          fontSize: '0.8rem'
+        }}>
+          <p style={{ margin: '0 0 4px 0', color: 'var(--text-muted)' }}>{label}</p>
+          <p style={{ margin: 0, fontWeight: 700, color: 'var(--accent-gold)' }}>
+            {payload[0].value} DT
+          </p>
+        </div>
+      )
+    }
+    return null
+  }
 
   return (
     <div className={styles['main-grid']}>
@@ -15,102 +84,30 @@ export default function DashboardCharts({ recentBookings }: { recentBookings: an
           </div>
         </div>
 
-        <div className={styles['premium-line-chart']}>
-          <svg viewBox="0 0 500 220" className={styles['chart-svg']} style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-            {/* Grid Lines */}
-            <line x1="50" y1="30" x2="480" y2="30" stroke="rgba(197, 160, 89, 0.04)" strokeDasharray="3,3" />
-            <line x1="50" y1="80" x2="480" y2="80" stroke="rgba(197, 160, 89, 0.04)" strokeDasharray="3,3" />
-            <line x1="50" y1="130" x2="480" y2="130" stroke="rgba(197, 160, 89, 0.04)" strokeDasharray="3,3" />
-            <line x1="50" y1="180" x2="480" y2="180" stroke="rgba(197, 160, 89, 0.15)" />
-
-            {/* Axes Labels */}
-            <text x="40" y="34" fill="var(--text-muted)" fontSize="9" textAnchor="end">5,000 DT</text>
-            <text x="40" y="84" fill="var(--text-muted)" fontSize="9" textAnchor="end">3,000 DT</text>
-            <text x="40" y="134" fill="var(--text-muted)" fontSize="9" textAnchor="end">1,000 DT</text>
-            <text x="40" y="184" fill="var(--text-muted)" fontSize="9" textAnchor="end">0 DT</text>
-
-            {/* Glowing Background Particle Wave Tracks from Image */}
-            <path
-              d="M 50 170 C 120 200, 190 120, 260 145 C 330 165, 400 95, 470 55"
-              fill="none"
-              stroke="rgba(197, 160, 89, 0.06)"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M 50 150 C 120 120, 190 160, 260 110 C 330 80, 400 135, 470 65"
-              fill="none"
-              stroke="rgba(197, 160, 89, 0.04)"
-              strokeWidth="1"
-              strokeDasharray="4,4"
-            />
-
-            {/* Chart Line Path & Fill */}
-            {chartFilter === 'weekly' ? (
-              <>
-                <path
-                  d="M 50 160 Q 120 120 190 140 T 330 90 T 470 50"
-                  fill="none"
-                  stroke="var(--accent-gold)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  filter="url(#glow)"
-                />
-                <path
-                  d="M 50 160 Q 120 120 190 140 T 330 90 T 470 50 L 470 180 L 50 180 Z"
-                  fill="url(#chartGradient)"
-                  stroke="none"
-                />
-                {/* Interactive Nodes with Glowing Rings */}
-                <circle cx="190" cy="140" r="6" fill="#171310" stroke="var(--accent-gold)" strokeWidth="2.5" />
-                <circle cx="330" cy="90" r="6" fill="#171310" stroke="var(--accent-gold)" strokeWidth="2.5" />
-                <circle cx="470" cy="50" r="7" fill="var(--accent-gold)" stroke="#fff" strokeWidth="1.5" />
-
-                {/* Axis Tags */}
-                <text x="50" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Mon</text>
-                <text x="120" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Tue</text>
-                <text x="190" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Wed</text>
-                <text x="260" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Thu</text>
-                <text x="330" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Fri</text>
-                <text x="400" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Sat</text>
-                <text x="470" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Sun</text>
-              </>
-            ) : (
-              <>
-                <path
-                  d="M 50 170 Q 150 130 250 90 T 470 45"
-                  fill="none"
-                  stroke="var(--accent-gold)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  filter="url(#glow)"
-                />
-                <path
-                  d="M 50 170 Q 150 130 250 90 T 470 45 L 470 180 L 50 180 Z"
-                  fill="url(#chartGradient)"
-                  stroke="none"
-                />
-                {/* Nodes */}
-                <circle cx="250" cy="90" r="6" fill="#171310" stroke="var(--accent-gold)" strokeWidth="2.5" />
-                <circle cx="470" cy="45" r="7" fill="var(--accent-gold)" stroke="#fff" strokeWidth="1.5" />
-
-                <text x="50" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Week 1</text>
-                <text x="190" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Week 2</text>
-                <text x="330" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Week 3</text>
-                <text x="470" y="202" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Week 4</text>
-              </>
-            )}
-
-            <defs>
-              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-              <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="var(--accent-gold)" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="var(--bg-primary)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-          </svg>
+        <div style={{ width: '100%', height: '240px', marginTop: '1.5rem', marginLeft: '-15px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#C5A059" stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor="#C5A059" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(197, 160, 89, 0.08)" />
+              <XAxis dataKey="name" stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+              <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}`} />
+              <Tooltip content={<CustomTooltip />} />
+              <Area 
+                type="monotone" 
+                dataKey="revenue" 
+                stroke="#C5A059" 
+                strokeWidth={3}
+                fillOpacity={1} 
+                fill="url(#colorRevenue)" 
+                activeDot={{ r: 6, fill: '#171310', stroke: '#C5A059', strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -128,7 +125,7 @@ export default function DashboardCharts({ recentBookings }: { recentBookings: an
                   <div className={styles['car-name']}>{item.vehicles?.brand} {item.vehicles?.model}</div>
                 </div>
                 <div className={styles['activity-meta']}>
-                  <span className="status-badge confirmed">
+                  <span className={`status-badge ${item.status}`}>
                     {item.status}
                   </span>
                   <div className={styles['price']}>DT {item.total_amount}</div>
