@@ -6,9 +6,14 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
 } from 'recharts'
 import styles from '../dashboard.module.css'
+import TopClients from './TopClients'
 
 export default function DashboardCharts({ recentBookings, allBookings = [] }: { recentBookings: any[], allBookings?: any[] }) {
   const [chartFilter, setChartFilter] = useState<'weekly' | 'monthly'>('weekly')
@@ -63,9 +68,11 @@ export default function DashboardCharts({ recentBookings, allBookings = [] }: { 
           color: 'var(--text-primary)',
           fontSize: '0.8rem'
         }}>
-          <p style={{ margin: '0 0 4px 0', color: 'var(--text-muted)' }}>{label}</p>
+          <p style={{ margin: '0 0 4px 0', color: 'var(--text-muted)' }}>{label || payload[0].name}</p>
           <p style={{ margin: 0, fontWeight: 700, color: 'var(--accent-gold)' }}>
-            {payload[0].value} DT
+            {payload[0].name === 'Confirmed' || payload[0].name === 'Pending' || payload[0].name === 'Cancelled' ? 
+              `${payload[0].value} Booking(s)` : 
+              `${payload[0].value} DT`}
           </p>
         </div>
       )
@@ -73,8 +80,25 @@ export default function DashboardCharts({ recentBookings, allBookings = [] }: { 
     return null
   }
 
+  const pieData = useMemo(() => {
+    let confirmed = 0
+    let pending = 0
+    let cancelled = 0
+    allBookings.forEach(b => {
+      if (b.status === 'confirmed' || b.status === 'completed') confirmed++
+      else if (b.status === 'pending') pending++
+      else if (b.status === 'cancelled') cancelled++
+    })
+    return [
+      { name: 'Confirmed', value: confirmed, color: '#C5A059' },
+      { name: 'Pending', value: pending, color: '#8A6D35' },
+      { name: 'Cancelled', value: cancelled, color: '#33291C' }
+    ].filter(d => d.value > 0)
+  }, [allBookings])
+
   return (
-    <div className={styles['main-grid']}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+      <div className={styles['main-grid']}>
       <div className={`${styles['chart-section']} glass-panel`}>
         <div className={styles['section-header']}>
           <h3>Revenue History</h3>
@@ -111,30 +135,69 @@ export default function DashboardCharts({ recentBookings, allBookings = [] }: { 
         </div>
       </div>
 
-      {/* Recent Bookings List */}
-      <div className={`${styles['recent-activity']} glass-panel`}>
+      {/* Pie Chart */}
+      <div className={`${styles['chart-section']} glass-panel`}>
         <div className={styles['section-header']}>
-          <h3>Recent Bookings</h3>
+          <h3>Booking Status</h3>
         </div>
-        <div className={styles['activity-list']}>
-          {recentBookings && recentBookings.length > 0 ? (
-            recentBookings.map((item, i) => (
-              <div key={i} className={styles['activity-item']}>
-                <div className="activity-info">
-                  <div className={styles['client-name']}>{item.client_name}</div>
-                  <div className={styles['car-name']}>{item.vehicles?.brand} {item.vehicles?.model}</div>
+        <div style={{ width: '100%', height: '240px', marginTop: '1.5rem' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={90}
+                paddingAngle={5}
+                dataKey="value"
+                stroke="none"
+              >
+                {pieData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                iconType="circle" 
+                wrapperStyle={{ fontSize: '0.8rem', color: 'rgba(229, 193, 125, 0.8)' }} 
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+
+      {/* Row 2: Top Clients & Recent Bookings */}
+      <div className={styles['main-grid']}>
+        <TopClients allBookings={allBookings} />
+
+        <div className={`${styles['recent-activity']} glass-panel`}>
+          <div className={styles['section-header']}>
+            <h3>Recent Bookings</h3>
+          </div>
+          <div className={styles['activity-list']}>
+            {recentBookings && recentBookings.length > 0 ? (
+              recentBookings.map((item, i) => (
+                <div key={i} className={styles['activity-item']}>
+                  <div className="activity-info">
+                    <div className={styles['client-name']}>{item.client_name}</div>
+                    <div className={styles['car-name']}>{item.vehicles?.brand} {item.vehicles?.model}</div>
+                  </div>
+                  <div className={styles['activity-meta']}>
+                    <span className={`status-badge ${item.status}`}>
+                      {item.status}
+                    </span>
+                    <div className={styles['price']}>DT {item.total_amount}</div>
+                  </div>
                 </div>
-                <div className={styles['activity-meta']}>
-                  <span className={`status-badge ${item.status}`}>
-                    {item.status}
-                  </span>
-                  <div className={styles['price']}>DT {item.total_amount}</div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-4 text-muted">No bookings logged yet.</div>
-          )}
+              ))
+            ) : (
+              <div className="text-center py-4 text-muted">No bookings logged yet.</div>
+            )}
+          </div>
         </div>
       </div>
     </div>

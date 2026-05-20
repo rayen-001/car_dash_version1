@@ -5,6 +5,7 @@ import DashboardStats from './components/DashboardStats'
 import DashboardCalendar from './components/DashboardCalendar'
 import DashboardCharts from './components/DashboardCharts'
 import TodayOperations from './components/TodayOperations'
+import AlertStrip from './components/AlertStrip'
 
 interface DashboardClientProps {
   stats: {
@@ -77,6 +78,8 @@ export default function DashboardClient({
           </g>
         </svg>
       </div>
+
+      <AlertStrip allBookings={allBookings} vehicles={vehicles} />
 
       {/* Stats Cards Row */}
       <DashboardStats stats={stats} allBookings={allBookings} />
