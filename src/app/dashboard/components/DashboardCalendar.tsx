@@ -199,18 +199,6 @@ export default function DashboardCalendar({ vehicles = [], allBookings = [] }: {
                   <p className={styles['available-desc']}>
                     This date is completely empty and ready to be booked.
                   </p>
-                  {selectedVehicleObj && (
-                    <div className={styles['rate-info-card']}>
-                      <p className={styles['rate-title']}>Suggested Rental Rate</p>
-                      <p className={styles['rate-value']}>{selectedVehicleObj.price_per_day} DT <span className={styles['rate-unit']}>/ day</span></p>
-                    </div>
-                  )}
-                  <button
-                    className={styles['confirm-offer-btn']}
-                    onClick={() => alert(`Day ${selectedDay} is available! You can quote customers ${selectedVehicleObj ? selectedVehicleObj.price_per_day : '100'} DT / day.`)}
-                  >
-                    Share Availability / Quote
-                  </button>
                 </div>
               )}
             </div>

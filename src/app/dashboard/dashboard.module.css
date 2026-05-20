@@ -467,6 +467,9 @@
           display: flex;
           flex-direction: column;
           gap: 1.25rem;
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 0.5rem;
         }
 
         .weekdays-grid {
@@ -744,4 +747,19 @@
           color: rgba(229, 193, 125, 0.5);
           font-size: 0.95rem;
           font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+          .calendar-section {
+            padding: 1.25rem;
+          }
+          .days-grid, .weekdays-grid {
+            min-width: 320px;
+          }
+          .day-cell {
+            padding: 0.4rem;
+          }
+          .day-number {
+            font-size: 0.9rem;
+          }
         }
