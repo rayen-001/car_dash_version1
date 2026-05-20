@@ -222,3 +222,96 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
+
+-- Create business_settings table
+CREATE TABLE IF NOT EXISTS public.business_settings (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  owner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  business_name TEXT DEFAULT '',
+  logo_url TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  address TEXT DEFAULT '',
+  currency TEXT DEFAULT 'DT',
+  rental_terms TEXT DEFAULT '',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable RLS on business_settings
+ALTER TABLE public.business_settings ENABLE ROW LEVEL SECURITY;
+
+-- business_settings Policies
+CREATE POLICY "Owners can view their own business settings" ON public.business_settings
+  FOR SELECT USING (auth.uid() = owner_id);
+
+CREATE POLICY "Owners can insert their own business settings" ON public.business_settings
+  FOR INSERT WITH CHECK (auth.uid() = owner_id);
+
+CREATE POLICY "Owners can update their own business settings" ON public.business_settings
+  FOR UPDATE USING (auth.uid() = owner_id);
+
+-- Add fuel and mileage tracking to bookings table
+ALTER TABLE public.bookings 
+  ADD COLUMN IF NOT EXISTS fuel_level_pickup TEXT DEFAULT 'Full' CHECK (fuel_level_pickup IN ('Empty', '1/4', '1/2', '3/4', 'Full')),
+  ADD COLUMN IF NOT EXISTS fuel_level_return TEXT DEFAULT 'Full' CHECK (fuel_level_return IN ('Empty', '1/4', '1/2', '3/4', 'Full')),
+  ADD COLUMN IF NOT EXISTS starting_mileage INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS return_mileage INTEGER DEFAULT 0;
+
+-- Add legal fields and exact times to bookings table for historical audit snapshotting
+ALTER TABLE public.bookings 
+  ADD COLUMN IF NOT EXISTS client_phone TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS client_license_number TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS client_cin_passport TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS client_address TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS pickup_time TEXT DEFAULT '10:00',
+  ADD COLUMN IF NOT EXISTS return_time TEXT DEFAULT '10:00';
+
+
+-- =========================================================================
+-- MULTITENANCY ISOLATION PATCH: CRM CLIENTS & SECURITY POLICIES
+-- =========================================================================
+
+-- 1. Create the clients CRM table if it does not already exist
+CREATE TABLE IF NOT EXISTS public.clients (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  owner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  full_name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT DEFAULT 'N/A' NOT NULL,
+  license_number TEXT DEFAULT 'N/A',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 2. Establish relationship on the bookings table if not already present
+ALTER TABLE public.bookings 
+  ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL;
+
+-- 3. Explicitly enable Row-Level Security (RLS) on the clients table
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+
+-- 4. Create robust RLS Policies for the clients table to isolate tenant data
+DROP POLICY IF EXISTS "Owners can view their own clients" ON public.clients;
+CREATE POLICY "Owners can view their own clients" ON public.clients
+  FOR SELECT USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Owners can insert their own clients" ON public.clients;
+CREATE POLICY "Owners can insert their own clients" ON public.clients
+  FOR INSERT WITH CHECK (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Owners can update their own clients" ON public.clients;
+CREATE POLICY "Owners can update their own clients" ON public.clients
+  FOR UPDATE USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Owners can delete their own clients" ON public.clients;
+CREATE POLICY "Owners can delete their own clients" ON public.clients
+  FOR DELETE USING (auth.uid() = owner_id);
+
+-- 5. Establish a fallback safety policy to enforce RLS is active on all tables
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.maintenance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.business_settings ENABLE ROW LEVEL SECURITY;
+
+
+

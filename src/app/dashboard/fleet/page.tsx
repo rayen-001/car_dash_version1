@@ -10,11 +10,17 @@ export default async function FleetPage() {
   if (!user) redirect('/login')
 
   // Fetch vehicles belonging to this owner
-  const { data: vehicles, error } = await supabase
+  const { data: vehicles } = await supabase
     .from('vehicles')
     .select('*')
     .eq('owner_id', user.id)
     .order('created_at', { ascending: false })
 
-  return <FleetClient initialVehicles={vehicles || []} />
+  // Fetch bookings for owner to calculate per-vehicle revenue and metrics
+  const { data: bookings } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('owner_id', user.id)
+
+  return <FleetClient initialVehicles={vehicles || []} bookings={bookings || []} />
 }

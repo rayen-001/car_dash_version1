@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { getBusinessSettings } from '@/app/actions'
 import ExpensesClient from './ExpensesClient'
 
 export default async function ExpensesPage() {
@@ -19,5 +20,7 @@ export default async function ExpensesPage() {
     .select('id, brand, model')
     .eq('owner_id', user.id)
 
-  return <ExpensesClient initialExpenses={expenses || []} vehicles={vehicles || []} />
+  const settings = await getBusinessSettings()
+
+  return <ExpensesClient initialExpenses={expenses || []} vehicles={vehicles || []} businessSettings={settings} />
 }

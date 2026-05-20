@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Car, Lock, Mail } from 'lucide-react'
+import styles from './login.module.css'
 import '@/app/globals.css'
 
 export default function LoginPage() {
@@ -36,227 +37,46 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-container">
-      <div className="login-glass animate-fade-in">
-        <div className="logo-container">
-          <Car size={48} className="logo-icon" />
+    <div className={styles['login-container']}>
+      <div className={`${styles['login-glass']} animate-fade-in`}>
+        <div className={styles['logo-container']}>
+          <Car size={48} className={styles['logo-icon']} />
           <h1>AutoManage</h1>
           <p>Premium Fleet Control</p>
         </div>
 
-        <form onSubmit={handleLogin} className="login-form">
-          {error && <div className="error-message">{error}</div>}
+        <form onSubmit={handleLogin} className={styles['login-form']}>
+          {error && <div className={styles['error-message']}>{error}</div>}
           
-          <div className="input-group">
-            <Mail className="input-icon" size={20} />
+          <div className={styles['input-group']}>
+            <Mail className={styles['input-icon']} size={20} />
             <input
               type="email"
               placeholder="Email address"
-              className="input-field with-icon"
+              className="input-field"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
 
-          <div className="input-group">
-            <Lock className="input-icon" size={20} />
+          <div className={styles['input-group']}>
+            <Lock className={styles['input-icon']} size={20} />
             <input
               type="password"
               placeholder="Password"
-              className="input-field with-icon"
+              className="input-field"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
 
-          <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
+          <button type="submit" className={`btn btn-primary ${styles['login-btn']}`} disabled={loading}>
             {loading ? 'Authenticating...' : 'Secure Login'}
           </button>
         </form>
       </div>
-
-      <style jsx>{`
-        .login-container {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 1.5rem;
-          background: #070504;
-          background-image: 
-            radial-gradient(circle at 10% 20%, rgba(229, 193, 125, 0.07) 0%, transparent 40%),
-            radial-gradient(circle at 90% 80%, rgba(229, 193, 125, 0.04) 0%, transparent 40%),
-            radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.4) 0%, transparent 100%);
-          position: relative;
-        }
-
-        /* Beautiful glowing glass login card matching stat card designs */
-        .login-glass {
-          background: rgba(10, 8, 7, 0.85);
-          backdrop-filter: blur(30px) saturate(150%);
-          -webkit-backdrop-filter: blur(30px) saturate(150%);
-          border: 1px solid rgba(229, 193, 125, 0.15);
-          padding: 3.5rem 3rem;
-          border-radius: 20px;
-          width: 100%;
-          max-width: 440px;
-          box-shadow: 
-            0 25px 60px rgba(0, 0, 0, 0.8),
-            inset 0 0 25px rgba(0, 0, 0, 0.95);
-          position: relative;
-          overflow: hidden;
-          transition: var(--transition);
-        }
-
-        .login-glass:hover {
-          border-color: rgba(229, 193, 125, 0.3);
-          box-shadow: 
-            0 30px 70px rgba(0, 0, 0, 0.9),
-            0 0 40px rgba(229, 193, 125, 0.08),
-            inset 0 0 25px rgba(0, 0, 0, 0.95);
-        }
-
-        /* Glowing top gold cap */
-        .login-glass::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
-          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
-        }
-
-        /* Glowing bottom gold cap */
-        .login-glass::after {
-          content: '';
-          position: absolute;
-          bottom: 0; left: 0; right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%);
-          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
-        }
-
-        .logo-container {
-          text-align: center;
-          margin-bottom: 2.75rem;
-        }
-
-        .logo-icon {
-          color: var(--accent-gold-hover);
-          margin-bottom: 1.25rem;
-          filter: drop-shadow(0 0 12px rgba(229, 193, 125, 0.5));
-        }
-
-        .logo-container h1 {
-          font-family: var(--font-heading);
-          font-size: 2.25rem;
-          font-weight: 500;
-          margin-bottom: 0.35rem;
-          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 50%, var(--accent-gold-deep) 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          text-shadow: 0 0 20px rgba(229, 193, 125, 0.2);
-        }
-
-        .logo-container p {
-          color: rgba(229, 193, 125, 0.5);
-          font-size: 0.8rem;
-          letter-spacing: 3px;
-          text-transform: uppercase;
-          font-family: var(--font-body);
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-        }
-
-        .input-group {
-          position: relative;
-        }
-
-        .input-icon {
-          position: absolute;
-          left: 1.25rem;
-          top: 50%;
-          transform: translateY(-50%);
-          color: rgba(229, 193, 125, 0.4);
-          transition: var(--transition);
-          z-index: 10;
-        }
-
-        .input-group:focus-within .input-icon {
-          color: var(--accent-gold-hover);
-          filter: drop-shadow(0 0 5px rgba(229, 193, 125, 0.5));
-        }
-
-        .with-icon {
-          padding-left: 3.25rem !important;
-          background: rgba(7, 5, 4, 0.85) !important;
-          border: 1px solid rgba(229, 193, 125, 0.25) !important;
-          color: var(--text-primary) !important;
-          border-radius: var(--radius-md) !important;
-          transition: var(--transition) !important;
-        }
-
-        .with-icon:focus {
-          border-color: var(--accent-gold-hover) !important;
-          box-shadow: 
-            0 0 15px rgba(229, 193, 125, 0.25),
-            inset 0 0 8px rgba(229, 193, 125, 0.1) !important;
-        }
-
-        .with-icon::placeholder {
-          color: rgba(229, 193, 125, 0.35);
-        }
-
-        /* Glowing gold button */
-        .login-btn {
-          margin-top: 1.25rem;
-          height: 3.25rem;
-          font-size: 1.05rem;
-          font-weight: 600;
-          font-family: var(--font-body);
-          letter-spacing: 0.5px;
-          border-radius: var(--radius-md);
-          background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-deep) 100%) !important;
-          border: 1px solid rgba(255, 255, 255, 0.1) !important;
-          color: #070504 !important;
-          box-shadow: 
-            0 5px 15px rgba(229, 193, 125, 0.25),
-            0 0 0 1px rgba(229, 193, 125, 0.1) !important;
-          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.3);
-          transition: var(--transition) !important;
-          cursor: pointer;
-        }
-
-        .login-btn:hover:not(:disabled) {
-          background: linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold) 100%) !important;
-          box-shadow: 
-            0 8px 25px rgba(229, 193, 125, 0.55),
-            0 0 15px var(--accent-gold-hover) !important;
-          transform: translateY(-2px);
-        }
-
-        .login-btn:active:not(:disabled) {
-          transform: translateY(0);
-        }
-
-        .error-message {
-          background: rgba(239, 68, 68, 0.1);
-          color: #f87171;
-          padding: 0.9rem;
-          border-radius: var(--radius-md);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-          font-size: 0.9rem;
-          font-family: var(--font-body);
-          text-align: center;
-          box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
-        }
-      `}</style>
     </div>
   )
 }

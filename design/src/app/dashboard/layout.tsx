@@ -105,56 +105,33 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         .layout-container {
           display: flex;
           min-height: 100vh;
-          background: var(--bg-primary);
           position: relative;
         }
 
         .sidebar {
-          width: 280px;
-          height: calc(100vh - 2rem);
-          margin: 1rem;
+          width: 248px;
+          height: calc(100vh - 1.5rem);
+          margin: 0.75rem;
           position: sticky;
-          top: 1rem;
+          top: 0.75rem;
           display: flex;
           flex-direction: column;
           border-radius: var(--radius-xl);
-          background:
-            linear-gradient(165deg, rgba(34, 28, 24, 0.85) 0%, rgba(13, 11, 10, 0.92) 100%);
-          backdrop-filter: blur(28px) saturate(160%);
-          -webkit-backdrop-filter: blur(28px) saturate(160%);
+          background: linear-gradient(180deg, rgba(20, 17, 14, 0.92), rgba(14, 12, 10, 0.95));
+          backdrop-filter: blur(24px) saturate(140%);
+          -webkit-backdrop-filter: blur(24px) saturate(140%);
           border: 1px solid var(--border-color);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 240, 200, 0.06),
-            var(--shadow-lg);
-          transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+          box-shadow: var(--shadow-md);
+          transition: transform 0.35s var(--ease), opacity 0.25s ease;
           z-index: 100;
           overflow: hidden;
         }
 
-        .sidebar::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 15%; right: 15%;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
-          opacity: 0.5;
-        }
-
-        .sidebar::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(circle at 50% 0%, rgba(212, 180, 106, 0.08), transparent 60%);
-          pointer-events: none;
-        }
-
         .sidebar-header {
-          padding: 2.25rem 2rem 1.5rem;
+          padding: 1.5rem 1.25rem 1rem;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          position: relative;
-          z-index: 1;
         }
 
         .mobile-close-btn {
@@ -164,116 +141,114 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           color: var(--text-secondary);
           cursor: pointer;
           padding: 0.5rem;
+          border-radius: var(--radius-sm);
         }
+        .mobile-close-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
 
         .brand {
           font-family: var(--font-heading);
-          font-size: 1.6rem;
+          font-size: 1.25rem;
           font-weight: 500;
-          color: var(--text-primary);
           letter-spacing: -0.02em;
-          font-style: italic;
+          color: var(--text-primary);
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
         }
-
-        .brand-accent {
+        .brand::before {
+          content: '';
+          width: 22px;
+          height: 22px;
+          border-radius: 6px;
           background: linear-gradient(135deg, var(--accent-gold-hover), var(--accent-gold-deep));
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-          font-style: normal;
-          font-weight: 600;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 12px -4px var(--accent-gold-glow);
         }
+        .brand-accent { color: var(--accent-gold); font-style: normal; font-weight: 600; }
 
         .sidebar-nav {
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 0.35rem;
-          padding: 1rem;
-          position: relative;
-          z-index: 1;
+          gap: 0.15rem;
+          padding: 0.5rem 0.6rem;
+          overflow-y: auto;
         }
 
         .nav-item {
           display: flex;
           align-items: center;
-          gap: 1rem;
-          padding: 0.95rem 1.1rem;
+          gap: 0.85rem;
+          padding: 0.6rem 0.75rem;
           border-radius: var(--radius-md);
           color: var(--text-secondary);
-          font-size: 0.92rem;
+          transition: var(--transition-fast);
+          font-family: var(--font-body);
+          font-size: 0.88rem;
           font-weight: 500;
-          letter-spacing: 0.2px;
-          border: 1px solid transparent;
-          transition: var(--transition);
           position: relative;
         }
-
-        .nav-item:hover {
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.08), rgba(212, 180, 106, 0.02));
-          color: var(--text-primary);
-          border-color: rgba(212, 180, 106, 0.12);
-          transform: translateX(2px);
+        .nav-item :global(svg) {
+          width: 18px; height: 18px;
+          color: var(--text-muted);
+          transition: var(--transition-fast);
+          flex-shrink: 0;
         }
+        .nav-item:hover {
+          background: rgba(255, 255, 255, 0.04);
+          color: var(--text-primary);
+        }
+        .nav-item:hover :global(svg) { color: var(--accent-gold-hover); }
 
         .nav-item.active {
-          background: linear-gradient(135deg, rgba(212, 180, 106, 0.18) 0%, rgba(212, 180, 106, 0.04) 100%);
-          color: var(--accent-gold);
-          border-color: rgba(212, 180, 106, 0.35);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 240, 200, 0.1),
-            0 4px 16px -4px rgba(212, 180, 106, 0.25);
+          background: var(--accent-gold-soft);
+          color: var(--accent-gold-hover);
+          font-weight: 600;
         }
-
+        .nav-item.active :global(svg) { color: var(--accent-gold-hover); }
         .nav-item.active::before {
           content: '';
           position: absolute;
-          left: -1px;
-          top: 20%;
-          bottom: 20%;
-          width: 3px;
-          background: linear-gradient(180deg, var(--accent-gold-hover), var(--accent-gold));
-          border-radius: 0 var(--radius-full) var(--radius-full) 0;
-          box-shadow: 0 0 12px var(--accent-gold-glow);
+          left: -0.6rem;
+          top: 22%;
+          bottom: 22%;
+          width: 2px;
+          background: var(--accent-gold);
+          border-radius: 0 2px 2px 0;
         }
 
         .sidebar-footer {
-          padding: 1rem;
+          padding: 0.75rem 0.6rem;
           border-top: 1px solid var(--border-color);
-          position: relative;
-          z-index: 1;
         }
 
         .logout-btn {
           width: 100%;
           display: flex;
           align-items: center;
-          gap: 1rem;
-          padding: 0.95rem 1.1rem;
+          gap: 0.85rem;
+          padding: 0.6rem 0.75rem;
           background: transparent;
           border: 1px solid transparent;
           color: var(--text-secondary);
           cursor: pointer;
-          transition: var(--transition);
+          transition: var(--transition-fast);
           font-family: var(--font-body);
-          font-size: 0.92rem;
+          font-size: 0.88rem;
           font-weight: 500;
           border-radius: var(--radius-md);
         }
-
+        .logout-btn :global(svg) { width: 18px; height: 18px; color: var(--text-muted); }
         .logout-btn:hover {
-          background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.02));
-          border-color: rgba(239, 68, 68, 0.25);
+          background: var(--danger-soft);
           color: var(--danger);
         }
+        .logout-btn:hover :global(svg) { color: var(--danger); }
 
         .main-content {
           flex: 1;
           display: flex;
           flex-direction: column;
-          padding: 1rem 1.5rem 1rem 0;
-          position: relative;
-          z-index: 1;
+          padding: 0.75rem 1rem 1rem 0;
           min-width: 0;
         }
 
@@ -281,86 +256,96 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1.25rem 2rem;
-          margin-bottom: 1.5rem;
-          background: linear-gradient(155deg, rgba(34, 28, 24, 0.6), rgba(13, 11, 10, 0.7));
-          backdrop-filter: blur(20px);
+          padding: 0.75rem 1.25rem;
+          margin-bottom: 1.25rem;
+          background: var(--bg-glass);
+          backdrop-filter: blur(20px) saturate(140%);
           border: 1px solid var(--border-color);
           border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-md);
+          box-shadow: var(--shadow-xs);
         }
 
         .topbar-left {
           display: flex;
           align-items: center;
-          gap: 1rem;
+          gap: 0.85rem;
         }
 
         .menu-toggle-btn {
           display: none;
           background: transparent;
-          border: none;
-          color: var(--text-primary);
+          border: 1px solid var(--border-color);
+          color: var(--text-secondary);
           cursor: pointer;
-          padding: 0.5rem;
-          border-radius: var(--radius-md);
-          transition: var(--transition);
+          padding: 0.45rem;
+          border-radius: var(--radius-sm);
+          transition: var(--transition-fast);
         }
-
-        .menu-toggle-btn:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
+        .menu-toggle-btn:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-primary); }
 
         .topbar-info {
           display: flex;
           align-items: center;
-          gap: 0.6rem;
+          gap: 0.5rem;
           color: var(--text-secondary);
-          font-size: 0.88rem;
+          font-size: 0.82rem;
           font-weight: 500;
         }
 
         .status-indicator {
-          width: 8px;
-          height: 8px;
+          width: 7px;
+          height: 7px;
           background: var(--success);
           border-radius: 50%;
-          box-shadow: 0 0 14px var(--success), inset 0 0 4px rgba(255, 255, 255, 0.5);
-          animation: pulse 2s ease-in-out infinite;
+          box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+          animation: pulseStatusIndicator 2.4s ease-in-out infinite;
         }
 
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(0.9); }
+        @keyframes pulseStatusIndicator {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.55; }
         }
 
         .topbar-profile {
           display: flex;
           align-items: center;
-          gap: 1rem;
+          gap: 0.7rem;
+          padding: 0.3rem 0.75rem 0.3rem 0.3rem;
+          border-radius: var(--radius-full);
+          border: 1px solid var(--border-color);
+          background: rgba(255,255,255,0.02);
+          transition: var(--transition-fast);
+          cursor: pointer;
+        }
+        .topbar-profile:hover { border-color: var(--border-strong); background: rgba(255,255,255,0.04); }
+
+        .topbar-profile span {
+          font-family: var(--font-body);
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          font-weight: 500;
         }
 
         .avatar {
-          width: 42px;
-          height: 42px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent-gold-deep), var(--bg-tertiary));
-          border: 1px solid var(--accent-gold);
-          color: var(--text-primary);
+          background: linear-gradient(135deg, var(--accent-gold-hover), var(--accent-gold-deep));
+          color: #14110d;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: 600;
-          font-family: var(--font-heading);
-          font-size: 1.1rem;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.2),
-            0 6px 16px rgba(212, 180, 106, 0.3);
+          font-weight: 700;
+          font-family: var(--font-body);
+          font-size: 0.85rem;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+          transition: var(--transition-fast);
+          flex-shrink: 0;
         }
 
         .content-area {
           flex: 1;
-          padding-right: 0.5rem;
+          padding-right: 0.25rem;
         }
 
         @media (max-width: 992px) {
@@ -370,33 +355,29 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             top: 0;
             bottom: 0;
             margin: 0;
+            width: 280px;
             height: 100vh;
             border-radius: 0;
             transform: translateX(-100%);
             opacity: 0;
+            background: rgba(14, 12, 10, 0.98);
             z-index: 1000;
           }
-
-          .sidebar.open {
-            transform: translateX(0);
-            opacity: 1;
-          }
-
-          .mobile-close-btn { display: block; }
-
+          .sidebar.open { transform: translateX(0); opacity: 1; }
+          .mobile-close-btn { display: flex; }
           .sidebar-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(8, 6, 5, 0.7);
+            background: rgba(6, 5, 4, 0.7);
             backdrop-filter: blur(8px);
             z-index: 999;
           }
+          .main-content { padding: 0.75rem; }
+          .menu-toggle-btn { display: inline-flex; }
+        }
 
-          .main-content {
-            padding: 1rem;
-          }
-
-          .menu-toggle-btn { display: block; }
+        @media (max-width: 480px) {
+          .topbar-profile span { display: none; }
         }
       `}</style>
     </div>

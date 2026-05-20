@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { User, Mail, ShieldAlert, CheckCircle2, Lock, Building, Phone, MapPin, Loader2 } from 'lucide-react'
+import styles from './profile.module.css'
 
 export default function BusinessProfilePage() {
   const router = useRouter()
@@ -142,56 +143,39 @@ export default function BusinessProfilePage() {
 
   if (profileLoading) {
     return (
-      <div className="loading-container">
-        <Loader2 className="spinner" size={40} />
+      <div className={styles['loading-container']}>
+        <Loader2 className={styles['spinner']} size={40} />
         <p>Loading Business Profile...</p>
-        <style jsx>{`
-          .loading-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 60vh;
-            color: var(--accent-gold);
-            gap: 1rem;
-          }
-          .spinner {
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
       </div>
     )
   }
 
   return (
-    <div className='dashboard-page'>
-      <div className='header-section'>
-        <h1 className='page-title'>🚗 Owner Profile</h1>
-        <p className='subtitle'>Manage your business profile details and dashboard access settings.</p>
+    <div className={styles['dashboard-page']}>
+      <div className={styles['header-section']}>
+        <h1 className={styles['page-title']}>🚗 Owner Profile</h1>
+        <p className={styles['subtitle']}>Manage your business profile details and dashboard access settings.</p>
       </div>
 
       {message && (
-        <div className={`status-banner ${message.type}`}>
+        <div className={`${styles['status-banner']} ${styles[message.type]}`}>
           {message.type === 'success' ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
           <span>{message.text}</span>
         </div>
       )}
 
-      <div className='content-grid'>
+      <div className={styles['content-grid']}>
         {/* Profile Info Form */}
-        <div className='glass-panel form-panel'>
-          <div className="panel-header-row">
-            <h3 className="section-subtitle">Business details</h3>
-            <span className="badge-owner">Fleet Owner</span>
+        <div className={`${styles['glass-panel']} ${styles['form-panel']}`}>
+          <div className={styles['panel-header-row']}>
+            <h3 className={styles['section-subtitle']}>Business details</h3>
+            <span className={styles['badge-owner']}>Fleet Owner</span>
           </div>
 
-          <form onSubmit={handleUpdateProfile} className="profile-form">
-            <div className="form-group">
+          <form onSubmit={handleUpdateProfile} className={styles['profile-form']}>
+            <div className={styles['form-group']}>
               <label>
-                <Building size={14} className="input-icon" />
+                <Building size={14} className={styles['input-icon']} />
                 <span>Company Name</span>
               </label>
               <input 
@@ -200,13 +184,13 @@ export default function BusinessProfilePage() {
                 onChange={(e) => setCompanyName(e.target.value)}
                 required 
                 placeholder="Your Company Name" 
-                className="form-input" 
+                className={styles['form-input']} 
               />
             </div>
 
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>
-                <User size={14} className="input-icon" />
+                <User size={14} className={styles['input-icon']} />
                 <span>Owner Full Name</span>
               </label>
               <input 
@@ -215,13 +199,13 @@ export default function BusinessProfilePage() {
                 onChange={(e) => setFullName(e.target.value)}
                 required 
                 placeholder="Full Name" 
-                className="form-input" 
+                className={styles['form-input']} 
               />
             </div>
 
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>
-                <Mail size={14} className="input-icon" />
+                <Mail size={14} className={styles['input-icon']} />
                 <span>Email Address</span>
               </label>
               <input 
@@ -230,14 +214,14 @@ export default function BusinessProfilePage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required 
                 placeholder="owner@example.com" 
-                className="form-input" 
+                className={styles['form-input']} 
               />
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
                 <label>
-                  <Phone size={14} className="input-icon" />
+                  <Phone size={14} className={styles['input-icon']} />
                   <span>Phone Number</span>
                 </label>
                 <input 
@@ -246,40 +230,40 @@ export default function BusinessProfilePage() {
                   onChange={(e) => setPhone(e.target.value)}
                   required 
                   placeholder="e.g. +123456789" 
-                  className="form-input" 
+                  className={styles['form-input']} 
                 />
               </div>
 
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>
-                  <MapPin size={14} className="input-icon" />
-                  <span>Address <span className="optional">(optional)</span></span>
+                  <MapPin size={14} className={styles['input-icon']} />
+                  <span>Address <span className={styles['optional']}>(optional)</span></span>
                 </label>
                 <input 
                   type="text" 
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="Street, City, Country" 
-                  className="form-input" 
+                  className={styles['form-input']} 
                 />
               </div>
             </div>
 
-            <button type="submit" className="btn-gold" disabled={loading}>
+            <button type="submit" className={styles['btn-gold']} disabled={loading}>
               {loading ? 'Saving details...' : 'Save Profile Changes'}
             </button>
           </form>
         </div>
 
         {/* Security Password Form */}
-        <div className='glass-panel form-panel'>
-          <h3 className="section-subtitle">Access Security</h3>
-          <p className="form-help-text">Change your password below to update your login credentials.</p>
+        <div className={`${styles['glass-panel']} ${styles['form-panel']}`}>
+          <h3 className={styles['section-subtitle']}>Access Security</h3>
+          <p className={styles['form-help-text']}>Change your password below to update your login credentials.</p>
 
-          <form onSubmit={handleChangePassword} className="profile-form">
-            <div className="form-group">
+          <form onSubmit={handleChangePassword} className={styles['profile-form']}>
+            <div className={styles['form-group']}>
               <label>
-                <Lock size={14} className="input-icon" />
+                <Lock size={14} className={styles['input-icon']} />
                 <span>New Password</span>
               </label>
               <input 
@@ -288,13 +272,13 @@ export default function BusinessProfilePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required 
                 placeholder="Min. 6 characters" 
-                className="form-input" 
+                className={styles['form-input']} 
               />
             </div>
 
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>
-                <Lock size={14} className="input-icon" />
+                <Lock size={14} className={styles['input-icon']} />
                 <span>Confirm New Password</span>
               </label>
               <input 
@@ -303,193 +287,16 @@ export default function BusinessProfilePage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required 
                 placeholder="Confirm new password" 
-                className="form-input" 
+                className={styles['form-input']} 
               />
             </div>
 
-            <button type="submit" className="btn-gold-outline" disabled={loading}>
+            <button type="submit" className={styles['btn-gold-outline']} disabled={loading}>
               {loading ? 'Updating Password...' : 'Change Access Password'}
             </button>
           </form>
         </div>
       </div>
-
-      <style jsx>{`
-        .dashboard-page { 
-          display: flex; 
-          flex-direction: column; 
-          gap: 2rem; 
-          height: 100%; 
-        }
-        .header-section { 
-          margin-bottom: 0.5rem; 
-        }
-        .page-title { 
-          font-size: 2rem; 
-          margin-bottom: 0.5rem;
-          background: linear-gradient(135deg, #fff 0%, var(--accent-gold) 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-        .subtitle { 
-          color: var(--text-muted); 
-        }
-        .content-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 2rem;
-        }
-        .form-panel {
-          padding: 2rem;
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-          border: 1px solid rgba(212, 175, 55, 0.1) !important;
-        }
-        .panel-header-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .section-subtitle {
-          font-size: 1.25rem;
-          color: #fff;
-          font-weight: 600;
-        }
-        .badge-owner {
-          font-size: 0.75rem;
-          padding: 0.25rem 0.6rem;
-          background: rgba(212, 175, 55, 0.1);
-          color: var(--accent-gold);
-          border: 1px solid rgba(212, 175, 55, 0.25);
-          border-radius: 9999px;
-          text-transform: uppercase;
-          font-weight: 600;
-          letter-spacing: 0.05em;
-        }
-        .profile-form {
-          display: flex;
-          flex-direction: column;
-          gap: 1.25rem;
-        }
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-        .form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1rem;
-        }
-        @media (max-width: 600px) {
-          .form-row {
-            grid-template-columns: 1fr;
-          }
-        }
-        .form-group label {
-          color: var(--text-muted);
-          font-size: 0.875rem;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-        .optional {
-          font-size: 0.75rem;
-          opacity: 0.6;
-        }
-        .input-icon {
-          color: var(--accent-gold);
-          opacity: 0.8;
-        }
-        .form-input {
-          background: rgba(0, 0, 0, 0.3);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          padding: 0.75rem 1rem;
-          color: #fff;
-          font-size: 0.95rem;
-          transition: all 0.2s ease;
-        }
-        .form-input:focus {
-          outline: none;
-          border-color: var(--accent-gold);
-          box-shadow: 0 0 8px rgba(212, 175, 55, 0.2);
-        }
-        .btn-gold {
-          background: linear-gradient(135deg, #d4af37 0%, #b8860b 100%);
-          color: #000;
-          font-weight: 600;
-          border: none;
-          border-radius: 8px;
-          padding: 0.85rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          box-shadow: 0 4px 12px rgba(212, 175, 55, 0.25);
-        }
-        .btn-gold:hover:not(:disabled) {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
-        }
-        .btn-gold:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .btn-gold-outline {
-          background: transparent;
-          border: 1px solid var(--accent-gold);
-          color: var(--accent-gold);
-          font-weight: 600;
-          border-radius: 8px;
-          padding: 0.85rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-        }
-        .btn-gold-outline:hover:not(:disabled) {
-          background: rgba(212, 175, 55, 0.1);
-          transform: translateY(-1px);
-        }
-        .btn-gold-outline:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .form-help-text {
-          font-size: 0.875rem;
-          color: var(--text-muted);
-          margin-bottom: 0.5rem;
-        }
-        .status-banner {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 1rem 1.25rem;
-          border-radius: 8px;
-          font-size: 0.95rem;
-          animation: slideDown 0.3s ease-out;
-        }
-        .status-banner.success {
-          background: rgba(16, 185, 129, 0.1);
-          border: 1px solid rgba(16, 185, 129, 0.25);
-          color: #10b981;
-        }
-        .status-banner.error {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-          color: #ef4444;
-        }
-        @keyframes slideDown {
-          from { transform: translateY(-10px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-      `}</style>
     </div>
   )
 }

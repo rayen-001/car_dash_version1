@@ -1,46 +1,135 @@
 'use client'
 
-import { useState } from 'react'
-import { CarFront, CalendarClock, CircleDollarSign, Wrench, BarChart3, User, LogOut, Menu, X } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { CarFront, CalendarClock, CircleDollarSign, Wrench, BarChart3, User, LogOut, Menu, X, Settings, Users, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import styles from './layout.module.css'
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [userInitials, setUserInitials] = useState('?')
+  const [displayName, setDisplayName] = useState('My Account')
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState('')
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false)
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false)
+  
+  const profileRef = useRef<HTMLDivElement>(null)
+
+  // Fetch user identity and business name for the topbar
+  useEffect(() => {
+    const loadUserInfo = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        // Derive initials from name metadata or email
+        const rawName: string = user.user_metadata?.full_name || user.email || ''
+        const parts = rawName.split(/[\s@.]/).filter(Boolean)
+        const initials = parts.map((p: string) => p[0]).join('').toUpperCase().substring(0, 2)
+        setUserInitials(initials || '?')
+
+        // Default display name fallback to full name or email username
+        const nameFallback = user.user_metadata?.full_name || (user.email || '').split('@')[0] || 'My Account'
+        setDisplayName(nameFallback)
+        if (user.email) {
+          setUserEmail(user.email)
+        }
+
+        // Try to load business name and logo from settings table
+        const { data: settings } = await supabase
+          .from('business_settings')
+          .select('business_name, logo_url')
+          .maybeSingle()
+
+        if (settings?.business_name) {
+          setDisplayName(settings.business_name)
+        }
+        if (settings?.logo_url) {
+          setLogoUrl(settings.logo_url)
+        } else {
+          setLogoUrl(null)
+        }
+      } catch (err) {
+        console.error('Error loading topbar info:', err)
+      }
+    }
+    loadUserInfo()
+    
+    // Add real-time event listener
+    window.addEventListener('business-settings-updated', loadUserInfo)
+    
+    return () => {
+      window.removeEventListener('business-settings-updated', loadUserInfo)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-  const navItems = [
-    { name: 'Analytics', href: '/dashboard', icon: BarChart3 },
-    { name: 'My Fleet', href: '/dashboard/fleet', icon: CarFront },
-    { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarClock },
-    { name: 'Expenses', href: '/dashboard/expenses', icon: CircleDollarSign },
-    { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench },
-    { name: 'Profile', href: '/dashboard/profile', icon: User },
+  const navGroups = [
+    {
+      title: 'Operations',
+      items: [
+        { name: 'Analytics', href: '/dashboard', icon: BarChart3 },
+        { name: 'My Fleet', href: '/dashboard/fleet', icon: CarFront },
+        { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarClock },
+        { name: 'Clients', href: '/dashboard/clients', icon: Users },
+      ]
+    },
+    {
+      title: 'Finance & Service',
+      items: [
+        { name: 'Expenses', href: '/dashboard/expenses', icon: CircleDollarSign },
+        { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench },
+      ]
+    },
+    {
+      title: 'Management',
+      items: [
+        { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+        { name: 'Profile', href: '/dashboard/profile', icon: User },
+      ]
+    }
   ]
 
   return (
-    <div className="layout-container">
+    <div className={styles['layout-container']}>
       {/* Sidebar Overlay for Mobile */}
       {isSidebarOpen && (
-        <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>
+        <div className={`${styles['sidebar-overlay']} no-print`} onClick={() => setIsSidebarOpen(false)}></div>
       )}
 
       {/* Sidebar */}
-      <aside className={`sidebar glass-panel ${isSidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-header">
-          <h2 className="brand">
-            <span className="brand-accent">Owner</span>Dash
+      <aside className={`${styles['sidebar']} glass-panel ${isSidebarOpen ? styles['open'] : ''} no-print`}>
+        <div className={styles['sidebar-header']}>
+          <h2 className={styles['brand']}>
+            <span className={styles['brand-accent']}>Owner</span>Dash
           </h2>
           <button 
-            className="mobile-close-btn" 
+            className={styles['mobile-close-btn']} 
             onClick={() => setIsSidebarOpen(false)}
             aria-label="Close Menu"
           >
@@ -48,26 +137,31 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           </button>
         </div>
 
-        <nav className="sidebar-nav">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname === item.href
-            return (
-              <Link 
-                key={item.name} 
-                href={item.href}
-                className={`nav-item ${isActive ? 'active' : ''}`}
-                onClick={() => setIsSidebarOpen(false)}
-              >
-                <Icon size={20} />
-                <span>{item.name}</span>
-              </Link>
-            )
-          })}
+        <nav className={styles['sidebar-nav']}>
+          {navGroups.map((group) => (
+            <div key={group.title} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div className={styles['nav-group-label']}>{group.title}</div>
+              {group.items.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href
+                return (
+                  <Link 
+                    key={item.name} 
+                    href={item.href}
+                    className={`${styles['nav-item']} ${isActive ? styles['active'] : ''}`}
+                    onClick={() => setIsSidebarOpen(false)}
+                  >
+                    <Icon size={20} />
+                    <span>{item.name}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <button onClick={handleLogout} className="logout-btn">
+        <div className={styles['sidebar-footer']}>
+          <button onClick={handleLogout} className={styles['logout-btn']}>
             <LogOut size={20} />
             <span>Logout</span>
           </button>
@@ -75,363 +169,168 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
-        <header className="topbar glass-panel">
-          <div className="topbar-left">
+      <main className={styles['main-content']}>
+        <header className={`${styles['topbar']} glass-panel no-print`}>
+          <div className={styles['topbar-left']}>
             <button 
-              className="menu-toggle-btn" 
+              className={styles['menu-toggle-btn']} 
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Open Menu"
             >
               <Menu size={24} />
             </button>
-            <div className="topbar-info">
-              <span className="status-indicator"></span>
+            <div className={styles['topbar-info']}>
+              <span className={styles['status-indicator']}></span>
               <span>Live Data Sync</span>
             </div>
           </div>
-          <div className="topbar-profile">
-            <div className="avatar">O</div>
-            <span>My Account</span>
+          <div 
+            ref={profileRef}
+            className={`${styles['topbar-profile']} ${isProfileDropdownOpen ? styles['active'] : ''}`}
+            onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+          >
+            {logoUrl ? (
+              <div className={styles['avatar-container']}>
+                <img 
+                  src={logoUrl} 
+                  alt={displayName} 
+                  className={styles['avatar-img']} 
+                  title={displayName}
+                />
+              </div>
+            ) : (
+              <div className={styles['avatar']} title={displayName}>{userInitials}</div>
+            )}
+            <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {displayName}
+            </span>
+
+            {/* Profile Dropdown Menu */}
+            {isProfileDropdownOpen && (
+              <div className={styles['profile-dropdown']} onClick={(e) => e.stopPropagation()}>
+                <div className={styles['dropdown-header']}>
+                  {logoUrl ? (
+                    <div className={styles['dropdown-avatar-container']}>
+                      <img src={logoUrl} alt={displayName} className={styles['dropdown-avatar-img']} />
+                    </div>
+                  ) : (
+                    <div className={styles['dropdown-avatar']}>{userInitials}</div>
+                  )}
+                  <div className={styles['dropdown-user-info']}>
+                    <h4>{displayName}</h4>
+                    <span className={styles['dropdown-role']}>Business Owner</span>
+                    <span className={styles['dropdown-email']} title={userEmail}>{userEmail}</span>
+                  </div>
+                </div>
+                
+                <div className={styles['dropdown-divider']}></div>
+
+                <div className={styles['dropdown-menu']}>
+                  <Link href="/dashboard/profile" className={styles['dropdown-item']}>
+                    <User size={16} />
+                    <span>My Profile</span>
+                  </Link>
+                  <Link href="/dashboard/settings" className={styles['dropdown-item']}>
+                    <Settings size={16} />
+                    <span>Business Settings</span>
+                  </Link>
+                </div>
+
+                <div className={styles['dropdown-divider']}></div>
+
+                <div className={styles['dropdown-footer']}>
+                  <button onClick={handleLogout} className={styles['dropdown-logout-btn']}>
+                    <LogOut size={16} />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </header>
 
-        <div className="content-area animate-fade-in">
+        <div className={`${styles['content-area']} animate-fade-in`}>
           {children}
         </div>
+
+        {/* Floating Quick Actions Bar */}
+        <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.75rem' }} className="no-print">
+          {isQuickActionsOpen && (
+            <div className="glass-panel" style={{
+              background: 'rgba(20, 20, 20, 0.95)',
+              border: '1px solid rgba(229, 193, 125, 0.25)',
+              borderRadius: '16px',
+              padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+              minWidth: '200px',
+              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.5)',
+              backdropFilter: 'blur(12px)',
+              transformOrigin: 'bottom right',
+              animation: 'scaleUp 0.2s ease-out'
+            }}>
+              <div style={{ fontSize: '0.8rem', color: '#ae9260', fontWeight: 700, paddingBottom: '0.4rem', borderBottom: '1px solid rgba(229,193,125,0.15)', marginBottom: '0.25rem', fontFamily: 'var(--font-heading)' }}>QUICK ACTIONS</div>
+              
+              <Link href="/dashboard/bookings?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
+                <CalendarClock size={16} style={{ color: '#ae9260' }} />
+                <span>New Booking</span>
+              </Link>
+              
+              <Link href="/dashboard/fleet?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
+                <CarFront size={16} style={{ color: '#ae9260' }} />
+                <span>Add Vehicle</span>
+              </Link>
+
+              <Link href="/dashboard/clients?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
+                <Users size={16} style={{ color: '#ae9260' }} />
+                <span>Register Client</span>
+              </Link>
+
+              <Link href="/dashboard/expenses?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
+                <CircleDollarSign size={16} style={{ color: '#ae9260' }} />
+                <span>Log Expense</span>
+              </Link>
+            </div>
+          )}
+          
+          <button 
+            onClick={() => setIsQuickActionsOpen(!isQuickActionsOpen)}
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #ae9260, #735d38)',
+              border: '1px solid rgba(229,193,125,0.4)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(174, 146, 96, 0.3)',
+              transition: 'transform 0.2s, box-shadow 0.2s'
+            }}
+            className="quick-actions-trigger"
+          >
+            <Plus size={24} style={{ transform: isQuickActionsOpen ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
+        </div>
       </main>
-
-      <style jsx>{`
-        .layout-container {
-          display: flex;
-          min-height: 100vh;
-          background: #070504;
-          background-image: 
-            radial-gradient(circle at 15% 15%, rgba(229, 193, 125, 0.06) 0%, transparent 50%),
-            radial-gradient(circle at 85% 85%, rgba(229, 193, 125, 0.03) 0%, transparent 50%),
-            radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.2) 0%, transparent 100%);
-          position: relative;
+      
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes scaleUp {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
         }
-
-        .sidebar {
-          width: 280px;
-          height: calc(100vh - 2rem);
-          margin: 1rem;
-          position: sticky;
-          top: 1rem;
-          display: flex;
-          flex-direction: column;
-          border-radius: 20px;
-          background: rgba(10, 8, 7, 0.92);
-          backdrop-filter: blur(30px) saturate(150%);
-          -webkit-backdrop-filter: blur(30px) saturate(150%);
-          border: 1px solid rgba(229, 193, 125, 0.2);
-          box-shadow:
-            0 20px 50px rgba(0, 0, 0, 0.8),
-            inset 0 0 25px rgba(0, 0, 0, 0.95),
-            0 0 30px rgba(229, 193, 125, 0.03);
-          transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
-          z-index: 100;
-          overflow: hidden;
+        .quick-action-link:hover {
+          background: rgba(229, 193, 125, 0.1) !important;
+          color: #ae9260 !important;
         }
-
-        .sidebar::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 15%; right: 15%;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
-          opacity: 0.5;
-          pointer-events: none;
+        .quick-actions-trigger:hover {
+          transform: scale(1.05);
+          box-shadow: 0 6px 24px rgba(174, 146, 96, 0.45) !important;
         }
-
-        /* Gold glowing neon bottom bar */
-        .sidebar::after {
-          content: '';
-          position: absolute;
-          bottom: 0; left: 15%; right: 15%;
-          height: 3px;
-          background: linear-gradient(90deg, transparent, var(--accent-gold-hover), transparent);
-          box-shadow: 0 0 15px var(--accent-gold-hover), 0 0 5px var(--accent-gold);
-          pointer-events: none;
-        }
-
-        .sidebar-header {
-          padding: 2.25rem 2rem 1.5rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          position: relative;
-          z-index: 1;
-        }
-
-        .mobile-close-btn {
-          display: none;
-          background: transparent;
-          border: none;
-          color: var(--text-secondary);
-          cursor: pointer;
-          padding: 0.5rem;
-        }
-
-        .brand {
-          font-family: var(--font-heading);
-          font-size: 1.7rem;
-          font-weight: 500;
-          letter-spacing: 0.5px;
-          background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold-hover) 50%, var(--accent-gold-deep) 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          text-shadow: 0 0 20px rgba(229, 193, 125, 0.15);
-        }
-
-        .brand-accent {
-          color: inherit;
-          font-style: normal;
-        }
-
-        .sidebar-nav {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 0.65rem;
-          padding: 1rem;
-          position: relative;
-          z-index: 1;
-        }
-
-        .nav-item {
-          display: flex;
-          align-items: center;
-          gap: 1.2rem;
-          padding: 0.9rem 1.25rem;
-          border-radius: var(--radius-md);
-          color: rgba(229, 193, 125, 0.7);
-          transition: var(--transition);
-          font-family: var(--font-body);
-          font-size: 0.95rem;
-          font-weight: 500;
-          border: 1px solid transparent;
-          position: relative;
-        }
-
-        .nav-item:hover {
-          background: rgba(229, 193, 125, 0.06);
-          color: var(--accent-gold-hover);
-          border-color: rgba(229, 193, 125, 0.12);
-          transform: translateX(4px);
-        }
-
-        .nav-item.active {
-          background: linear-gradient(90deg, rgba(229, 193, 125, 0.16) 0%, rgba(229, 193, 125, 0.02) 100%);
-          color: var(--accent-gold-hover);
-          border-color: rgba(229, 193, 125, 0.35);
-          box-shadow:
-            0 4px 20px rgba(0, 0, 0, 0.4),
-            inset 0 1px 0 rgba(255, 255, 255, 0.03);
-        }
-
-        .nav-item.active::before {
-          content: '';
-          position: absolute;
-          left: -1px;
-          top: 20%;
-          bottom: 20%;
-          width: 3px;
-          background: linear-gradient(180deg, var(--accent-gold-hover), var(--accent-gold));
-          border-radius: 0 var(--radius-full) var(--radius-full) 0;
-          box-shadow: 0 0 12px var(--accent-gold);
-        }
-
-        .sidebar-footer {
-          padding: 1.25rem 1.5rem;
-          border-top: 1px solid rgba(229, 193, 125, 0.15);
-          position: relative;
-          z-index: 1;
-        }
-
-        .sidebar-footer::before {
-          content: '';
-          position: absolute;
-          top: -1px; left: 10%; right: 10%;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, var(--accent-gold-hover), transparent);
-          box-shadow: 0 0 10px var(--accent-gold-hover);
-          opacity: 0.7;
-        }
-
-        .logout-btn {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          gap: 1.2rem;
-          padding: 0.9rem 1.25rem;
-          background: transparent;
-          border: 1px solid transparent;
-          color: rgba(229, 193, 125, 0.7);
-          cursor: pointer;
-          transition: var(--transition);
-          font-family: var(--font-body);
-          font-size: 0.95rem;
-          font-weight: 500;
-          border-radius: var(--radius-md);
-        }
-
-        .logout-btn:hover {
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
-          box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
-        }
-
-        .main-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          padding: 1rem 1.5rem 1rem 0;
-          position: relative;
-          z-index: 1;
-          min-width: 0;
-        }
-
-        .topbar {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1.25rem 2.25rem;
-          margin-bottom: 1.5rem;
-          background: rgba(10, 8, 7, 0.85);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(229, 193, 125, 0.15);
-          border-radius: var(--radius-lg);
-          box-shadow: 
-            0 10px 30px rgba(0, 0, 0, 0.6),
-            inset 0 0 15px rgba(0, 0, 0, 0.8);
-        }
-
-        .topbar-left {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .menu-toggle-btn {
-          display: none;
-          background: transparent;
-          border: none;
-          color: var(--text-primary);
-          cursor: pointer;
-          padding: 0.5rem;
-          border-radius: var(--radius-md);
-          transition: var(--transition);
-        }
-
-        .menu-toggle-btn:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .topbar-info {
-          display: flex;
-          align-items: center;
-          gap: 0.6rem;
-          color: rgba(229, 193, 125, 0.7);
-          font-size: 0.88rem;
-          font-weight: 500;
-          font-family: var(--font-body);
-        }
-
-        .status-indicator {
-          width: 8px;
-          height: 8px;
-          background: #10b981;
-          border-radius: 50%;
-          box-shadow: 0 0 14px #10b981, inset 0 0 4px rgba(255, 255, 255, 0.5);
-          animation: pulseStatusIndicator 2s ease-in-out infinite;
-        }
-
-        @keyframes pulseStatusIndicator {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(0.85); }
-        }
-
-        .topbar-profile {
-          display: flex;
-          align-items: center;
-          gap: 1.1rem;
-        }
-
-        .topbar-profile span {
-          font-family: var(--font-heading);
-          color: var(--accent-gold-hover);
-          font-size: 1.05rem;
-          letter-spacing: 0.3px;
-        }
-
-        .avatar {
-          width: 42px;
-          height: 42px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent-gold-deep), var(--bg-tertiary));
-          border: 2px solid var(--accent-gold);
-          color: var(--text-primary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 700;
-          font-family: var(--font-heading);
-          font-size: 1.15rem;
-          box-shadow:
-            0 0 15px rgba(229, 193, 125, 0.45),
-            inset 0 1px 0 rgba(255, 255, 255, 0.2);
-          transition: var(--transition);
-        }
-
-        .avatar:hover {
-          transform: scale(1.06) rotate(5deg);
-          box-shadow: 0 0 25px rgba(229, 193, 125, 0.7);
-        }
-
-        .content-area {
-          flex: 1;
-          padding-right: 0.5rem;
-        }
-
-        @media (max-width: 992px) {
-          .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            margin: 0;
-            height: 100vh;
-            border-radius: 0;
-            transform: translateX(-100%);
-            opacity: 0;
-            background: rgba(10, 8, 7, 0.98);
-            z-index: 1000;
-          }
-
-          .sidebar.open {
-            transform: translateX(0);
-            opacity: 1;
-          }
-
-          .mobile-close-btn { display: block; }
-
-          .sidebar-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(8, 6, 5, 0.75);
-            backdrop-filter: blur(8px);
-            z-index: 999;
-          }
-
-          .main-content {
-            padding: 1rem;
-          }
-
-          .menu-toggle-btn { display: block; }
-        }
-      `}</style>
+      ` }} />
     </div>
   )
 }

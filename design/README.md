@@ -1,32 +1,36 @@
-# Obsidian & Champagne — 3D Elegant Redesign
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Drop-in visual upgrade for your `car-dash` Next.js app. **No logic was changed** — every class name, prop, and component structure is identical.
+## Getting Started
 
-## What's inside
+First, run the development server:
 
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
-src/app/globals.css                       <- replace
-src/app/dashboard/layout.tsx              <- replace (only <style jsx> changed)
-src/app/dashboard/DashboardClient.tsx     <- replace (only <style jsx> changed)
-```
 
-## Install
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-1. Back up your originals.
-2. Copy the three files into your project at the same paths.
-3. `npm run dev` — done.
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## What changed visually
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-- **Tokens** rebuilt with layered champagne-gold + obsidian palette
-- **Fonts**: Fraunces (serif display) + Manrope (body) for editorial feel
-- **3D depth**: ambient radial glows on body, film-grain noise overlay, inset highlights, layered shadow stacks
-- **Sidebar**: floating glass card with light-catching top rim and gold active-item bar
-- **Topbar**: glass pill with pulsing live indicator
-- **Stat cards**: embossed champagne edge, hover lift, gem-style icon wells
-- **Calendar days**: tactile glass cells with lift on hover, glowing selected state
-- **Buttons**: bevelled with inset highlight + outer warm glow
-- **Status badges**: backlit pills with colored bloom
+## Learn More
 
-The other dashboard pages (bookings, expenses, fleet, maintenance) inherit
-the new tokens through `globals.css` automatically — no further edits needed.
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

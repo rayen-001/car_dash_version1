@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { getBusinessSettings } from '@/app/actions'
 import MaintenanceClient from './MaintenanceClient'
 
 export default async function MaintenancePage() {
@@ -19,5 +20,7 @@ export default async function MaintenancePage() {
     .select('id, brand, model')
     .eq('owner_id', user.id)
 
-  return <MaintenanceClient initialRecords={records || []} vehicles={vehicles || []} />
+  const settings = await getBusinessSettings()
+
+  return <MaintenanceClient initialRecords={records || []} vehicles={vehicles || []} businessSettings={settings} />
 }

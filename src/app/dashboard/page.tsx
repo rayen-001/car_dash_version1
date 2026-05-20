@@ -24,7 +24,12 @@ export default async function OwnerDashboardPage() {
 
   let revenue = 0
   let activeRentals = 0
-  const today = new Date().toISOString().split('T')[0]
+
+  const todayObj = new Date()
+  const year = todayObj.getFullYear()
+  const monthStr = String(todayObj.getMonth() + 1).padStart(2, '0')
+  const dayStr = String(todayObj.getDate()).padStart(2, '0')
+  const today = `${year}-${monthStr}-${dayStr}`
 
   if (bookings) {
     bookings.forEach((booking) => {

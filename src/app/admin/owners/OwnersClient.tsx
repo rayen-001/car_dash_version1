@@ -3,21 +3,34 @@
 import { useState } from 'react'
 import { Users, Trash2, X, Plus } from 'lucide-react'
 import { addOwner, deleteOwner } from '@/app/actions'
+import { useToast } from '@/components/Toast'
+import { useConfirm } from '@/components/ConfirmDialog'
+import { Badge } from '@/components/Badge'
 
 export default function OwnersClient({ initialOwners }: { initialOwners: any[] }) {
+  const { showToast } = useToast()
+  const confirm = useConfirm()
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to completely delete this Owner account and all their fleet data? This cannot be undone.')) {
-      setLoading(true)
-      try {
-        await deleteOwner(id)
-      } catch (e) {
-        alert('Error deleting owner')
-      }
-      setLoading(false)
+    const ok = await confirm({
+      title: 'Delete Owner Account',
+      message: 'Are you sure you want to completely delete this Owner account and all their fleet data? This action cannot be undone.',
+      confirmLabel: 'Yes, Delete',
+      danger: true,
+    })
+    if (!ok) return
+
+    setLoading(true)
+    try {
+      await deleteOwner(id)
+      showToast('Owner account successfully deleted.', 'success')
+    } catch (e: any) {
+      showToast(e.message || 'Error deleting owner', 'error')
     }
+    setLoading(false)
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -26,8 +39,9 @@ export default function OwnersClient({ initialOwners }: { initialOwners: any[] }
     try {
       await addOwner(new FormData(e.currentTarget))
       setIsModalOpen(false)
+      showToast('Owner account created successfully.', 'success')
     } catch (error: any) {
-      alert(error.message || 'Error adding owner')
+      showToast(error.message || 'Error adding owner', 'error')
     }
     setLoading(false)
   }
@@ -56,7 +70,7 @@ export default function OwnersClient({ initialOwners }: { initialOwners: any[] }
                 <th>Email</th>
                 <th>Status</th>
                 <th>Joined Date</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -74,11 +88,11 @@ export default function OwnersClient({ initialOwners }: { initialOwners: any[] }
                     </td>
                     <td>{owner.email}</td>
                     <td>
-                      <span className="status-badge active">Active</span>
+                      <Badge variant="success">Active</Badge>
                     </td>
                     <td>{new Date(owner.created_at).toLocaleDateString()}</td>
                     <td>
-                      <div className="action-buttons">
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <button className="icon-btn text-danger" title="Delete Owner" onClick={() => handleDelete(owner.id)} disabled={loading}>
                           <Trash2 size={16} />
                         </button>
