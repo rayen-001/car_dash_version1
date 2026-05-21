@@ -1,11 +1,14 @@
 'use client'
 
+import { useState } from 'react'
 import styles from './dashboard.module.css'
 import DashboardStats from './components/DashboardStats'
 import DashboardCalendar from './components/DashboardCalendar'
 import DashboardCharts from './components/DashboardCharts'
 import TodayOperations from './components/TodayOperations'
 import AlertStrip from './components/AlertStrip'
+import GlobalCommandSearch from './components/GlobalCommandSearch'
+import { Landmark, ArrowDownRight, ArrowUpRight, ShieldCheck } from 'lucide-react'
 
 interface DashboardClientProps {
   stats: {
@@ -19,20 +22,63 @@ interface DashboardClientProps {
   recentBookings: any[]
   vehicles?: any[]
   allBookings?: any[]
+  vehicleLegalDocs?: any[]
+  expenses?: any[]
+  maintenance?: any[]
 }
 
 export default function DashboardClient({
   stats,
   recentBookings,
   vehicles = [],
-  allBookings = []
+  allBookings = [],
+  vehicleLegalDocs = [],
+  expenses = [],
+  maintenance = []
 }: DashboardClientProps) {
-  
+  // 1. Shared state for interactive operational alert drilling
+  const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | null>(null)
+
+  // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
+  const localToday = new Date()
+  const yStr = localToday.getFullYear()
+  const mStr = String(localToday.getMonth() + 1).padStart(2, '0')
+  const dStr = String(localToday.getDate()).padStart(2, '0')
+  const todayDateString = `${yStr}-${mStr}-${dStr}`
+
+  const matchToday = (dateField?: string) => {
+    if (!dateField) return false
+    if (dateField.startsWith(todayDateString)) return true
+    const d = new Date(dateField)
+    return (
+      d.getFullYear() === localToday.getFullYear() &&
+      (d.getMonth() + 1) === (localToday.getMonth() + 1) &&
+      d.getDate() === localToday.getDate()
+    )
+  }
+
+  // Daily Cash Intake (strictly collected upfront deposit collections paid today)
+  const dailyCashIntake = allBookings
+    .filter(b => matchToday(b.created_at))
+    .reduce((sum, b) => sum + (Number(b.acompte_paid) || 0), 0)
+
+  // Daily Expenses (strictly cash/bank outflows committed today)
+  const dailyExpensesOutflow = expenses
+    .filter(e => matchToday(e.created_at))
+    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+
+  const dailyMaintenanceOutflow = maintenance
+    .filter(m => matchToday(m.service_date) || matchToday(m.created_at))
+    .reduce((sum, m) => sum + (Number(m.cost) || 0), 0)
+
+  const totalDailyExpenses = dailyExpensesOutflow + dailyMaintenanceOutflow
+  const netCashPosition = dailyCashIntake - totalDailyExpenses
+
   return (
     <div className={styles['owner-dashboard']}>
       <div className={styles['header-section']} style={{ position: 'relative', overflow: 'visible' }}>
-        <h1 className={styles['page-title']}>My Performance</h1>
-        <p className={styles['subtitle']}>Analytics and insights for your fleet</p>
+        <h1 className={styles['page-title']}>Operations Command Center</h1>
+        <p className={styles['subtitle']}>Search any plate, client, CIN, or date to surface a contract instantly</p>
 
         {/* Beautiful Dotted Gold World Map Watermark matching reference photo */}
         <svg className={styles['world-map-watermark']} viewBox="0 0 1000 400" fill="none" xmlns="http://www.w3.org/2000/svg" style={{
@@ -79,7 +125,124 @@ export default function DashboardClient({
         </svg>
       </div>
 
-      <AlertStrip allBookings={allBookings} vehicles={vehicles} />
+      <GlobalCommandSearch
+        allBookings={allBookings}
+        activeAlertFilter={activeAlertFilter}
+        setActiveAlertFilter={setActiveAlertFilter}
+        vehicleLegalDocs={vehicleLegalDocs}
+        vehicles={vehicles}
+      />
+
+      <AlertStrip
+        allBookings={allBookings}
+        vehicles={vehicles}
+        vehicleLegalDocs={vehicleLegalDocs}
+        activeAlertFilter={activeAlertFilter}
+        setActiveAlertFilter={setActiveAlertFilter}
+      />
+
+      {/* ── DAILY SHIFT RECONCILIATION LEDGER WIDGET (Premium Glassmorphic) ── */}
+      <div className="glass-panel" style={{
+        padding: '1.75rem 2rem',
+        background: 'rgba(10, 8, 7, 0.85)',
+        border: '1px solid rgba(229, 193, 125, 0.15)',
+        borderRadius: '16px',
+        boxShadow: '0 15px 35px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.95)',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Top & Bottom Glowing Golden Caps matching stat-card standard */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+          background: 'linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%)',
+          boxShadow: '0 0 15px var(--accent-gold-hover)', opacity: 0.75
+        }} />
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px',
+          background: 'linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%)',
+          boxShadow: '0 0 15px var(--accent-gold-hover)', opacity: 0.75
+        }} />
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid rgba(229,193,125,0.08)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 10,
+              background: 'linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold-deep) 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(229,193,125,0.2)'
+            }}>
+              <Landmark size={18} style={{ color: '#1a1410' }} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
+                Daily Shift Reconciliation Ledger
+              </h3>
+              <span style={{ fontSize: '0.75rem', color: 'rgba(229, 193, 125, 0.6)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                End-of-Day register audit & shift change ledger
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(229,193,125,0.1)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
+            <span style={{ fontSize: '0.8rem', color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
+              Audit Date: {localToday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+          {/* Daily Cash Intake (Inflow) */}
+          <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.12)', padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(16, 185, 129, 0.7)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                Daily Cash Intake
+              </span>
+              <span style={{ color: '#10b981', display: 'flex', alignItems: 'center' }}><ArrowUpRight size={14} /></span>
+            </div>
+            <strong style={{ fontSize: '1.75rem', fontFamily: 'var(--font-heading)', color: '#10b981', letterSpacing: '-0.02em', fontWeight: 600 }}>
+              + {dailyCashIntake.toFixed(2)} DT
+            </strong>
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+              Physical cash deposits collected at register today
+            </span>
+          </div>
+
+          {/* Daily Expenses (Outflow) */}
+          <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.12)', padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(239, 68, 68, 0.7)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                Daily Operational Expenses
+              </span>
+              <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center' }}><ArrowDownRight size={14} /></span>
+            </div>
+            <strong style={{ fontSize: '1.75rem', fontFamily: 'var(--font-heading)', color: '#ef4444', letterSpacing: '-0.02em', fontWeight: 600 }}>
+              - {totalDailyExpenses.toFixed(2)} DT
+            </strong>
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
+              Physical cash payouts for expenses & maintenance today
+            </span>
+          </div>
+
+          {/* Expected Drawer Balance (Net Cash Position) */}
+          <div style={{
+            background: 'rgba(229, 193, 125, 0.04)',
+            border: '1px dashed rgba(229, 193, 125, 0.3)',
+            padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                Net Expected Register Cash
+              </span>
+              <span style={{ color: 'var(--accent-gold)', display: 'flex', alignItems: 'center' }}><ShieldCheck size={14} /></span>
+            </div>
+            <strong style={{ fontSize: '1.85rem', fontFamily: 'var(--font-heading)', color: '#fff', textShadow: '0 0 15px rgba(229, 193, 125, 0.25)', letterSpacing: '-0.03em', fontWeight: 800 }}>
+              {netCashPosition.toFixed(2)} DT
+            </strong>
+            <span style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 500 }}>
+              Tangible cash to hand over at shift end
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* Stats Cards Row */}
       <DashboardStats stats={stats} allBookings={allBookings} />
@@ -92,3 +255,4 @@ export default function DashboardClient({
     </div>
   )
 }
+

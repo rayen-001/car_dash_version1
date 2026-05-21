@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Car, Plus, Edit2, Trash2, X, Upload, Trash, Image as ImageIcon, ChevronLeft, ChevronRight, History } from 'lucide-react'
 import { addVehicle, updateVehicle, deleteVehicle } from '@/app/actions'
 import { useToast } from '@/components/Toast'
@@ -12,6 +12,19 @@ import { createClient } from '@/utils/supabase/client'
 export default function FleetClient({ initialVehicles, bookings = [] }: { initialVehicles: any[], bookings?: any[] }) {
   const { showToast } = useToast()
   const confirm = useConfirm()
+  const router = useRouter()
+
+  // Memoized timezone-anchored current date string (Africa/Tunis)
+  const todayStr = useMemo(() => {
+    const now = new Date()
+    const formatter = new Intl.DateTimeFormat('fr-CA', {
+      timeZone: 'Africa/Tunis',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+    return formatter.format(now)
+  }, [])
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
 
@@ -29,12 +42,7 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
   const [lightboxImages, setLightboxImages] = useState<string[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
 
-  // History Drawer state
-  const [historyVehicle, setHistoryVehicle] = useState<any>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [vehicleBookings, setVehicleBookings] = useState<any[]>([])
-  const [vehicleMaintenance, setVehicleMaintenance] = useState<any[]>([])
-  const [activeTab, setActiveTab] = useState<'bookings' | 'maintenance'>('bookings')
+
 
   // Add modal state
   const [addFiles, setAddFiles] = useState<File[]>([])
@@ -46,6 +54,19 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
   const editFileInputRef = useRef<HTMLInputElement>(null)
   
   const [loading, setLoading] = useState(false)
+  const [addOilDueKm, setAddOilDueKm] = useState<string>('')
+
+  const handleLastOilChangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    if (val) {
+      const num = parseInt(val)
+      if (!isNaN(num)) {
+        setAddOilDueKm((num + 10000).toString())
+      }
+    } else {
+      setAddOilDueKm('')
+    }
+  }
 
   // A4 FIX: Stable object URLs for Add modal previews — revoked on cleanup
   const addPreviewUrls = useMemo(
@@ -111,6 +132,7 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
       await addVehicle(formData)
       setIsAddModalOpen(false)
       setAddFiles([])
+      setAddOilDueKm('')
       showToast('Vehicle added successfully!', 'success')
     } catch (error: any) {
       showToast('Error adding vehicle: ' + error.message, 'error')
@@ -168,36 +190,7 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
     setLoading(false)
   }
 
-  // --- View History Drawer ---
-  const openHistoryDrawer = async (vehicle: any) => {
-    setHistoryVehicle(vehicle)
-    setHistoryLoading(true)
-    setActiveTab('bookings')
-    try {
-      const supabase = createClient()
-      
-      // Fetch bookings
-      const { data: bookingsData } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('vehicle_id', vehicle.id)
-        .order('start_date', { ascending: false })
-      
-      // Fetch maintenance
-      const { data: maintData } = await supabase
-        .from('maintenance')
-        .select('*')
-        .eq('vehicle_id', vehicle.id)
-        .order('service_date', { ascending: false })
-        
-      setVehicleBookings(bookingsData || [])
-      setVehicleMaintenance(maintData || [])
-    } catch (err: any) {
-      showToast('Error loading vehicle history: ' + err.message, 'error')
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
+
 
   return (
     <div className='dashboard-page'>
@@ -234,6 +227,14 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
                   const carBookings = bookings.filter(b => b.vehicle_id === car.id && (b.status === 'confirmed' || b.status === 'completed'))
                   const revenue = carBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
                   const rentalCount = carBookings.length
+
+                  // Calculate on-the-fly rented status using Tunisia sysdate timezone anchor
+                  const isRented = bookings.some(b => 
+                    b.vehicle_id === car.id && 
+                    (b.status === 'confirmed' || b.status === 'completed') && 
+                    b.start_date <= todayStr && 
+                    b.end_date >= todayStr
+                  )
 
                   // Calculate 30-day utilization rate
                   let rentedDaysInLast30 = 0
@@ -304,13 +305,13 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
                         </div>
                       </td>
                       <td>
-                        <Badge variant={car.availability ? 'success' : 'danger'}>
-                          {car.availability ? 'Available' : 'Rented'}
+                        <Badge variant={isRented ? 'danger' : 'success'}>
+                          {isRented ? '🔴 Rented' : '🟢 Available'}
                         </Badge>
                       </td>
                       <td>
                         <div className="action-buttons">
-                          <button className="icon-btn" title="View History" onClick={() => openHistoryDrawer(car)}>
+                          <button className="icon-btn" title="View History" onClick={() => router.push(`/dashboard/vehicles/${car.id}/history`)}>
                             <History size={16} />
                           </button>
                           <button className="icon-btn" title="Edit Vehicle" onClick={() => openEditModal(car)}>
@@ -343,12 +344,25 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
       {/* ADD VEHICLE MODAL */}
       {isAddModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-content glass-panel">
+          <div className="modal-content glass-panel" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h2>Add New Vehicle</h2>
-              <button className="icon-btn" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); }}><X size={20} /></button>
+              <button className="icon-btn" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); setAddOilDueKm(''); }}><X size={20} /></button>
             </div>
             <form onSubmit={handleAddSubmit} className="modal-form">
+              <h4 style={{ 
+                color: 'var(--accent-gold)', 
+                borderBottom: '1px solid rgba(255, 215, 0, 0.15)', 
+                paddingBottom: '0.4rem', 
+                marginBottom: '1rem', 
+                fontSize: '0.9rem', 
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}>
+                Core Specifications
+              </h4>
+
               <div className="form-group">
                 <label>Brand</label>
                 <input type="text" name="brand" required placeholder="e.g. Mercedes-Benz" className="form-input" />
@@ -418,13 +432,99 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
                 )}
               </div>
 
-              <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              {/* MECHANICAL & MAINTENANCE */}
+              <h4 style={{ 
+                color: 'var(--accent-gold)', 
+                borderBottom: '1px solid rgba(255, 215, 0, 0.15)', 
+                paddingBottom: '0.4rem', 
+                marginTop: '1.25rem',
+                marginBottom: '1rem', 
+                fontSize: '0.9rem', 
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}>
+                Mechanical & Maintenance
+              </h4>
+              
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Current Odometer (KM)</label>
+                  <input type="number" name="current_km" placeholder="e.g. 15000" className="form-input" min="0" />
+                </div>
+                <div className="form-group">
+                  <label>Brake Pads Status</label>
+                  <select name="brake_pad_state" className="form-input" defaultValue="good">
+                    <option value="good">🟢 Good condition</option>
+                    <option value="worn">🟡 Worn - Inspect soon</option>
+                    <option value="critical">🔴 CRITICAL - Replace now</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Last Oil Change (KM)</label>
+                  <input 
+                    type="number" 
+                    placeholder="e.g. 9800" 
+                    className="form-input" 
+                    min="0"
+                    onChange={handleLastOilChangeChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Next Oil Change Due (KM)</label>
+                  <input 
+                    type="number" 
+                    name="oil_change_due_km" 
+                    placeholder="e.g. 19800" 
+                    className="form-input" 
+                    min="0"
+                    value={addOilDueKm}
+                    onChange={(e) => setAddOilDueKm(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* LEGAL COMPLIANCE */}
+              <h4 style={{ 
+                color: 'var(--accent-gold)', 
+                borderBottom: '1px solid rgba(255, 215, 0, 0.15)', 
+                paddingBottom: '0.4rem', 
+                marginTop: '1.25rem',
+                marginBottom: '1rem', 
+                fontSize: '0.9rem', 
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}>
+                Legal Compliance Dates
+              </h4>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Assurance Expiry</label>
+                  <input type="date" name="assurance_expiry" className="form-input" />
+                </div>
+                <div className="form-group">
+                  <label>Visite Technique Expiry</label>
+                  <input type="date" name="visite_technique_expiry" className="form-input" />
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label>Laissez-Passer Expiry</label>
+                <input type="date" name="laissez_passer_expiry" className="form-input" />
+              </div>
+
+              <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                 <input type="checkbox" name="availability" defaultChecked id="avail" />
                 <label htmlFor="avail" style={{ margin: 0 }}>Available for rent immediately</label>
               </div>
               
-              <div className="modal-footer">
-                <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); }}>Cancel</button>
+              <div className="modal-footer" style={{ marginTop: '1.25rem' }}>
+                <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); setAddOilDueKm(''); }}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={loading}>
                   {loading ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -679,162 +779,6 @@ export default function FleetClient({ initialVehicles, bookings = [] }: { initia
         </div>
       )}
 
-      {/* VEHICLE HISTORY DRAWER */}
-      {historyVehicle && (
-        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 900, justifyContent: 'flex-end', alignItems: 'stretch' }} onClick={() => setHistoryVehicle(null)}>
-          <div 
-            className="glass-panel" 
-            style={{ 
-              width: '100%', 
-              maxWidth: '500px', 
-              height: '100%', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              padding: '2rem',
-              background: 'rgba(15, 15, 20, 0.95)',
-              borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '0',
-              boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
-              overflowY: 'auto'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Drawer Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '1rem' }}>
-              <div>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 650, margin: 0 }}>Vehicle History</h2>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.2rem 0 0 0' }}>
-                  {historyVehicle.brand} {historyVehicle.model} ({historyVehicle.year})
-                </p>
-              </div>
-              <button className="icon-btn" onClick={() => setHistoryVehicle(null)}>
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Tab Navigation */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(255, 255, 255, 0.03)', padding: '0.25rem', borderRadius: '8px' }}>
-              <button 
-                type="button"
-                onClick={() => setActiveTab('bookings')}
-                style={{
-                  flex: 1,
-                  padding: '0.6rem',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeTab === 'bookings' ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                  color: activeTab === 'bookings' ? '#fff' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Bookings ({vehicleBookings.length})
-              </button>
-              <button 
-                type="button"
-                onClick={() => setActiveTab('maintenance')}
-                style={{
-                  flex: 1,
-                  padding: '0.6rem',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeTab === 'maintenance' ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                  color: activeTab === 'maintenance' ? '#fff' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Maintenance ({vehicleMaintenance.length})
-              </button>
-            </div>
-
-            {/* Content Area */}
-            {historyLoading ? (
-              <div style={{ display: 'flex', flex: 1, flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '3rem 0' }}>
-                <span className="loading-spinner"></span>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Loading history...</span>
-              </div>
-            ) : activeTab === 'bookings' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
-                {vehicleBookings.length > 0 ? (
-                  vehicleBookings.map((b) => (
-                    <div 
-                      key={b.id} 
-                      style={{ 
-                        padding: '1rem', 
-                        background: 'rgba(255, 255, 255, 0.02)', 
-                        border: '1px solid rgba(255, 255, 255, 0.05)', 
-                        borderRadius: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.5rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{b.client_name}</span>
-                        <Badge variant={b.status === 'confirmed' ? 'success' : b.status === 'pending' ? 'warning' : b.status === 'completed' ? 'default' : 'danger'}>
-                          {b.status}
-                        </Badge>
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        📅 {new Date(b.start_date).toLocaleDateString()} - {new Date(b.end_date).toLocaleDateString()}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem', fontSize: '0.85rem' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Total Amount</span>
-                        <span style={{ fontWeight: 600, color: 'var(--accent-gold)' }}>{Number(b.total_amount).toFixed(2)} DT</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '3rem 1rem', textAlign: 'center' }}>
-                    <span style={{ fontSize: '2rem' }}>📅</span>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>No bookings logged for this vehicle.</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
-                {vehicleMaintenance.length > 0 ? (
-                  vehicleMaintenance.map((m) => (
-                    <div 
-                      key={m.id} 
-                      style={{ 
-                        padding: '1rem', 
-                        background: 'rgba(255, 255, 255, 0.02)', 
-                        border: '1px solid rgba(255, 255, 255, 0.05)', 
-                        borderRadius: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.5rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: '0.9rem', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.description}</span>
-                        <span style={{ fontWeight: 650, color: '#f87171', fontSize: '0.85rem' }}>-{Number(m.cost).toFixed(2)} DT</span>
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        🔧 Service Date: {new Date(m.service_date).toLocaleDateString()}
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        Next service scheduled: 6 months after
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '3rem 1rem', textAlign: 'center' }}>
-                    <span style={{ fontSize: '2rem' }}>🔧</span>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>No maintenance logs found for this vehicle.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

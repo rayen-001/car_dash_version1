@@ -328,6 +328,16 @@ select option {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes omni-slidein {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-urgency {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 @keyframes shimmer {
   0%   { background-position: -200% center; }
   100% { background-position: 200% center; }
@@ -480,6 +490,16 @@ select option {
   box-shadow: 0 0 12px -2px rgba(245, 158, 11, 0.25);
 }
 
+.status-badge.completed {
+  background: linear-gradient(135deg, rgba(229, 193, 125, 0.15), rgba(229, 193, 125, 0.03));
+  color: #e5c17d;
+  border: 1px solid rgba(229, 193, 125, 0.35);
+  box-shadow: 0 0 16px -2px rgba(229, 193, 125, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 /* ============================================================
    MODAL — Floating glass card
    ============================================================ */
@@ -491,7 +511,169 @@ select option {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 99999 !important;
+}
+
+.edit-modal {
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: rgba(14, 11, 9, 0.95);
+  border: 1px solid rgba(229, 193, 125, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 1px 0 rgba(229,193,125,0.1);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Custom scrollbar matching the premium Obsidian Gold theme */
+.edit-modal::-webkit-scrollbar {
+  width: 6px;
+}
+.edit-modal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+.edit-modal::-webkit-scrollbar-thumb {
+  background: rgba(229, 193, 125, 0.25);
+  border-radius: 8px;
+}
+.edit-modal::-webkit-scrollbar-thumb:hover {
+  background: rgba(229, 193, 125, 0.45);
+}
+
+.edit-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(229, 193, 125, 0.1);
+  padding-bottom: 1rem;
+}
+
+.edit-modal .modal-title {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: var(--accent-gold);
+  margin: 0;
+}
+
+.edit-modal .close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(229, 193, 125, 0.5);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.edit-modal .close-btn:hover { color: #fff; }
+
+.edit-modal .modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.edit-modal .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.edit-modal .col-span-2 {
+  grid-column: span 2;
+}
+
+.edit-modal .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.edit-modal .form-group label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(229, 193, 125, 0.7);
+}
+
+.edit-modal .form-input, .edit-modal .form-textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(229, 193, 125, 0.15);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+.edit-modal .form-input:focus, .edit-modal .form-textarea:focus {
+  border-color: rgba(229, 193, 125, 0.4);
+  box-shadow: 0 0 0 3px rgba(229, 193, 125, 0.1);
+}
+
+.edit-modal .form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.edit-modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(229, 193, 125, 0.1);
+}
+
+.edit-modal .btn-primary, .edit-modal .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-modal .btn-primary {
+  background: linear-gradient(135deg, var(--accent-gold) 0%, var(--accent-gold-hover) 100%);
+  color: #1a1410;
+  border: none;
+}
+.edit-modal .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 15px rgba(229, 193, 125, 0.4);
+}
+
+.edit-modal .btn-secondary {
+  background: transparent;
+  color: rgba(229, 193, 125, 0.7);
+  border: 1px solid rgba(229, 193, 125, 0.2);
+}
+.edit-modal .btn-secondary:hover:not(:disabled) {
+  background: rgba(229, 193, 125, 0.05);
+  color: #fff;
+}
+
+.edit-modal .btn-primary:disabled, .edit-modal .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.edit-modal .error-alert {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  font-size: 0.85rem;
 }
 
 .modal-content {

@@ -254,7 +254,8 @@ ALTER TABLE public.bookings
   ADD COLUMN IF NOT EXISTS fuel_level_pickup TEXT DEFAULT 'Full' CHECK (fuel_level_pickup IN ('Empty', '1/4', '1/2', '3/4', 'Full')),
   ADD COLUMN IF NOT EXISTS fuel_level_return TEXT DEFAULT 'Full' CHECK (fuel_level_return IN ('Empty', '1/4', '1/2', '3/4', 'Full')),
   ADD COLUMN IF NOT EXISTS starting_mileage INTEGER DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS return_mileage INTEGER DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS return_mileage INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS actual_return_date DATE;
 
 -- Add legal fields and exact times to bookings table for historical audit snapshotting
 ALTER TABLE public.bookings 
@@ -313,5 +314,29 @@ ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maintenance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.business_settings ENABLE ROW LEVEL SECURITY;
 
+-- =========================================================================
+-- SYSTEM UPGRADE: BOOKING INSTALLMENTS LEDGER
+-- =========================================================================
 
+CREATE TABLE IF NOT EXISTS public.booking_installments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  booking_id UUID REFERENCES public.bookings(id) ON DELETE CASCADE NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  due_date DATE NOT NULL,
+  status TEXT DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),
+  paid_date DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
 
+-- Enable Row-Level Security
+ALTER TABLE public.booking_installments ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for tenant isolation
+DROP POLICY IF EXISTS "Owners can view their own booking installments" ON public.booking_installments;
+CREATE POLICY "Owners can view their own booking installments" ON public.booking_installments
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.bookings b
+      WHERE b.id = booking_id AND b.owner_id = auth.uid()
+    )
+  );

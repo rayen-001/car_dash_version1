@@ -23,10 +23,10 @@ export default async function ClientsPage() {
     .eq('owner_id', user.id)
     .order('created_at', { ascending: false })
 
-  // Fetch all bookings for this owner so we can build client history dynamically
+  // Fetch all bookings for this owner with nested vehicles and installments to build high-fidelity intelligence ledger
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('*, vehicle:vehicles(*)')
+    .select('*, vehicle:vehicles(*), installments:booking_installments(*)')
     .eq('owner_id', user.id)
     .order('start_date', { ascending: false })
 

@@ -52,19 +52,73 @@ export async function addVehicle(formData: FormData) {
     }
   }
 
-  const { error } = await supabase.from('vehicles').insert({
-    owner_id: user.id,
-    brand,
-    model,
-    year,
-    price_per_day,
-    availability,
-    images: imageUrls,
-    license_plate: (formData.get('license_plate') as string) || null,
-    color: (formData.get('color') as string) || null,
-  })
+  const current_km = formData.get('current_km') ? parseInt(formData.get('current_km') as string) : null
+  const oil_change_due_km = formData.get('oil_change_due_km') ? parseInt(formData.get('oil_change_due_km') as string) : null
+  const brake_pad_state = (formData.get('brake_pad_state') as string) || null
+
+  const { data, error } = await supabase
+    .from('vehicles')
+    .insert({
+      owner_id: user.id,
+      brand,
+      model,
+      year,
+      price_per_day,
+      availability,
+      images: imageUrls,
+      license_plate: (formData.get('license_plate') as string) || null,
+      color: (formData.get('color') as string) || null,
+      current_km,
+      oil_change_due_km,
+      brake_pad_state,
+    })
+    .select('id')
+    .single()
 
   if (error) throw new Error(error.message)
+
+  if (data?.id) {
+    const assurance_expiry = formData.get('assurance_expiry') as string
+    const visite_technique_expiry = formData.get('visite_technique_expiry') as string
+    const laissez_passer_expiry = formData.get('laissez_passer_expiry') as string
+
+    const docsToInsert = []
+    if (assurance_expiry) {
+      docsToInsert.push({
+        owner_id: user.id,
+        vehicle_id: data.id,
+        doc_type: 'assurance',
+        expiry_date: assurance_expiry,
+        notes: null
+      })
+    }
+    if (visite_technique_expiry) {
+      docsToInsert.push({
+        owner_id: user.id,
+        vehicle_id: data.id,
+        doc_type: 'visite_technique',
+        expiry_date: visite_technique_expiry,
+        notes: null
+      })
+    }
+    if (laissez_passer_expiry) {
+      docsToInsert.push({
+        owner_id: user.id,
+        vehicle_id: data.id,
+        doc_type: 'laissez_passer',
+        expiry_date: laissez_passer_expiry,
+        notes: null
+      })
+    }
+
+    if (docsToInsert.length > 0) {
+      const { error: docsError } = await supabase.from('vehicle_legal_docs').insert(docsToInsert)
+      if (docsError) {
+        console.error('Error inserting vehicle legal docs during creation:', docsError.message)
+      }
+    }
+  }
+
   revalidatePath('/dashboard/fleet')
 }
 
@@ -190,6 +244,179 @@ export async function deleteVehicle(id: string) {
 
 // --- BOOKING ACTIONS ---
 
+export async function recalculateClientTrustScore(clientId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  // Fetch all bookings for this client (excluding cancelled), joining installments
+  const { data: bookings, error } = await supabase
+    .from('bookings')
+    .select('id, status, start_date, end_date, actual_return_date, total_amount, acompte_paid, client_behavior_status, installments:booking_installments(id, amount, due_date, status, paid_date)')
+    .eq('client_id', clientId)
+    .neq('status', 'cancelled')
+
+  if (error) {
+    console.error('Error fetching bookings for trust score:', error.message)
+    return
+  }
+
+  if (!bookings || bookings.length === 0) {
+    // If no bookings exist, set trust_score to NULL (unproven client state)
+    await supabase
+      .from('clients')
+      .update({ trust_score: null })
+      .eq('id', clientId)
+      .eq('owner_id', user.id)
+    return
+  }
+
+  // Get local "today" string in YYYY-MM-DD format
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+  // Helper to get day difference between two YYYY-MM-DD strings
+  const getDaysDiff = (d1Str: string, d2Str: string): number => {
+    const d1 = new Date(d1Str.split('T')[0] + 'T00:00:00')
+    const d2 = new Date(d2Str.split('T')[0] + 'T00:00:00')
+    const diffTime = d2.getTime() - d1.getTime()
+    return Math.round(diffTime / (1000 * 60 * 60 * 24))
+  }
+
+  let returnHygiene = 100
+  let totalContractValue = 0
+  let totalOverdueUnpaid = 0
+  let hasCriminalOverride = false
+  let behaviorPenalty = 0
+
+  // Count completed bookings for loyalty bonus calculation
+  const completedBookingsCount = bookings.filter(b => b.status === 'completed').length
+  const loyaltyBonus = Math.min(20, completedBookingsCount * 2.5)
+
+  bookings.forEach((b) => {
+    const isCompleted = b.status === 'completed'
+    const scheduledEnd = b.end_date
+    const totalAmt = Number(b.total_amount) || 0
+    const paidAmt = Number(b.acompte_paid) || 0
+    const balance = totalAmt - paidAmt
+    const installments = (b as any).installments || []
+    const hasInstallments = Array.isArray(installments) && installments.length > 0
+
+    // Exclude pending bookings completely
+    if (b.status === 'pending') {
+      return
+    }
+
+    // Accumulate total contract values
+    totalContractValue += totalAmt
+
+    // Calculate overdue unpaid amount for this booking
+    if (hasInstallments) {
+      installments.forEach((inst: any) => {
+        const amt = Number(inst.amount) || 0
+        if (inst.status === 'unpaid') {
+          if (getDaysDiff(inst.due_date, todayStr) > 0) {
+            // Overdue unpaid installment
+            totalOverdueUnpaid += amt
+          }
+        }
+      })
+    } else {
+      // Legacy bookings: overdue if confirmed and todayStr > scheduledEnd, or if completed
+      const isConfirmed = b.status === 'confirmed'
+      const isOverdue = isConfirmed && (getDaysDiff(scheduledEnd, todayStr) > 0)
+      if ((isCompleted || isOverdue) && balance > 0) {
+        totalOverdueUnpaid += balance
+      }
+    }
+
+    // Evaluate return hygiene and overrides
+    if (isCompleted) {
+      const actualEnd = b.actual_return_date || scheduledEnd
+      const lateDays = getDaysDiff(scheduledEnd, actualEnd)
+      if (lateDays > 0) {
+        returnHygiene -= Math.min(75, 4 * Math.pow(lateDays, 1.3))
+      }
+    } else if (b.status === 'confirmed') {
+      // Ongoing Overdue booking (since todayStr > scheduledEnd)
+      const overdueDays = getDaysDiff(scheduledEnd, todayStr)
+      if (overdueDays > 0) {
+        let hasUnpaidDebt = false
+        if (hasInstallments) {
+          hasUnpaidDebt = installments.some(
+            (inst: any) => inst.status === 'unpaid' && getDaysDiff(inst.due_date, todayStr) > 0
+          )
+        } else {
+          hasUnpaidDebt = balance > 0
+        }
+
+        if (overdueDays >= 5 && hasUnpaidDebt) {
+          hasCriminalOverride = true
+        } else {
+          returnHygiene -= overdueDays * 8
+        }
+      }
+    }
+
+    // Apply Client Behavior Status penalties with linear time-decay (90-day window)
+    if (b.client_behavior_status) {
+      const infractions = b.client_behavior_status.split(',').map((s: string) => s.trim()).filter(Boolean);
+      
+      infractions.forEach((infraction: string) => {
+        let baseInfraction = 0
+        let isPermanent = false
+
+        if (infraction === 'dirty_return') {
+          baseInfraction = 5
+        } else if (infraction === 'speeding') {
+          baseInfraction = 15
+        } else if (infraction === 'minor_damage') {
+          baseInfraction = 25
+        } else if (infraction === 'major_damage') {
+          baseInfraction = 100
+          isPermanent = true
+          hasCriminalOverride = true
+        }
+
+        if (baseInfraction > 0) {
+          if (isPermanent) {
+            behaviorPenalty += baseInfraction
+          } else {
+            const infractionDate = b.actual_return_date || b.end_date || todayStr
+            const daysSince = Math.max(0, getDaysDiff(infractionDate, todayStr))
+            const decayFactor = Math.max(0, 1 - daysSince / 90)
+            behaviorPenalty += baseInfraction * decayFactor
+          }
+        }
+      });
+    }
+  })
+
+  // Clamp returnHygiene
+  returnHygiene = Math.max(0, Math.min(100, returnHygiene))
+
+  // Payment hygiene calculation
+  const overdueDebtRatio = totalContractValue > 0 ? (totalOverdueUnpaid / totalContractValue) : 0
+  const paymentHygiene = 100 - Math.min(100, overdueDebtRatio * 120)
+
+  // Combine scores with new dynamic weights (40% return, 40% payment, plus loyalty)
+  let trustScore = (0.40 * returnHygiene) + (0.40 * paymentHygiene) - behaviorPenalty + loyaltyBonus
+
+  // Apply criminal override
+  if (hasCriminalOverride) {
+    trustScore = 0
+  }
+
+  // Round to 1 decimal place and clamp between 0 and 100
+  trustScore = Math.max(0, Math.min(100, Math.round(trustScore * 10) / 10))
+
+  await supabase
+    .from('clients')
+    .update({ trust_score: trustScore })
+    .eq('id', clientId)
+    .eq('owner_id', user.id)
+}
+
 export async function addBooking(formData: FormData) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -202,10 +429,13 @@ export async function addBooking(formData: FormData) {
   const end_date = formData.get('end_date') as string
   const total_amount = parseFloat(formData.get('total_amount') as string)
   const status = formData.get('status') as string || 'confirmed'
+  
+  // Decoupled operational parameters
   const fuel_level_pickup = formData.get('fuel_level_pickup') as string || 'Full'
-  const fuel_level_return = formData.get('fuel_level_return') as string || 'Full'
-  const starting_mileage = parseInt(formData.get('starting_mileage') as string) || 0
-  const return_mileage = parseInt(formData.get('return_mileage') as string) || 0
+  const starting_km = parseInt(formData.get('starting_km') as string) || 0
+  const lavage_pickup = formData.get('lavage_pickup') as string || 'clean_wash'
+  const acompte_paid = parseFloat(formData.get('acompte_paid') as string) || 0
+  const rental_days_text = formData.get('rental_days_text') as string || ''
 
   // Security Deposit tracking fields
   const deposit_amount = parseFloat(formData.get('deposit_amount') as string) || 0
@@ -286,7 +516,12 @@ export async function addBooking(formData: FormData) {
     throw new Error('This vehicle is already rented during these dates.')
   }
 
-  const { error } = await supabase.from('bookings').insert({
+  const installmentsJson = formData.get('installments') as string
+  const installmentsInput: { amount: number; due_date: string; status: 'paid' | 'unpaid' }[] = installmentsJson
+    ? JSON.parse(installmentsJson)
+    : []
+
+  const { data: newBooking, error } = await supabase.from('bookings').insert({
     owner_id: user.id,
     vehicle_id,
     client_id,
@@ -297,9 +532,15 @@ export async function addBooking(formData: FormData) {
     total_amount,
     payment_status: status === 'confirmed' ? 'paid' : 'unpaid',
     fuel_level_pickup,
-    fuel_level_return,
-    starting_mileage,
-    return_mileage,
+    fuel_level_return: null,
+    starting_mileage: starting_km,
+    starting_km,
+    return_mileage: null,
+    return_km: null,
+    lavage_pickup,
+    lavage_return: null,
+    acompte_paid,
+    rental_days_text,
     deposit_amount,
     deposit_type,
     deposit_status,
@@ -309,9 +550,35 @@ export async function addBooking(formData: FormData) {
     client_address,
     pickup_time,
     return_time
-  })
+  }).select('id').single()
 
   if (error) throw new Error(error.message)
+
+  if (installmentsInput.length > 0 && newBooking) {
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+    const installmentsToInsert = installmentsInput.map((inst) => ({
+      booking_id: newBooking.id,
+      amount: inst.amount,
+      due_date: inst.due_date,
+      status: inst.status || 'unpaid',
+      paid_date: inst.status === 'paid' ? todayStr : null
+    }))
+
+    const { error: instError } = await supabase
+      .from('booking_installments')
+      .insert(installmentsToInsert)
+
+    if (instError) {
+      console.error('Error inserting installments:', instError.message)
+    }
+  }
+
+  if (client_id) {
+    await recalculateClientTrustScore(client_id)
+  }
+
   revalidatePath('/dashboard/bookings')
   revalidatePath('/dashboard')
 }
@@ -329,10 +596,13 @@ export async function updateBooking(formData: FormData) {
   const end_date = formData.get('end_date') as string
   const total_amount = parseFloat(formData.get('total_amount') as string)
   const status = formData.get('status') as string || 'confirmed'
+
+  // Decoupled operational parameters
   const fuel_level_pickup = formData.get('fuel_level_pickup') as string || 'Full'
-  const fuel_level_return = formData.get('fuel_level_return') as string || 'Full'
-  const starting_mileage = parseInt(formData.get('starting_mileage') as string) || 0
-  const return_mileage = parseInt(formData.get('return_mileage') as string) || 0
+  const starting_km = parseInt(formData.get('starting_km') as string) || 0
+  const lavage_pickup = formData.get('lavage_pickup') as string || 'clean_wash'
+  const acompte_paid = parseFloat(formData.get('acompte_paid') as string) || 0
+  const rental_days_text = formData.get('rental_days_text') as string || ''
 
   // Security Deposit tracking fields
   const deposit_amount = parseFloat(formData.get('deposit_amount') as string) || 0
@@ -412,6 +682,16 @@ export async function updateBooking(formData: FormData) {
     throw new Error('This vehicle is already rented during these dates.')
   }
 
+  const { data: existingBooking } = await supabase
+    .from('bookings')
+    .select('actual_return_date')
+    .eq('id', id)
+    .single()
+
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const actual_return_date = status === 'completed' ? (existingBooking?.actual_return_date || todayStr) : null
+
   const { error } = await supabase
     .from('bookings')
     .update({
@@ -423,9 +703,11 @@ export async function updateBooking(formData: FormData) {
       status,
       total_amount,
       fuel_level_pickup,
-      fuel_level_return,
-      starting_mileage,
-      return_mileage,
+      starting_mileage: starting_km,
+      starting_km,
+      lavage_pickup,
+      acompte_paid,
+      rental_days_text,
       deposit_amount,
       deposit_type,
       deposit_status,
@@ -434,12 +716,49 @@ export async function updateBooking(formData: FormData) {
       client_cin_passport,
       client_address,
       pickup_time,
-      return_time
+      return_time,
+      actual_return_date
     })
     .eq('id', id)
     .eq('owner_id', user.id)
 
   if (error) throw new Error(error.message)
+
+  // Handle installments sync: delete old ones and insert new ones
+  const installmentsJson = formData.get('installments') as string
+  const installmentsInput: { amount: number; due_date: string; status: 'paid' | 'unpaid' }[] = installmentsJson
+    ? JSON.parse(installmentsJson)
+    : []
+
+  // Delete all existing installments for this booking
+  await supabase
+    .from('booking_installments')
+    .delete()
+    .eq('booking_id', id)
+
+  // Insert the new list of installments
+  if (installmentsInput.length > 0) {
+    const installmentsToInsert = installmentsInput.map((inst) => ({
+      booking_id: id,
+      amount: inst.amount,
+      due_date: inst.due_date,
+      status: inst.status || 'unpaid',
+      paid_date: inst.status === 'paid' ? todayStr : null
+    }))
+
+    const { error: instError } = await supabase
+      .from('booking_installments')
+      .insert(installmentsToInsert)
+
+    if (instError) {
+      console.error('Error inserting installments in updateBooking:', instError.message)
+    }
+  }
+
+  if (client_id) {
+    await recalculateClientTrustScore(client_id)
+  }
+
   revalidatePath('/dashboard/bookings')
 }
 
@@ -448,8 +767,29 @@ export async function updateBookingStatus(id: string, status: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
-  const { error } = await supabase.from('bookings').update({ status }).eq('id', id).eq('owner_id', user.id)
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('client_id, actual_return_date')
+    .eq('id', id)
+    .single()
+
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+  const updatePayload: any = { status }
+  if (status === 'completed') {
+    updatePayload.actual_return_date = booking?.actual_return_date || todayStr
+  } else {
+    updatePayload.actual_return_date = null
+  }
+
+  const { error } = await supabase.from('bookings').update(updatePayload).eq('id', id).eq('owner_id', user.id)
   if (error) throw new Error(error.message)
+
+  if (booking && booking.client_id) {
+    await recalculateClientTrustScore(booking.client_id)
+  }
+
   revalidatePath('/dashboard/bookings')
   revalidatePath('/dashboard')
 }
@@ -802,13 +1142,39 @@ export async function updateClient(formData: FormData) {
       full_name,
       email: email || null,
       phone,
-      license_number: license_number || null
+      license_number: license_number || null,
+      date_naissance: formData.get('date_naissance') || null,
+      cin_delivre_le: formData.get('cin_delivre_le') || null,
+      permis_numero: formData.get('permis_numero') || null,
+      permis_delivre_le: formData.get('permis_delivre_le') || null,
     })
     .eq('id', id)
     .eq('owner_id', user.id)
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/clients')
+}
+
+export async function updateClientLegalDetails(
+  clientId: string,
+  updates: {
+    date_naissance?: string | null
+    cin_delivre_le?: string | null
+    permis_numero?: string | null
+    permis_delivre_le?: string | null
+  }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('clients')
+    .update(updates)
+    .eq('id', clientId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
 }
 
 export async function deleteClient(id: string) {
@@ -934,5 +1300,223 @@ export async function syncAndRelateClients() {
       }
     }
   }
+}
+
+// --- VEHICLE 360° HISTORY HUB ACTIONS ---
+
+export async function updateVehicleMechanicalState(
+  vehicleId: string,
+  currentKm: number | null,
+  oilChangeDueKm: number | null,
+  brakePadState: 'good' | 'worn' | 'critical' | null
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('vehicles')
+    .update({
+      current_km: currentKm,
+      oil_change_due_km: oilChangeDueKm,
+      brake_pad_state: brakePadState,
+    })
+    .eq('id', vehicleId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
+  revalidatePath('/dashboard/fleet')
+}
+
+export async function upsertVehicleLegalDoc(
+  vehicleId: string,
+  docType: 'assurance' | 'visite_technique' | 'laissez_passer',
+  expiryDate: string,
+  notes: string | null
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('vehicle_legal_docs')
+    .upsert({
+      owner_id: user.id,
+      vehicle_id: vehicleId,
+      doc_type: docType,
+      expiry_date: expiryDate,
+      notes,
+    }, {
+      onConflict: 'vehicle_id,doc_type'
+    })
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
+}
+
+export async function renewVehicleDocument(
+  vehicleId: string,
+  docType: 'assurance' | 'visite_technique' | 'laissez_passer',
+  calculatedExpiryDate: string
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('vehicle_legal_docs')
+    .upsert({
+      owner_id: user.id,
+      vehicle_id: vehicleId,
+      doc_type: docType,
+      expiry_date: calculatedExpiryDate,
+      notes: `Quick auto-renewed on ${new Date().toLocaleDateString()}`
+    }, {
+      onConflict: 'vehicle_id,doc_type'
+    })
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
+  revalidatePath('/dashboard/fleet')
+  revalidatePath('/dashboard')
+}
+
+export async function updateBookingHistoricalDetails(
+  bookingId: string,
+  vehicleId: string,
+  updates: {
+    amount_paid?: number
+    acompte_paid?: number
+    accident_reported?: boolean
+    owner_remarks?: string | null
+    rental_days_text?: string | null
+    starting_km?: number | null
+    return_km?: number | null
+    lavage_pickup?: string | null
+    lavage_return?: string | null
+    client_behavior_status?: string | null
+    fuel_level_pickup?: string | null
+    fuel_level_return?: string | null
+    damage_notes?: string | null
+    status?: string
+    return_mileage?: number | null
+    starting_mileage?: number | null
+    end_date?: string
+    
+    // New dynamic billing inputs
+    amount_collected_now?: number
+    incident_penalties?: number
+    total_amount?: number
+  }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const dbUpdates = { ...updates }
+  
+  // Clean up transient UI inputs from db payload
+  delete dbUpdates.amount_collected_now
+  delete dbUpdates.incident_penalties
+
+  if (dbUpdates.return_km !== undefined) {
+    dbUpdates.return_mileage = dbUpdates.return_km
+  }
+  if (dbUpdates.starting_km !== undefined) {
+    dbUpdates.starting_mileage = dbUpdates.starting_km
+  }
+
+  // Fetch client_id and status to update trust score & actual_return_date
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('client_id, status, actual_return_date, total_amount, acompte_paid')
+    .eq('id', bookingId)
+    .single()
+
+  if (updates.status !== undefined) {
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    if (updates.status === 'completed') {
+      ;(dbUpdates as any).actual_return_date = booking?.actual_return_date || todayStr
+    } else {
+      ;(dbUpdates as any).actual_return_date = null
+    }
+  }
+
+  const { error } = await supabase
+    .from('bookings')
+    .update(dbUpdates)
+    .eq('id', bookingId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+
+  // Sequential Installment Clearing Algorithm
+  const amountCollected = Number(updates.amount_collected_now) || 0
+  if (amountCollected > 0) {
+    const { data: installments, error: instFetchError } = await supabase
+      .from('booking_installments')
+      .select('id, amount, status')
+      .eq('booking_id', bookingId)
+      .order('due_date', { ascending: true })
+
+    if (instFetchError) {
+      console.error('Error fetching installments for allocation:', instFetchError.message)
+    } else if (installments && installments.length > 0) {
+      let remainingCash = amountCollected
+      const now = new Date()
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+      for (const inst of installments) {
+        if (remainingCash <= 0) break
+
+        if (inst.status === 'paid') {
+          continue
+        }
+
+        const instAmt = Number(inst.amount) || 0
+        if (remainingCash >= instAmt) {
+          // Fully satisfy this tranche
+          const { error: updErr } = await supabase
+            .from('booking_installments')
+            .update({
+              status: 'paid',
+              paid_date: todayStr
+            })
+            .eq('id', inst.id)
+
+          if (updErr) {
+            console.error(`Error satisfying installment ${inst.id}:`, updErr.message)
+          } else {
+            remainingCash -= instAmt
+          }
+        } else {
+          // Partially satisfy this tranche: deduct amount, leave unpaid
+          const newAmt = instAmt - remainingCash
+          const { error: updErr } = await supabase
+            .from('booking_installments')
+            .update({
+              amount: newAmt
+            })
+            .eq('id', inst.id)
+
+          if (updErr) {
+            console.error(`Error partially satisfying installment ${inst.id}:`, updErr.message)
+          } else {
+            remainingCash = 0
+          }
+        }
+      }
+    }
+  }
+
+  if (booking && booking.client_id) {
+    await recalculateClientTrustScore(booking.client_id)
+  }
+
+  revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
+  revalidatePath('/dashboard')
 }
 

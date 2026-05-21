@@ -19,20 +19,22 @@ export default function DashboardStats({ stats, allBookings = [] }: DashboardSta
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
 
-  // This month's confirmed bookings
+  const PAID_STATUSES = ['confirmed', 'completed']
+
+  // This month's paid bookings
   const thisMonthBookings = allBookings.filter(b => {
     const d = new Date(b.start_date)
-    return d >= thisMonthStart && b.status === 'confirmed'
+    return d >= thisMonthStart && PAID_STATUSES.includes((b.status || '').toLowerCase())
   })
 
-  // Last month's confirmed bookings
+  // Last month's paid bookings
   const lastMonthBookings = allBookings.filter(b => {
     const d = new Date(b.start_date)
-    return d >= lastMonthStart && d <= lastMonthEnd && b.status === 'confirmed'
+    return d >= lastMonthStart && d <= lastMonthEnd && PAID_STATUSES.includes((b.status || '').toLowerCase())
   })
 
-  const thisMonthRev = thisMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
-  const lastMonthRev = lastMonthBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
+  const thisMonthRev = thisMonthBookings.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
+  const lastMonthRev = lastMonthBookings.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
 
   let revDelta = 0
   if (lastMonthRev > 0) {

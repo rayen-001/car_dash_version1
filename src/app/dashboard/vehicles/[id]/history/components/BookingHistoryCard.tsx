@@ -1,0 +1,148 @@
+'use client'
+
+import { AlertOctagon, HelpCircle, FileText, Phone, DollarSign, Calendar, Edit, MessageSquare } from 'lucide-react'
+import styles from '../history.module.css'
+
+interface Booking {
+  id: string
+  client_name: string
+  client_phone?: string
+  start_date: string
+  end_date: string
+  pickup_time?: string
+  return_time?: string
+  total_amount: number
+  amount_paid?: number
+  accident_reported?: boolean
+  owner_remarks?: string
+  status: string
+}
+
+interface BookingHistoryCardProps {
+  booking: Booking
+  onEditBooking: (booking: Booking) => void
+}
+
+export default function BookingHistoryCard({ booking, onEditBooking }: BookingHistoryCardProps) {
+  // Extract initials for the avatar
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2)
+  }
+
+  // Financial calculations
+  const total = Number(booking.total_amount) || 0
+  const paid = Number(booking.amount_paid) || 0
+  const remaining = Math.max(0, total - paid)
+
+  // Formatting dates
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })
+  }
+
+  return (
+    <div className={`${styles['booking-card']} ${booking.accident_reported ? styles['has-incident'] : ''}`}>
+      {/* Header */}
+      <div className={styles['booking-card-header']}>
+        <div className={styles['booking-client-info']}>
+          <div className={styles['client-avatar-circle']}>
+            {getInitials(booking.client_name)}
+          </div>
+          <div>
+            <div className={styles['client-avatar-name']}>{booking.client_name}</div>
+            {booking.client_phone && (
+              <div className={styles['client-phone']}>
+                <Phone size={10} style={{ display: 'inline', marginRight: '4px' }} />
+                {booking.client_phone}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={styles['booking-card-badges']}>
+          {booking.accident_reported && (
+            <span className={styles['incident-badge']}>
+              <AlertOctagon size={12} />
+              Accident / Damage
+            </span>
+          )}
+          <span 
+            className={`${styles['legal-badge']} ${
+              booking.status === 'confirmed' ? styles['active'] : 
+              booking.status === 'pending' ? styles['expiring'] : 
+              booking.status === 'completed' ? styles['active'] : styles['expired']
+            }`}
+          >
+            {booking.status}
+          </span>
+          <button 
+            className="icon-btn" 
+            title="Edit Booking Details"
+            onClick={() => onEditBooking(booking)}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            <Edit size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className={styles['booking-card-body']}>
+        {/* Dates & Times */}
+        <div className={styles['booking-dates-row']}>
+          <div className={styles['date-block']}>
+            <span className={styles['date-block-label']}>Pick up</span>
+            <span className={styles['date-block-value']}>{formatDate(booking.start_date)}</span>
+            <span className={styles['date-block-time']}>{booking.pickup_time || '10:00'}</span>
+          </div>
+          
+          <div className={styles['date-divider']}>
+            <Calendar size={14} />
+          </div>
+
+          <div className={styles['date-block']} style={{ textAlign: 'right' }}>
+            <span className={styles['date-block-label']}>Return</span>
+            <span className={styles['date-block-value']}>{formatDate(booking.end_date)}</span>
+            <span className={styles['date-block-time']}>{booking.return_time || '10:00'}</span>
+          </div>
+        </div>
+
+        {/* Financial Row */}
+        <div className={styles['financial-row']}>
+          <div className={styles['fin-item']}>
+            <span className={styles['fin-label']}>Total</span>
+            <span className={`${styles['fin-value']} ${styles['total']}`}>{total.toFixed(2)} DT</span>
+          </div>
+          <div className={styles['fin-item']}>
+            <span className={styles['fin-label']}>Paid</span>
+            <span className={`${styles['fin-value']} ${styles['paid']}`}>{paid.toFixed(2)} DT</span>
+          </div>
+          <div className={styles['fin-item']}>
+            <span className={styles['fin-label']}>Balance</span>
+            <span className={`${styles['fin-value']} ${styles['remaining']} ${remaining === 0 ? styles['zero'] : styles['due']}`}>
+              {remaining.toFixed(2)} DT
+            </span>
+          </div>
+        </div>
+
+        {/* Owner Remarks */}
+        {booking.owner_remarks && (
+          <div className={styles['remarks-row']}>
+            <MessageSquare size={14} className={styles['remarks-icon']} />
+            <div>
+              <strong>Owner remarks:</strong> {booking.owner_remarks}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

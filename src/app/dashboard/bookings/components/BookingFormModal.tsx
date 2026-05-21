@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
-import { X, AlertTriangle, Gauge, Fuel, User, Car, CalendarDays, Clock, Shield, DollarSign, Phone, CreditCard, MapPin, FileText } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { X, User, Car, CalendarDays, Clock, Shield, DollarSign, Phone, CreditCard, MapPin, FileText, Gauge, Fuel, AlertTriangle, Plus, Trash2, Coins } from 'lucide-react'
 import { addBooking, updateBooking } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { Booking, Vehicle, Client } from '@/types'
-import SearchableCombobox, { ComboboxOption } from '@/components/SearchableCombobox'
+import SearchableCombobox from '@/components/SearchableCombobox'
 
 interface BookingFormModalProps {
   isOpen: boolean
@@ -11,6 +11,7 @@ interface BookingFormModalProps {
   vehicles: Vehicle[]
   clients: Client[]
   initialBookings: Booking[]
+  vehicleLegalDocs?: any[]
   onClose: () => void
 }
 
@@ -20,6 +21,7 @@ export default function BookingFormModal({
   vehicles,
   clients,
   initialBookings,
+  vehicleLegalDocs = [],
   onClose
 }: BookingFormModalProps) {
   const { showToast } = useToast()
@@ -33,16 +35,12 @@ export default function BookingFormModal({
   const [endDate, setEndDate] = useState('')
   const [totalAmount, setTotalAmount] = useState('')
   
-  // Fuel & Mileage Form states
+  // Decoupled Pickup Phase Form states
+  const [acomptePaid, setAcomptePaid] = useState('0')
+  const [rentalDaysText, setRentalDaysText] = useState('')
+  const [startingKm, setStartingKm] = useState('0')
   const [fuelLevelPickup, setFuelLevelPickup] = useState('Full')
-  const [fuelLevelReturn, setFuelLevelReturn] = useState('Full')
-  const [startingMileage, setStartingMileage] = useState('0')
-  const [returnMileage, setReturnMileage] = useState('0')
-
-  // Security Deposit Form states
-  const [depositAmount, setDepositAmount] = useState('0')
-  const [depositType, setDepositType] = useState('Cash')
-  const [depositStatus, setDepositStatus] = useState('Held')
+  const [lavagePickup, setLavagePickup] = useState('clean_wash')
 
   // Legal Snapshots & Times states
   const [clientPhone, setClientPhone] = useState('')
@@ -55,6 +53,44 @@ export default function BookingFormModal({
   // Conflict info state
   const [conflictInfo, setConflictInfo] = useState<{ occupiedRange: string, freeDates: string[] } | null>(null)
 
+  // Installments state
+  const [installments, setInstallments] = useState<{ amount: number; due_date: string; status: 'paid' | 'unpaid' }[]>([])
+
+  const parsedTotal = useMemo(() => parseFloat(totalAmount) || 0, [totalAmount])
+  const parsedAcompte = useMemo(() => parseFloat(acomptePaid) || 0, [acomptePaid])
+
+  const installmentsSum = useMemo(() => {
+    return installments.reduce((acc, inst) => acc + (Number(inst.amount) || 0), 0)
+  }, [installments])
+
+  const remainingToSchedule = useMemo(() => {
+    return parsedTotal - parsedAcompte - installmentsSum
+  }, [parsedTotal, parsedAcompte, installmentsSum])
+
+  // Predictive Legal Document Expiry Collision Detector
+  const legalDocConflicts = useMemo(() => {
+    if (!startDate || !endDate || !vehicleId) return []
+    return vehicleLegalDocs.filter(doc =>
+      doc.vehicle_id === vehicleId &&
+      doc.expiry_date >= startDate &&
+      doc.expiry_date <= endDate
+    )
+  }, [startDate, endDate, vehicleId, vehicleLegalDocs])
+
+  // Automatically calculate and set rental_days_text (read-only duration)
+  useEffect(() => {
+    if (startDate && endDate) {
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      const diffTime = end.getTime() - start.getTime()
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      const calculatedDays = diffDays >= 0 ? String(diffDays) : '0'
+      setRentalDaysText(calculatedDays)
+    } else {
+      setRentalDaysText('')
+    }
+  }, [startDate, endDate])
+
   // Sync edit state
   useEffect(() => {
     if (editingBooking) {
@@ -64,13 +100,14 @@ export default function BookingFormModal({
       setStartDate(editingBooking.start_date ? editingBooking.start_date.split('T')[0] : '')
       setEndDate(editingBooking.end_date ? editingBooking.end_date.split('T')[0] : '')
       setTotalAmount(editingBooking.total_amount?.toString() || '')
+      
+      // Decoupled fields mapping
+      setAcomptePaid(editingBooking.acompte_paid?.toString() || '0')
+      setRentalDaysText(editingBooking.rental_days_text || '')
+      setStartingKm(editingBooking.starting_km?.toString() || '0')
       setFuelLevelPickup(editingBooking.fuel_level_pickup || 'Full')
-      setFuelLevelReturn(editingBooking.fuel_level_return || 'Full')
-      setStartingMileage(editingBooking.starting_mileage?.toString() || '0')
-      setReturnMileage(editingBooking.return_mileage?.toString() || '0')
-      setDepositAmount(editingBooking.deposit_amount?.toString() || '0')
-      setDepositType(editingBooking.deposit_type || 'Cash')
-      setDepositStatus(editingBooking.deposit_status || 'Held')
+      setLavagePickup(editingBooking.lavage_pickup || 'clean_wash')
+
       setClientPhone(editingBooking.client_phone || '')
       setClientLicenseNumber(editingBooking.client_license_number || '')
       setClientCinPassport(editingBooking.client_cin_passport || '')
@@ -78,6 +115,17 @@ export default function BookingFormModal({
       setPickupTime(editingBooking.pickup_time || '10:00')
       setReturnTime(editingBooking.return_time || '10:00')
       setConflictInfo(null)
+
+      // Sync installments state
+      setInstallments(
+        editingBooking.installments
+          ? editingBooking.installments.map((inst: any) => ({
+              amount: inst.amount,
+              due_date: inst.due_date ? inst.due_date.split('T')[0] : '',
+              status: inst.status
+            }))
+          : []
+      )
     } else {
       setClientId('')
       setClientName('')
@@ -85,13 +133,11 @@ export default function BookingFormModal({
       setStartDate('')
       setEndDate('')
       setTotalAmount('')
+      setAcomptePaid('0')
+      setRentalDaysText('')
+      setStartingKm('0')
       setFuelLevelPickup('Full')
-      setFuelLevelReturn('Full')
-      setStartingMileage('0')
-      setReturnMileage('0')
-      setDepositAmount('0')
-      setDepositType('Cash')
-      setDepositStatus('Held')
+      setLavagePickup('clean_wash')
       setClientPhone('')
       setClientLicenseNumber('')
       setClientCinPassport('')
@@ -99,6 +145,7 @@ export default function BookingFormModal({
       setPickupTime('10:00')
       setReturnTime('10:00')
       setConflictInfo(null)
+      setInstallments([])
     }
   }, [editingBooking, isOpen])
 
@@ -126,7 +173,6 @@ export default function BookingFormModal({
       return
     }
 
-    // Find any overlapping bookings for this vehicle (not cancelled)
     const overlapping = initialBookings.find(b => 
       b.vehicle_id === vId && 
       b.status !== 'cancelled' &&
@@ -136,7 +182,6 @@ export default function BookingFormModal({
     )
 
     if (overlapping) {
-      // Find empty/free days in the requested start to end range
       const startD = new Date(start)
       const endD = new Date(end)
       const freeDays: string[] = []
@@ -191,6 +236,12 @@ export default function BookingFormModal({
       showToast('Please select or specify a Client Name before saving.', 'error')
       return
     }
+
+    if (installments.length > 0 && Math.abs(parsedAcompte + installmentsSum - parsedTotal) > 0.05) {
+      showToast(`Validation Failed: The sum of Advance (${parsedAcompte} DT) and Installments (${installmentsSum} DT) must equal the Total Amount (${parsedTotal} DT). Discrepancy: ${(parsedTotal - parsedAcompte - installmentsSum).toFixed(2)} DT`, 'error')
+      return
+    }
+
     setLoading(true)
     try {
       const formData = new FormData(e.currentTarget)
@@ -206,6 +257,7 @@ export default function BookingFormModal({
     } catch (err: any) {
       showToast(err.message || 'Error saving booking. Please try again.', 'error')
     }
+    setLoading(true) // Keeps button in disabled state briefly to prevent double submission
     setLoading(false)
   }
 
@@ -276,8 +328,8 @@ export default function BookingFormModal({
               <FileText size={16} style={{ color: '#ae9260' }} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{editingBooking ? 'Edit Booking' : 'New Booking'}</h2>
-              <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>Fill in all sections to create a complete rental contract</p>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{editingBooking ? 'Edit Pickup details' : 'New Booking Contract'}</h2>
+              <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>Pickup operational &amp; client parameters creation</p>
             </div>
           </div>
           <button className="icon-btn" onClick={onClose}><X size={20} /></button>
@@ -289,6 +341,7 @@ export default function BookingFormModal({
           <input type="hidden" name="client_id" value={clientId} />
           <input type="hidden" name="client_name" value={clientName} />
           <input type="hidden" name="vehicle_id" value={vehicleId} />
+          <input type="hidden" name="installments" value={JSON.stringify(installments)} />
 
           {/* ── SECTION 1: CLIENT & VEHICLE ── */}
           <div style={sectionStyle}>
@@ -328,7 +381,6 @@ export default function BookingFormModal({
                   searchPlaceholder="Search client by name or phone..."
                   pinnedOption={{ value: 'manual', label: '✏️ Manual / Walk-in Client' }}
                 />
-                {/* Show selected client badge */}
                 {clientId && clientId !== 'manual' && clientName && (
                   <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <span>✓</span> <strong>{clientName}</strong> selected from CRM
@@ -446,7 +498,7 @@ export default function BookingFormModal({
               </div>
             </div>
 
-            {/* Conflict Alert */}
+            {/* Conflict Alert (Red — Blocking) */}
             {conflictInfo && (
               <div style={{
                 background: 'rgba(239, 68, 68, 0.05)',
@@ -479,29 +531,87 @@ export default function BookingFormModal({
                 )}
               </div>
             )}
+
+            {/* Legal Document Expiry Warning (Amber — Non-blocking) */}
+            {legalDocConflicts.length > 0 && (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.05)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                padding: '0.85rem 1rem',
+                borderRadius: '8px',
+                marginTop: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b', fontWeight: 600, fontSize: '0.82rem' }}>
+                  <Shield size={15} />
+                  <span>⚠ Legal Document Expiry Warning</span>
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.5' }}>
+                  The following vehicle document(s) will <strong style={{ color: '#fbbf24' }}>expire during this rental period</strong>. The vehicle may become legally non-compliant mid-trip.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.15rem' }}>
+                  {legalDocConflicts.map((doc: any) => {
+                    const docLabel =
+                      doc.doc_type === 'assurance' ? 'Insurance (Assurance)' :
+                      doc.doc_type === 'visite_technique' ? 'Technical Inspection (Visite)' :
+                      doc.doc_type === 'laissez_passer' ? 'Transport Authorization' :
+                      doc.doc_type || 'Unknown Document'
+                    const expiryFormatted = new Date(doc.expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                    return (
+                      <div key={doc.id} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.45rem 0.7rem',
+                        background: 'rgba(245,158,11,0.06)',
+                        border: '1px solid rgba(245,158,11,0.15)',
+                        borderRadius: '6px',
+                      }}>
+                        <span style={{ fontSize: '0.78rem', color: '#fff', fontWeight: 500 }}>
+                          📄 {docLabel}
+                        </span>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          color: '#fbbf24',
+                          background: 'rgba(245,158,11,0.1)',
+                          padding: '0.15rem 0.45rem',
+                          borderRadius: '4px',
+                        }}>
+                          Expires {expiryFormatted}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* ── SECTION 3: VEHICLE CONDITION ── */}
+          {/* ── SECTION 3: VEHICLE CONDITION (PICKUP ONLY) ── */}
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <Gauge size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Vehicle Condition</span>
+              <span style={sectionTitleStyle}>Vehicle Condition (Pickup State)</span>
             </div>
-            <div style={grid4Style}>
+            <div style={grid3Style}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}><Gauge size={11} /> Starting km</label>
                 <input
                   type="number"
-                  name="starting_mileage"
-                  value={startingMileage}
-                  onChange={(e) => setStartingMileage(e.target.value)}
+                  name="starting_km"
+                  value={startingKm}
+                  onChange={(e) => setStartingKm(e.target.value)}
                   min="0"
+                  required
                   className="form-input"
                   style={{ margin: 0 }}
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Fuel size={11} /> Fuel (Pickup)</label>
+                <label style={labelStyle}><Fuel size={11} /> Fuel Level (Pickup)</label>
                 <select name="fuel_level_pickup" value={fuelLevelPickup} onChange={(e) => setFuelLevelPickup(e.target.value)} className="form-input" style={{ margin: 0 }}>
                   <option value="Empty">Empty</option>
                   <option value="1/4">1/4</option>
@@ -511,25 +621,11 @@ export default function BookingFormModal({
                 </select>
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Gauge size={11} /> Return km</label>
-                <input
-                  type="number"
-                  name="return_mileage"
-                  value={returnMileage}
-                  onChange={(e) => setReturnMileage(e.target.value)}
-                  min="0"
-                  className="form-input"
-                  style={{ margin: 0 }}
-                />
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Fuel size={11} /> Fuel (Return)</label>
-                <select name="fuel_level_return" value={fuelLevelReturn} onChange={(e) => setFuelLevelReturn(e.target.value)} className="form-input" style={{ margin: 0 }}>
-                  <option value="Empty">Empty</option>
-                  <option value="1/4">1/4</option>
-                  <option value="1/2">1/2</option>
-                  <option value="3/4">3/4</option>
-                  <option value="Full">Full</option>
+                <label style={labelStyle}><Fuel size={11} /> Lavage (Pickup)</label>
+                <select name="lavage_pickup" value={lavagePickup} onChange={(e) => setLavagePickup(e.target.value)} className="form-input" style={{ margin: 0 }}>
+                  <option value="clean_wash">Clean Wash (Lavage jdid)</option>
+                  <option value="average_dust">Average (3adiya/feha 8abra)</option>
+                  <option value="dirty">Dirty (Mas5a)</option>
                 </select>
               </div>
             </div>
@@ -597,44 +693,13 @@ export default function BookingFormModal({
             </div>
           </div>
 
-          {/* ── SECTION 5: DEPOSIT & FINANCIALS ── */}
+          {/* ── SECTION 5: FINANCIALS ── */}
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
-              <Shield size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Security Deposit &amp; Financials</span>
+              <DollarSign size={14} style={{ color: '#ae9260' }} />
+              <span style={sectionTitleStyle}>Financials</span>
             </div>
             <div style={grid3Style}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Shield size={11} /> Deposit Amount (DT)</label>
-                <input
-                  type="number"
-                  name="deposit_amount"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  min="0"
-                  className="form-input"
-                  placeholder="e.g. 1000"
-                  style={{ margin: 0 }}
-                />
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}>Deposit Type</label>
-                <select name="deposit_type" value={depositType} onChange={(e) => setDepositType(e.target.value)} className="form-input" style={{ margin: 0 }}>
-                  <option value="Cash">Cash</option>
-                  <option value="Check">Check</option>
-                </select>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}>Deposit Status</label>
-                <select name="deposit_status" value={depositStatus} onChange={(e) => setDepositStatus(e.target.value)} className="form-input" style={{ margin: 0 }}>
-                  <option value="Held">Held</option>
-                  <option value="Returned">Returned</option>
-                  <option value="Forfeited">Forfeited</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ ...grid2Style, marginTop: '0.85rem' }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}><DollarSign size={11} /> Total Amount (DT)</label>
                 <input
@@ -650,6 +715,233 @@ export default function BookingFormModal({
                   style={{ margin: 0 }}
                 />
               </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}><DollarSign size={11} /> Acompte Paid (DT)</label>
+                <input
+                  type="number"
+                  name="acompte_paid"
+                  value={acomptePaid}
+                  onChange={(e) => setAcomptePaid(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  className="form-input"
+                  style={{ margin: 0 }}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}><FileText size={11} /> Rental Days</label>
+                <input
+                  type="text"
+                  name="rental_days_text"
+                  value={rentalDaysText}
+                  readOnly
+                  placeholder="Auto-calculated"
+                  className="form-input"
+                  style={{ margin: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'not-allowed' }}
+                />
+              </div>
+            </div>
+
+            {/* ── INSTALLMENTS SCHEDULER ── */}
+            <div style={{
+              marginTop: '1.25rem',
+              paddingTop: '1.25rem',
+              borderTop: '1px solid rgba(229,193,125,0.12)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#ae9260', display: 'flex', alignItems: 'center', gap: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <Coins size={13} /> Tranches de Paiement
+                  </h4>
+                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.68rem', color: 'var(--text-muted)' }}>Split the remaining contract balance into scheduled dates.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultAmount = remainingToSchedule > 0 ? Number(remainingToSchedule.toFixed(2)) : 0
+                    const defaultDate = endDate || new Date().toISOString().split('T')[0]
+                    setInstallments([...installments, { amount: defaultAmount, due_date: defaultDate, status: 'unpaid' }])
+                  }}
+                  className="btn-secondary"
+                  style={{
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.7rem',
+                    height: 'auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    borderColor: 'rgba(229,193,125,0.3)',
+                    color: '#ae9260',
+                    background: 'rgba(174,146,96,0.05)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Plus size={12} /> Add Tranche
+                </button>
+              </div>
+
+              {/* Live Status Tracker */}
+              <div style={{
+                background: 'rgba(255,255,255,0.01)',
+                border: '1px solid rgba(229,193,125,0.06)',
+                borderRadius: '8px',
+                padding: '0.65rem 0.85rem',
+                marginBottom: '0.85rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.5rem'
+              }}>
+                <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Advance: </span>
+                    <strong style={{ color: '#fff' }}>{parsedAcompte} DT</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Tranches Sum: </span>
+                    <strong style={{ color: '#fff' }}>{installmentsSum.toFixed(2)} DT</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Scheduled Total: </span>
+                    <strong style={{ color: '#fff' }}>{(parsedAcompte + installmentsSum).toFixed(2)} / {parsedTotal.toFixed(2)} DT</strong>
+                  </div>
+                </div>
+
+                {installments.length > 0 && (
+                  <div>
+                    {Math.abs(remainingToSchedule) < 0.05 ? (
+                      <span style={{ fontSize: '0.7rem', color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ fontSize: '0.8rem' }}>✓</span> Fully Scheduled
+                      </span>
+                    ) : remainingToSchedule > 0 ? (
+                      <span style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(245,158,11,0.08)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>
+                        ⚠️ {remainingToSchedule.toFixed(2)} DT remaining
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239,68,68,0.08)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>
+                        🚨 Over-allocated by {Math.abs(remainingToSchedule).toFixed(2)} DT
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Installment Rows */}
+              {installments.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '1.25rem',
+                  background: 'rgba(255,255,255,0.01)',
+                  border: '1px dashed rgba(229,193,125,0.1)',
+                  borderRadius: '8px',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.72rem'
+                }}>
+                  No scheduled tranches. Booking operates on a standard total balance ledger.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {installments.map((inst, index) => (
+                    <div key={index} style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1.2fr 1.2fr 1fr 40px',
+                      gap: '0.6rem',
+                      alignItems: 'center',
+                      background: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(229,193,125,0.05)',
+                      padding: '0.5rem 0.6rem',
+                      borderRadius: '8px'
+                    }}>
+                      <div>
+                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>Montant (DT)</label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            value={inst.amount === 0 ? '' : inst.amount}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0
+                              const updated = [...installments]
+                              updated[index].amount = val
+                              setInstallments(updated)
+                            }}
+                            placeholder="Amount in DT"
+                            min="0"
+                            step="0.01"
+                            required
+                            className="form-input"
+                            style={{ margin: 0, paddingRight: '1.5rem' }}
+                          />
+                          <span style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.65rem', color: 'var(--text-muted)' }}>DT</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>Due Date</label>
+                        <input
+                          type="date"
+                          value={inst.due_date ? inst.due_date.split('T')[0] : ''}
+                          onChange={(e) => {
+                            const updated = [...installments]
+                            updated[index].due_date = e.target.value
+                            setInstallments(updated)
+                          }}
+                          required
+                          onClick={(e) => { try { e.currentTarget.showPicker() } catch {} }}
+                          className="form-input"
+                          style={{ margin: 0 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>Status</label>
+                        <select
+                          value={inst.status}
+                          onChange={(e) => {
+                            const updated = [...installments]
+                            updated[index].status = e.target.value as 'paid' | 'unpaid'
+                            setInstallments(updated)
+                          }}
+                          className="form-input"
+                          style={{ margin: 0 }}
+                        >
+                          <option value="unpaid">❌ Unpaid</option>
+                          <option value="paid">✅ Paid</option>
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'center', height: '100%', alignItems: 'flex-end', paddingBottom: '2px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = installments.filter((_, idx) => idx !== index)
+                            setInstallments(updated)
+                          }}
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            background: 'rgba(239, 68, 68, 0.05)',
+                            color: '#f87171',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          title="Delete Tranche"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ ...grid2Style, marginTop: '0.85rem' }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>Booking Status</label>
                 <select name="status" className="form-input" defaultValue={editingBooking?.status || 'confirmed'} style={{ margin: 0 }}>

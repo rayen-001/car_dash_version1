@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Calendar, Plus, CheckCircle, XCircle, Receipt, FileText, Edit, Search } from 'lucide-react'
+import { Calendar, Plus, CheckCircle, XCircle, Receipt, FileText, Edit, Search, ShieldCheck } from 'lucide-react'
 import { updateBookingStatus } from '@/app/actions'
 import { Booking, Vehicle, Client, BusinessSettings } from '@/types'
 import { useToast } from '@/components/Toast'
@@ -15,12 +15,14 @@ export default function BookingsClient({
   initialBookings, 
   vehicles, 
   clients,
-  businessSettings 
+  businessSettings,
+  vehicleLegalDocs = []
 }: { 
   initialBookings: Booking[], 
   vehicles: Vehicle[], 
   clients: Client[],
-  businessSettings: BusinessSettings 
+  businessSettings: BusinessSettings,
+  vehicleLegalDocs?: any[]
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null)
@@ -224,7 +226,6 @@ export default function BookingsClient({
                 <th>Dates</th>
                 <th>Amount</th>
                 <th>Payment</th>
-                <th>Deposit</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -255,20 +256,12 @@ export default function BookingsClient({
                         {booking.payment_status || 'Unpaid'}
                       </Badge>
                     </td>
-                    <td>
-                      {booking.deposit_amount && booking.deposit_amount > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          <span className="text-xs fw-600">{booking.deposit_amount} {businessSettings.currency || 'DT'}</span>
-                          <Badge variant={getDepositVariant(booking.deposit_status)} className="text-xxs">
-                            {booking.deposit_status || 'Held'}
-                          </Badge>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted">No Deposit</span>
-                      )}
-                    </td>
+
                     <td>
                       <span className={`status-badge ${booking.status?.toLowerCase()}`}>
+                        {booking.status?.toLowerCase() === 'completed' && (
+                          <ShieldCheck size={12} style={{ fill: 'rgba(229, 193, 125, 0.15)', marginRight: '0.25rem' }} />
+                        )}
                         {booking.status}
                       </span>
                     </td>
@@ -299,7 +292,7 @@ export default function BookingsClient({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="text-center py-4">
+                  <td colSpan={7} className="text-center py-4">
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '4rem 0' }}>
                       <div style={{ 
                         background: 'rgba(212, 180, 106, 0.03)', 
@@ -335,6 +328,7 @@ export default function BookingsClient({
         vehicles={vehicles}
         clients={clients}
         initialBookings={initialBookings}
+        vehicleLegalDocs={vehicleLegalDocs}
         onClose={() => setIsFormOpen(false)}
       />
 

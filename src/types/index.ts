@@ -20,6 +20,11 @@ export interface Client {
   email?: string | null
   phone: string
   license_number?: string | null
+  trust_score?: number | null
+  date_naissance?: string
+  cin_delivre_le?: string
+  permis_numero?: string
+  permis_delivre_le?: string
   created_at?: string
 }
 
@@ -47,13 +52,24 @@ export interface Booking {
     brand: string
     model: string
     year: number
+    license_plate?: string
   }
+
+  // Condition checklist & temporal parameters
+  lavage_pickup?: string
+  lavage_return?: string
+  client_behavior_status?: string | null
+  damage_notes?: string
+  acompte_paid?: number
+  rental_days_text?: string
+  starting_km?: number | null
+  return_km?: number | null
 
   // Contract Details
   fuel_level_pickup?: string
   fuel_level_return?: string
-  starting_mileage?: number
-  return_mileage?: number
+  starting_mileage?: number | null
+  return_mileage?: number | null
   
   // Legal Snapshots & Times
   client_phone?: string
@@ -68,6 +84,18 @@ export interface Booking {
   deposit_type?: string
   deposit_status?: string
   
+  actual_return_date?: string
+  installments?: Installment[]
+  created_at?: string
+}
+
+export interface Installment {
+  id: string
+  booking_id: string
+  amount: number
+  due_date: string
+  status: 'unpaid' | 'paid'
+  paid_date?: string | null
   created_at?: string
 }
 

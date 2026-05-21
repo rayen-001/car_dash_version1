@@ -22,7 +22,8 @@ export default async function BookingsPage() {
     .from('bookings')
     .select(`
       *,
-      vehicles (brand, model, license_plate)
+      vehicles (brand, model, license_plate),
+      installments:booking_installments(*)
     `)
     .eq('owner_id', user.id)
     .order('created_at', { ascending: false })
@@ -40,6 +41,12 @@ export default async function BookingsPage() {
     .eq('owner_id', user.id)
     .order('full_name')
 
+  // Fetch vehicle legal documents for expiry collision warnings
+  const { data: vehicleLegalDocs } = await supabase
+    .from('vehicle_legal_docs')
+    .select('*')
+    .eq('owner_id', user.id)
+
   const settings = await getBusinessSettings()
 
   return (
@@ -47,7 +54,8 @@ export default async function BookingsPage() {
       initialBookings={bookings || []} 
       vehicles={vehicles || []} 
       clients={clients || []}
-      businessSettings={settings} 
+      businessSettings={settings}
+      vehicleLegalDocs={vehicleLegalDocs || []}
     />
   )
 }

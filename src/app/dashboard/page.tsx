@@ -15,10 +15,29 @@ export default async function OwnerDashboardPage() {
 
   const fleetSize = vehicles?.length || 0
 
-  // Fetch Bookings with Vehicle details
+  // Fetch Legal Docs
+  const { data: vehicleLegalDocs } = await supabase
+    .from('vehicle_legal_docs')
+    .select('*')
+    .eq('owner_id', user.id)
+
+  // Fetch Bookings with full omni-search fields
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('*, vehicles(brand, model)')
+    .select(`
+      *,
+      vehicles(id, brand, model, license_plate, price_per_day),
+      clients(
+        id,
+        full_name, phone, license_number,
+        trust_score,
+        date_naissance, cin_delivre_le,
+        permis_numero, permis_delivre_le
+      ),
+      installments:booking_installments(
+        id, amount, due_date, status, paid_date
+      )
+    `)
     .eq('owner_id', user.id)
     .order('created_at', { ascending: false })
 
@@ -31,10 +50,15 @@ export default async function OwnerDashboardPage() {
   const dayStr = String(todayObj.getDate()).padStart(2, '0')
   const today = `${year}-${monthStr}-${dayStr}`
 
+  const PAID_STATUSES = ['confirmed', 'completed']
+
   if (bookings) {
     bookings.forEach((booking) => {
-      if (booking.status === 'confirmed') {
-        revenue += booking.total_amount || 0
+      const status = (booking.status || '').toLowerCase()
+      if (PAID_STATUSES.includes(status)) {
+        // Aggregate total revenue from all paid bookings
+        revenue += Number(booking.total_amount) || 0
+        // Active = currently within the rental date window
         if (booking.start_date <= today && booking.end_date >= today) {
           activeRentals++
         }
@@ -45,7 +69,7 @@ export default async function OwnerDashboardPage() {
   // Fetch Expenses
   const { data: expenses } = await supabase
     .from('expenses')
-    .select('amount')
+    .select('id, amount, category, description, created_at')
     .eq('owner_id', user.id)
 
   let totalExpenses = 0
@@ -58,7 +82,7 @@ export default async function OwnerDashboardPage() {
   // Fetch Maintenance Costs
   const { data: maintenance } = await supabase
     .from('maintenance')
-    .select('cost')
+    .select('id, cost, service_date, description, created_at')
     .eq('owner_id', user.id)
 
   if (maintenance) {
@@ -84,6 +108,9 @@ export default async function OwnerDashboardPage() {
       recentBookings={recentBookings}
       vehicles={vehicles || []}
       allBookings={bookings || []}
+      vehicleLegalDocs={vehicleLegalDocs || []}
+      expenses={expenses || []}
+      maintenance={maintenance || []}
     />
   )
 }

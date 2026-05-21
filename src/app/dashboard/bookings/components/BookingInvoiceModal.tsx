@@ -17,7 +17,9 @@ export default function BookingInvoiceModal({
   const start = new Date(booking.start_date)
   const end = new Date(booking.end_date)
   const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
-  const calculatedDiffMileage = Math.max(0, (booking.return_mileage || 0) - (booking.starting_mileage || 0))
+  const calculatedDiffMileage = booking.return_mileage !== undefined && booking.return_mileage !== null 
+    ? Math.max(0, booking.return_mileage - (booking.starting_mileage || 0)) 
+    : null
   const statusLower = booking.status?.toLowerCase()
 
   return (
@@ -154,9 +156,9 @@ export default function BookingInvoiceModal({
                       <Gauge size={12} style={{ color: '#ca8a04' }} />
                       <span>Odometer Logs</span>
                     </div>
-                    <div style={{ color: '#475569' }}>Start: <strong style={{ color: '#0f172a' }}>{booking.starting_mileage || 0} km</strong></div>
-                    <div style={{ color: '#475569' }}>Return: <strong style={{ color: '#0f172a' }}>{booking.return_mileage || 0} km</strong></div>
-                    <div style={{ color: '#16a34a', fontSize: '0.7rem', marginTop: '0.15rem', fontWeight: 700 }}>Driven: {calculatedDiffMileage} km</div>
+                    <div style={{ color: '#475569' }}>Start: <strong style={{ color: '#0f172a' }}>{booking.starting_mileage ?? 0} km</strong></div>
+                    <div style={{ color: '#475569' }}>Return: <strong style={{ color: '#0f172a' }}>{booking.return_mileage !== undefined && booking.return_mileage !== null ? `${booking.return_mileage} km` : '-- km'}</strong></div>
+                    <div style={{ color: '#16a34a', fontSize: '0.7rem', marginTop: '0.15rem', fontWeight: 700 }}>Driven: {calculatedDiffMileage !== null ? `${calculatedDiffMileage} km` : '-- km'}</div>
                   </div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#0f172a', marginBottom: '0.35rem', fontWeight: 700 }}>
