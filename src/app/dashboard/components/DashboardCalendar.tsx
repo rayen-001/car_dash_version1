@@ -182,7 +182,9 @@ export default function DashboardCalendar({ vehicles = [], allBookings = [] }: {
                     <div key={idx} className={styles['inspector-booking-card']}>
                       <div className={styles['card-header']}>
                         <span className={styles['vehicle-tag']}>🚗 {b.vehicles?.brand} {b.vehicles?.model}</span>
-                        <span className={styles['status-label']}>{b.status}</span>
+                        <span className={`status-badge ${b.status?.toLowerCase()}`}>
+                          {b.status}
+                        </span>
                       </div>
                       <div className={styles['card-body']}>
                         <p><strong>Client:</strong> {b.client_name}</p>
