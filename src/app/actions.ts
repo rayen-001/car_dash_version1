@@ -275,12 +275,23 @@ export async function recalculateClientTrustScore(clientId: string) {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-  // Helper to get day difference between two YYYY-MM-DD strings
-  const getDaysDiff = (d1Str: string, d2Str: string): number => {
-    const d1 = new Date(d1Str.split('T')[0] + 'T00:00:00')
-    const d2 = new Date(d2Str.split('T')[0] + 'T00:00:00')
-    const diffTime = d2.getTime() - d1.getTime()
-    return Math.round(diffTime / (1000 * 60 * 60 * 24))
+  // Helper to get day difference between two YYYY-MM-DD strings safely
+  const getDaysDiff = (d1Str: string | null | undefined, d2Str: string | null | undefined): number => {
+    if (!d1Str || !d2Str) return 0
+    try {
+      const parts1 = d1Str.split('T')[0].split('-')
+      const parts2 = d2Str.split('T')[0].split('-')
+      if (parts1.length < 3 || parts2.length < 3) return 0
+      
+      const d1 = new Date(Number(parts1[0]), Number(parts1[1]) - 1, Number(parts1[2]))
+      const d2 = new Date(Number(parts2[0]), Number(parts2[1]) - 1, Number(parts2[2]))
+      
+      if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 0
+      const diffTime = d2.getTime() - d1.getTime()
+      return Math.round(diffTime / (1000 * 60 * 60 * 24))
+    } catch {
+      return 0
+    }
   }
 
   let returnHygiene = 100
@@ -359,7 +370,7 @@ export async function recalculateClientTrustScore(clientId: string) {
     }
 
     // Apply Client Behavior Status penalties with linear time-decay (90-day window)
-    if (b.client_behavior_status) {
+    if (b.client_behavior_status && typeof b.client_behavior_status === 'string') {
       const infractions = b.client_behavior_status.split(',').map((s: string) => s.trim()).filter(Boolean);
       
       infractions.forEach((infraction: string) => {

@@ -40,13 +40,17 @@ export default function QuickEditBookingModal({
   const [mounted, setMounted] = useState(false)
 
   // Resolve daily price rate (fallback sequence: prop -> nested query -> default 0)
-  const pricePerDay = vehiclePricePerDay ?? booking?.vehicles?.price_per_day ?? 0
+  const rawPrice = vehiclePricePerDay !== undefined && vehiclePricePerDay !== null
+    ? vehiclePricePerDay
+    : (booking?.vehicles?.price_per_day ?? 0)
+  const pricePerDay = typeof rawPrice === 'number' && !isNaN(rawPrice) ? rawPrice : parseFloat(rawPrice as any) || 0
 
   // Calculate rental days helper
   const getRentalDays = () => {
     if (!booking?.start_date || !booking?.end_date) return 1
     const start = new Date(booking.start_date)
     const end = new Date(booking.end_date)
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1
     const diffTime = Math.abs(end.getTime() - start.getTime())
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1
   }
@@ -80,18 +84,14 @@ export default function QuickEditBookingModal({
       setFuelLevelReturn(booking.fuel_level_return || 'Full')
       setLavageReturn(booking.lavage_return || 'clean_wash')
       
-      const initialBehaviors = booking.client_behavior_status
+      const initialBehaviors = booking.client_behavior_status && typeof booking.client_behavior_status === 'string'
         ? booking.client_behavior_status.split(',').map(s => s.trim()).filter(Boolean)
         : ['clean']
       setActiveBehaviors(initialBehaviors)
 
       const initialFees: Record<string, string> = {}
       initialBehaviors.forEach(b => {
-        if (b === 'minor_damage') {
-          initialFees[b] = '100'
-        } else {
-          initialFees[b] = '0'
-        }
+        initialFees[b] = '0'
       })
       setBehaviorFees(initialFees)
 
@@ -116,13 +116,25 @@ export default function QuickEditBookingModal({
     let total = 0
     activeBehaviors.forEach(b => {
       if (b !== 'clean') {
-        const fee = parseFloat(behaviorFees[b] || '0')
-        if (!isNaN(fee)) {
-          total += fee
+        const val = behaviorFees[b]
+        let fee = 0
+        if (typeof val === 'number') {
+          fee = val
+        } else if (typeof val === 'string' && val.trim() !== '') {
+          const parsed = parseFloat(val.trim())
+          fee = !isNaN(parsed) ? parsed : 0
         }
+        total += fee
       }
     })
-    setIncidentPenalties(total > 0 ? total.toFixed(2) : '')
+    
+    // If we have any active infractions, display the total (even if it's 0)
+    const hasInfractions = activeBehaviors.some(b => b !== 'clean')
+    if (hasInfractions) {
+      setIncidentPenalties(total.toFixed(2))
+    } else {
+      setIncidentPenalties('')
+    }
   }, [activeBehaviors, behaviorFees])
 
   useEffect(() => {
@@ -133,28 +145,42 @@ export default function QuickEditBookingModal({
 
   // Calculate extension & ledger details
   const safeEndDate   = booking.end_date   ?? ''
-  const safeTotalAmt  = booking.total_amount ?? 0
-  const penaltyVal    = incidentPenalties ? parseFloat(incidentPenalties) : 0
-  const collectVal    = amountCollectedNow ? parseFloat(amountCollectedNow) : 0
+  const safeTotalAmt  = typeof booking.total_amount === 'number' && !isNaN(booking.total_amount)
+    ? booking.total_amount
+    : parseFloat(booking.total_amount as any) || 0
+
+  const safeAcomptePaid = typeof booking.acompte_paid === 'number' && !isNaN(booking.acompte_paid)
+    ? booking.acompte_paid
+    : parseFloat(booking.acompte_paid as any) || 0
+
+  const parsedPenalty = parseFloat(incidentPenalties)
+  const penaltyVal    = !isNaN(parsedPenalty) ? parsedPenalty : 0
+
+  const parsedCollect = parseFloat(amountCollectedNow)
+  const collectVal    = !isNaN(parsedCollect) ? parsedCollect : 0
 
   let deltaDays = 0
   let extraCost = 0
   let newRentalDaysText = booking.rental_days_text || ''
 
-  if (extensionDate && safeEndDate) {
+  if (extensionDate && typeof extensionDate === 'string' && safeEndDate && typeof safeEndDate === 'string') {
     const origDateStr = safeEndDate.split('T')[0]
     const extDateStr = extensionDate.split('T')[0]
     
     if (origDateStr !== extDateStr) {
       const origMidnight = new Date(`${origDateStr}T00:00:00`)
       const extMidnight = new Date(`${extDateStr}T00:00:00`)
-      const deltaMs = extMidnight.getTime() - origMidnight.getTime()
-      deltaDays = Math.round(deltaMs / (1000 * 60 * 60 * 24))
+      if (!isNaN(origMidnight.getTime()) && !isNaN(extMidnight.getTime())) {
+        const deltaMs = extMidnight.getTime() - origMidnight.getTime()
+        deltaDays = Math.round(deltaMs / (1000 * 60 * 60 * 24))
+      }
     } else {
       deltaDays = 0
     }
 
-    extraCost = deltaDays * pricePerDay
+    if (!isNaN(deltaDays)) {
+      extraCost = deltaDays * pricePerDay
+    }
 
     // Compute new adjustment text format: e.g. "4+2" or "4-1"
     const baseDays = booking.rental_days_text || ''
@@ -169,7 +195,7 @@ export default function QuickEditBookingModal({
 
   // Real-time Dynamic Financial Ledger Recalculations
   const finalTotalAmount = Math.max(0, safeTotalAmt + extraCost + penaltyVal)
-  const finalAcomptePaid = (booking.acompte_paid ?? 0) + collectVal
+  const finalAcomptePaid = safeAcomptePaid + collectVal
   const finalReste = Math.max(0, finalTotalAmount - finalAcomptePaid)
   const refundAmount = finalAcomptePaid > finalTotalAmount ? finalAcomptePaid - finalTotalAmount : 0
 
@@ -178,7 +204,9 @@ export default function QuickEditBookingModal({
     setError(null)
 
     // Validation: Return KM must be greater than or equal to starting KM (if defined)
-    const retKmVal = returnKm ? parseInt(returnKm, 10) : null
+    const parsedKm = returnKm ? parseInt(returnKm, 10) : null
+    const retKmVal = parsedKm !== null && !isNaN(parsedKm) ? parsedKm : null
+    
     if (retKmVal !== null && booking.starting_km !== undefined && booking.starting_km !== null) {
       if (retKmVal < booking.starting_km) {
         setError(`Return KM (${retKmVal}) cannot be less than Starting KM (${booking.starting_km}).`)
@@ -244,11 +272,11 @@ export default function QuickEditBookingModal({
           return_km: suggested,
           fuel_level_return: 'Full',
           lavage_return: 'clean_wash',
-          client_behavior_status: 'excellent',
+          client_behavior_status: 'clean',
           damage_notes: damageNotes ? `${damageNotes}\n[Perfect normal return. Fast closed by system.]` : 'Perfect normal return. Fast closed by system.',
           status: 'completed',
-          total_amount: booking.total_amount ?? 0,
-          acompte_paid: booking.acompte_paid ?? 0,
+          total_amount: safeTotalAmt,
+          acompte_paid: safeAcomptePaid,
           amount_collected_now: 0,
           incident_penalties: 0,
         }
@@ -286,8 +314,8 @@ export default function QuickEditBookingModal({
         if (isCurrentlyActive) {
           delete next[val]
         } else {
-          // Initialize minor_damage to '100' default, others to '0'
-          next[val] = val === 'minor_damage' ? '100' : '0'
+          // Initialize all behavior custom fees to '0' by default
+          next[val] = '0'
         }
         return next
       })
@@ -757,7 +785,7 @@ export default function QuickEditBookingModal({
                             type="number" 
                             min="0" 
                             placeholder="0"
-                            value={behaviorFees[opt.value] || ''}
+                            value={behaviorFees[opt.value] !== undefined && behaviorFees[opt.value] !== null ? behaviorFees[opt.value] : ''}
                             onChange={(e) => handleFeeChange(opt.value, e.target.value)}
                             style={{
                               flex: '1',
