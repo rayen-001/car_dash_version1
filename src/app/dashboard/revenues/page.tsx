@@ -1,16 +1,16 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { getBusinessSettings } from '@/app/actions'
-import ExpensesClient from './ExpensesClient'
+import RevenuesClient from './RevenuesClient'
 
-export default async function ExpensesPage() {
+export default async function RevenuesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   // Parallel fan-out: every read is independently scoped to the active tenant
   // via .eq('owner_id', user.id) so isolation is preserved per-query.
-  const [expensesRes, maintenanceRes, bookingsRes, vehiclesRes, legalDocsRes, clientsRes, settings] = await Promise.all([
+  const [expensesRes, maintenanceRes, bookingsRes, vehiclesRes, legalDocsRes, settings] = await Promise.all([
     supabase
       .from('expenses')
       .select('*, vehicles(brand, model, license_plate)')
@@ -64,21 +64,15 @@ export default async function ExpensesPage() {
       .select('vehicle_id, doc_type, expiry_date')
       .eq('owner_id', user.id)
       .eq('doc_type', 'assurance'),
-    supabase
-      .from('clients')
-      .select('id, full_name, cin, phone')
-      .eq('owner_id', user.id)
-      .order('full_name', { ascending: true }),
     getBusinessSettings(),
   ])
 
   return (
-    <ExpensesClient
+    <RevenuesClient
       initialExpenses={expensesRes.data || []}
       initialMaintenance={maintenanceRes.data || []}
       initialBookings={bookingsRes.data || []}
       vehicles={vehiclesRes.data || []}
-      clients={clientsRes.data || []}
       businessSettings={settings}
       legalDocs={legalDocsRes.data || []}
     />

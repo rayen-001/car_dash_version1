@@ -1,126 +1,101 @@
-import { Coins, TrendingDown, Wallet, Car, Key } from 'lucide-react'
+import { TrendingDown, TrendingUp, AlertOctagon, Car, Wallet } from 'lucide-react'
+import Link from 'next/link'
 import styles from '../dashboard.module.css'
 
 interface DashboardStatsProps {
   stats: {
-    revenue: number
-    totalExpenses: number
-    realRevenue: number
+    revenueYTD: number
+    expensesYTD: number
+    netProfitYTD: number
     fleetSize: number
     activeRentals: number
     utilizationRate: number
+    outstandingLiabilities: number
+    riskSignalsCount: number
+    targetYear: number
   }
-  allBookings?: any[]
 }
 
-export default function DashboardStats({ stats, allBookings = [] }: DashboardStatsProps) {
-  const now = new Date()
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
-
-  const PAID_STATUSES = ['confirmed', 'completed']
-
-  // This month's paid bookings
-  const thisMonthBookings = allBookings.filter(b => {
-    const d = new Date(b.start_date)
-    return d >= thisMonthStart && PAID_STATUSES.includes((b.status || '').toLowerCase())
-  })
-
-  // Last month's paid bookings
-  const lastMonthBookings = allBookings.filter(b => {
-    const d = new Date(b.start_date)
-    return d >= lastMonthStart && d <= lastMonthEnd && PAID_STATUSES.includes((b.status || '').toLowerCase())
-  })
-
-  const thisMonthRev = thisMonthBookings.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
-  const lastMonthRev = lastMonthBookings.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
-
-  let revDelta = 0
-  if (lastMonthRev > 0) {
-    revDelta = ((thisMonthRev - lastMonthRev) / lastMonthRev) * 100
-  } else if (thisMonthRev > 0) {
-    revDelta = 100
-  }
-
-  // Active Rentals count delta
-  const thisMonthActiveCount = thisMonthBookings.length
-  const lastMonthActiveCount = lastMonthBookings.length
-  let activeDelta = 0
-  if (lastMonthActiveCount > 0) {
-    activeDelta = ((thisMonthActiveCount - lastMonthActiveCount) / lastMonthActiveCount) * 100
-  } else if (thisMonthActiveCount > 0) {
-    activeDelta = 100
-  }
-
-  const formatDelta = (val: number) => {
-    if (val === 0) return '0% vs last month'
-    const sign = val > 0 ? '↑' : '↓'
-    return `${sign} ${Math.abs(val).toFixed(0)}% vs last month`
-  }
+export default function DashboardStats({ stats }: DashboardStatsProps) {
+  const isNetProfitNegative = stats.netProfitYTD < 0
+  const profitColor = isNetProfitNegative ? '#EF4444' : '#E5C17D'
+  const formattedProfit = Math.abs(stats.netProfitYTD).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+  const profitPrefix = isNetProfitNegative ? '-' : ''
 
   return (
-    <div className={styles['stats-grid']}>
+    <div className={styles['stats-grid']} style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+
+      {/* CARD 1: Net Fleet Profit (Current Year P&L) */}
+      <div className={`${styles['stat-card']} glass-panel`} style={{ position: 'relative', overflow: 'hidden' }}>
+        {isNetProfitNegative && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: '#EF4444', boxShadow: '0 0 15px #EF4444' }} />
+        )}
+        <div className={styles['stat-header']}>
+          <span className={styles['stat-label']}>{stats.targetYear} Net Fleet Profit</span>
+          <span className={styles['stat-icon-wrapper']} style={{ background: isNetProfitNegative ? 'rgba(239,68,68,0.1)' : 'rgba(229,193,125,0.1)' }}>
+            {isNetProfitNegative ? <TrendingDown size={18} style={{ color: '#EF4444' }} /> : <TrendingUp size={18} style={{ color: '#E5C17D' }} />}
+          </span>
+        </div>
+        <div className={styles['stat-value']} style={{ color: profitColor, textShadow: isNetProfitNegative ? '0 0 10px rgba(239,68,68,0.5)' : 'none' }}>
+          {profitPrefix}{formattedProfit} DT
+        </div>
+        <div className={styles['stat-trend']} style={{ color: 'rgba(255,255,255,0.5)' }}>
+          YTD Revenue: {stats.revenueYTD.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} DT
+        </div>
+      </div>
+
+      {/* CARD 2: Real-Time Fleet Utilization Rate */}
       <div className={`${styles['stat-card']} glass-panel`}>
         <div className={styles['stat-header']}>
-          <span className={styles['stat-label']}>Total Revenue</span>
-          <span className={`${styles['stat-icon-wrapper']} ${styles['rev-icon']}`}><Coins size={18} style={{ color: '#ffffff' }} /></span>
+          <span className={styles['stat-label']}>Fleet Utilization</span>
+          <span className={styles['stat-icon-wrapper']} style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <Car size={18} style={{ color: '#ffffff' }} />
+          </span>
         </div>
-        <div className={styles['stat-value']}>DT {stats.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        <div className={`${styles['stat-trend']} ${revDelta >= 0 ? styles['positive'] : styles['negative']}`}>
-          {formatDelta(revDelta)}
+        <div className={styles['stat-value']} style={{ color: '#ffffff' }}>
+          {stats.utilizationRate.toFixed(1)}%
+        </div>
+        <div className={styles['stat-trend']} style={{ color: 'rgba(255,255,255,0.5)' }}>
+          {stats.activeRentals} / {stats.fleetSize} Active Vehicles
         </div>
       </div>
 
+      {/* CARD 3: Cumulative Outstanding Liabilities */}
       <div className={`${styles['stat-card']} glass-panel`}>
         <div className={styles['stat-header']}>
-          <span className={styles['stat-label']}>Total Expenses</span>
-          <span className={`${styles['stat-icon-wrapper']} ${styles['exp-icon']}`}><TrendingDown size={18} style={{ color: '#ffffff' }} /></span>
+          <span className={styles['stat-label']}>Reste Totale (Liabilities)</span>
+          <span className={styles['stat-icon-wrapper']} style={{ background: 'rgba(229,193,125,0.1)' }}>
+            <Wallet size={18} style={{ color: '#E5C17D' }} />
+          </span>
         </div>
-        <div className={styles['stat-value']}>DT {stats.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        {/* Expenses lower is better, show simulated positive trend or static operational info */}
-        <div className={`${styles['stat-trend']} ${styles['positive']}`}>↓ 2% vs last month</div>
-      </div>
-
-      <div className={`${styles['stat-card']} glass-panel`}>
-        <div className={styles['stat-header']}>
-          <span className={styles['stat-label']}>Real Revenue</span>
-          <span className={`${styles['stat-icon-wrapper']} ${styles['real-icon']}`}><Wallet size={18} style={{ color: '#ffffff' }} /></span>
+        <div className={styles['stat-value']} style={{ color: '#E5C17D' }}>
+          {stats.outstandingLiabilities.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} DT
         </div>
-        <div className={styles['stat-value']}>
-          DT {stats.realRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </div>
-        <div className={`${styles['stat-trend']} ${revDelta >= 0 ? styles['positive'] : styles['negative']}`}>
-          {formatDelta(revDelta > 0 ? revDelta * 1.12 : revDelta * 0.88)}
+        <div className={styles['stat-trend']} style={{ color: 'rgba(255,255,255,0.5)' }}>
+          Uncollected tranches & balances
         </div>
       </div>
 
-      <div className={`${styles['stat-card']} glass-panel`}>
-        <div className={styles['stat-header']}>
-          <span className={styles['stat-label']}>Fleet Size</span>
-          <span className={`${styles['stat-icon-wrapper']} ${styles['fleet-icon']}`}><Car size={18} style={{ color: '#ffffff' }} /></span>
+      {/* CARD 4: Pending Fleet Risk Signals */}
+      <Link href="/dashboard/fleet" style={{ textDecoration: 'none' }}>
+        <div className={`${styles['stat-card']} glass-panel`} style={{ cursor: 'pointer', transition: 'all 0.2s', border: stats.riskSignalsCount > 0 ? '1px solid rgba(239,68,68,0.3)' : undefined }}>
+          {stats.riskSignalsCount > 0 && (
+             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: '#EF4444', boxShadow: '0 0 15px #EF4444' }} />
+          )}
+          <div className={styles['stat-header']}>
+            <span className={styles['stat-label']}>Fleet Risk Signals</span>
+            <span className={styles['stat-icon-wrapper']} style={{ background: stats.riskSignalsCount > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)' }}>
+              <AlertOctagon size={18} style={{ color: stats.riskSignalsCount > 0 ? '#EF4444' : '#ffffff' }} />
+            </span>
+          </div>
+          <div className={styles['stat-value']} style={{ color: stats.riskSignalsCount > 0 ? '#EF4444' : '#ffffff' }}>
+            {stats.riskSignalsCount} Active
+          </div>
+          <div className={styles['stat-trend']} style={{ color: 'rgba(255,255,255,0.5)' }}>
+            Click to view compliance alerts
+          </div>
         </div>
-        <div className={styles['stat-value']}>{stats.fleetSize}</div>
-        <div className={styles['stat-trend']}>Stable fleet size</div>
-      </div>
-
-      <div className={`${styles['stat-card']} glass-panel ${styles['active-rentals-card']}`} style={{ overflow: 'visible' }}>
-        <div className={styles['stat-header']}>
-          <span className={styles['stat-label']}>Active Rentals</span>
-          <span className={`${styles['stat-icon-wrapper']} ${styles['active-icon']}`}><Key size={18} style={{ color: '#ffffff' }} /></span>
-        </div>
-        <div className={styles['stat-value']}>{stats.activeRentals}</div>
-        <div className={`${styles['stat-trend']} ${activeDelta >= 0 ? styles['positive'] : styles['negative']}`}>
-          {formatDelta(activeDelta)}
-        </div>
-
-        {/* Decorative luxury plant element matching the image */}
-        <div className={styles['luxury-plant']}>
-          <div className={`${styles['leaf']} ${styles['leaf-1']}`}></div>
-          <div className={`${styles['leaf']} ${styles['leaf-2']}`}></div>
-          <div className={`${styles['leaf']} ${styles['leaf-3']}`}></div>
-        </div>
-      </div>
+      </Link>
     </div>
   )
 }

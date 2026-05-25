@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart,
   Area,
@@ -13,67 +13,93 @@ import {
   Legend
 } from 'recharts'
 import styles from '../dashboard.module.css'
-import TopClients from './TopClients'
 
-export default function DashboardCharts({ recentBookings, allBookings = [] }: { recentBookings: any[], allBookings?: any[] }) {
-  const [chartFilter, setChartFilter] = useState<'weekly' | 'monthly'>('weekly')
+export default function DashboardCharts({
+  allBookings = [],
+  expenses = [],
+  maintenance = []
+}: {
+  recentBookings?: any[],
+  allBookings?: any[],
+  expenses?: any[],
+  maintenance?: any[]
+}) {
+  const [mounted, setMounted] = useState(false)
 
-  const weeklyData = useMemo(() => {
-    const data = []
-    const today = new Date()
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(d.getDate() - i)
-      const dateStr = d.toISOString().split('T')[0]
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' })
-      const dayBookings = allBookings.filter(b => b.created_at?.startsWith(dateStr) && b.status !== 'cancelled')
-      const total = dayBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
-      data.push({ name: dayName, revenue: total })
-    }
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Resolve current calendar year dynamically so the chart never silently
+  // stops filtering after the year rolls over.
+  const currentYear = useMemo(() => new Date().getFullYear(), [])
+  const currentYearPrefix = `${currentYear}-`
+
+  // YTD P&L Data Aggregation
+  const chartDataYTD = useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const data = months.map(m => ({ name: m, inflows: 0, outflows: 0 }))
+
+    const PAID_STATUSES = ['confirmed', 'completed']
+
+    // Aggregate current-year Inflows
+    allBookings.forEach(b => {
+      const status = (b.status || '').toLowerCase()
+      if (PAID_STATUSES.includes(status)) {
+        const bDateStr = b.start_date || b.created_at
+        if (bDateStr && bDateStr.startsWith(currentYearPrefix)) {
+          const d = new Date(bDateStr)
+          const mIndex = d.getMonth()
+          const totalAmount = Number(b.total_amount) || 0
+          data[mIndex].inflows += totalAmount
+        }
+      }
+    })
+
+    // Aggregate current-year Outflows (Expenses)
+    expenses.forEach(e => {
+      const eDateStr = e.created_at
+      if (eDateStr && eDateStr.startsWith(currentYearPrefix)) {
+        const d = new Date(eDateStr)
+        const mIndex = d.getMonth()
+        data[mIndex].outflows += (Number(e.amount) || 0)
+      }
+    })
+
+    // Aggregate current-year Outflows (Maintenance)
+    maintenance.forEach(m => {
+      const mDateStr = m.service_date || m.created_at
+      if (mDateStr && mDateStr.startsWith(currentYearPrefix)) {
+        const d = new Date(mDateStr)
+        const mIndex = d.getMonth()
+        data[mIndex].outflows += (Number(m.cost) || 0)
+      }
+    })
+
     return data
-  }, [allBookings])
-
-  const monthlyData = useMemo(() => {
-    const data = []
-    const today = new Date()
-    for (let i = 3; i >= 0; i--) {
-      const weekStart = new Date(today)
-      weekStart.setDate(today.getDate() - (i * 7 + 6))
-      const weekEnd = new Date(today)
-      weekEnd.setDate(today.getDate() - (i * 7))
-      const weekStartStr = weekStart.toISOString().split('T')[0]
-      const weekEndStr = weekEnd.toISOString().split('T')[0]
-      const weekBookings = allBookings.filter(b => {
-        if (!b.created_at || b.status === 'cancelled') return false
-        const bDate = b.created_at.split('T')[0]
-        return bDate >= weekStartStr && bDate <= weekEndStr
-      })
-      const total = weekBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
-      data.push({ name: `W${4-i}`, revenue: total })
-    }
-    return data
-  }, [allBookings])
-
-  const chartData = chartFilter === 'weekly' ? weeklyData : monthlyData
+  }, [allBookings, expenses, maintenance, currentYearPrefix])
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div style={{
-          background: 'rgba(26, 22, 17, 0.95)',
-          border: '1px solid rgba(229, 193, 125, 0.3)',
-          padding: '8px 12px',
-          borderRadius: '8px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          color: 'var(--text-primary)',
-          fontSize: '0.8rem'
+        <div className="glass-panel" style={{
+          background: 'rgba(10, 8, 7, 0.95)',
+          border: '1px solid rgba(229, 193, 125, 0.2)',
+          padding: '12px 16px',
+          borderRadius: '12px',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.8)'
         }}>
-          <p style={{ margin: '0 0 4px 0', color: 'var(--text-muted)' }}>{label || payload[0].name}</p>
-          <p style={{ margin: 0, fontWeight: 700, color: 'var(--accent-gold)' }}>
-            {payload[0].name === 'Confirmed' || payload[0].name === 'Pending' || payload[0].name === 'Cancelled' ? 
-              `${payload[0].value} Booking(s)` : 
-              `${payload[0].value} DT`}
+          <p style={{ margin: '0 0 8px 0', color: '#E5C17D', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            {currentYear} {label}
           </p>
+          {payload.map((entry: any, index: number) => (
+            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '2rem', marginBottom: '4px' }}>
+              <span style={{ color: entry.color, fontSize: '0.85rem' }}>{entry.name}:</span>
+              <strong style={{ color: entry.color, fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                {entry.value.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} DT
+              </strong>
+            </div>
+          ))}
         </div>
       )
     }
@@ -99,103 +125,101 @@ export default function DashboardCharts({ recentBookings, allBookings = [] }: { 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
       <div className={styles['main-grid']}>
-      <div className={`${styles['chart-section']} glass-panel`}>
-        <div className={styles['section-header']}>
-          <h3>Revenue History</h3>
-          <div className={styles['filters']}>
-            <span className={`${styles['filter']} ${chartFilter === 'weekly' ? styles['active'] : ''}`} onClick={() => setChartFilter('weekly')}>Weekly</span>
-            <span className={`${styles['filter']} ${chartFilter === 'monthly' ? styles['active'] : ''}`} onClick={() => setChartFilter('monthly')}>Monthly</span>
-          </div>
-        </div>
-
-        <div style={{ width: '100%', height: '240px', marginTop: '1.5rem', marginLeft: '-15px' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#C5A059" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#C5A059" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(197, 160, 89, 0.08)" />
-              <XAxis dataKey="name" stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} dy={10} />
-              <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area 
-                type="monotone" 
-                dataKey="revenue" 
-                stroke="#C5A059" 
-                strokeWidth={3}
-                fillOpacity={1} 
-                fill="url(#colorRevenue)" 
-                activeDot={{ r: 6, fill: '#171310', stroke: '#C5A059', strokeWidth: 2 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Pie Chart */}
-      <div className={`${styles['chart-section']} glass-panel`}>
-        <div className={styles['section-header']}>
-          <h3>Booking Status</h3>
-        </div>
-        <div style={{ width: '100%', height: '240px', marginTop: '1.5rem' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
-                paddingAngle={5}
-                dataKey="value"
-                stroke="none"
-              >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                verticalAlign="bottom" 
-                height={36} 
-                iconType="circle" 
-                wrapperStyle={{ fontSize: '0.8rem', color: 'rgba(229, 193, 125, 0.8)' }} 
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
-
-      {/* Row 2: Top Clients & Recent Bookings */}
-      <div className={styles['main-grid']}>
-        <TopClients allBookings={allBookings} />
-
-        <div className={`${styles['recent-activity']} glass-panel`}>
+        {/* Recharts Hydration Guard wrapper */}
+        <div className={`${styles['chart-section']} glass-panel`}>
           <div className={styles['section-header']}>
-            <h3>Recent Bookings</h3>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <h3>{currentYear} P&L Trend Engine</h3>
+              <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                Cumulative Operating Variance
+              </span>
+            </div>
           </div>
-          <div className={styles['activity-list']}>
-            {recentBookings && recentBookings.length > 0 ? (
-              recentBookings.map((item, i) => (
-                <div key={i} className={styles['activity-item']}>
-                  <div className="activity-info">
-                    <div className={styles['client-name']}>{item.client_name}</div>
-                    <div className={styles['car-name']}>{item.vehicles?.brand} {item.vehicles?.model}</div>
-                  </div>
-                  <div className={styles['activity-meta']}>
-                    <span className={`status-badge ${item.status}`}>
-                      {item.status}
-                    </span>
-                    <div className={styles['price']}>DT {item.total_amount}</div>
-                  </div>
-                </div>
-              ))
+
+          <div style={{ width: '100%', height: '280px', marginTop: '1.5rem', marginLeft: '-15px' }}>
+            {mounted ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartDataYTD} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorInflows" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.5}/>
+                      <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorOutflows" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.5}/>
+                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(229, 193, 125, 0.05)" />
+                  <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    name="Inflows"
+                    dataKey="inflows"
+                    stroke="#10B981"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorInflows)"
+                    activeDot={{ r: 6, fill: '#171310', stroke: '#10B981', strokeWidth: 2 }}
+                  />
+                  <Area
+                    type="monotone"
+                    name="Outflows"
+                    dataKey="outflows"
+                    stroke="#EF4444"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorOutflows)"
+                    activeDot={{ r: 6, fill: '#171310', stroke: '#EF4444', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             ) : (
-              <div className="text-center py-4 text-muted">No bookings logged yet.</div>
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: 'var(--accent-gold)' }}>Loading {currentYear} Engine...</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Pie Chart */}
+        <div className={`${styles['chart-section']} glass-panel`}>
+          <div className={styles['section-header']}>
+            <h3>Booking Status</h3>
+          </div>
+          <div style={{ width: '100%', height: '240px', marginTop: '1.5rem' }}>
+            {mounted ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={5}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    wrapperStyle={{ fontSize: '0.8rem', color: 'rgba(229, 193, 125, 0.8)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: 'var(--accent-gold)' }}>Loading...</span>
+              </div>
             )}
           </div>
         </div>

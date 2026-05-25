@@ -40,14 +40,20 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user) {
-    // Check role from profiles
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+    // Read role from JWT user_metadata first (set at user creation in actions/admin.ts).
+    // Only fall back to the profiles table for legacy accounts created before the metadata
+    // was wired, which eliminates the per-request DB round-trip for everyone else.
+    let role = (user.user_metadata?.role as string | undefined)
+      || (user.app_metadata?.role as string | undefined)
 
-    const role = profile?.role || 'owner'
+    if (!role) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      role = profile?.role || 'owner'
+    }
 
     if (path.startsWith('/admin') && role !== 'admin') {
       const url = request.nextUrl.clone()

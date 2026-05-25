@@ -8,16 +8,20 @@ import DashboardCharts from './components/DashboardCharts'
 import TodayOperations from './components/TodayOperations'
 import AlertStrip from './components/AlertStrip'
 import GlobalCommandSearch from './components/GlobalCommandSearch'
+import FleetPerformanceMatrix from './components/FleetPerformanceMatrix'
 import { Landmark, ArrowDownRight, ArrowUpRight, ShieldCheck } from 'lucide-react'
 
 interface DashboardClientProps {
   stats: {
-    revenue: number
-    totalExpenses: number
-    realRevenue: number
+    revenueYTD: number
+    expensesYTD: number
+    netProfitYTD: number
     fleetSize: number
     activeRentals: number
     utilizationRate: number
+    outstandingLiabilities: number
+    riskSignalsCount: number
+    targetYear: number
   }
   recentBookings: any[]
   vehicles?: any[]
@@ -37,7 +41,7 @@ export default function DashboardClient({
   maintenance = []
 }: DashboardClientProps) {
   // 1. Shared state for interactive operational alert drilling
-  const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | null>(null)
+  const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null>(null)
 
   // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
   const localToday = new Date()
@@ -245,11 +249,19 @@ export default function DashboardClient({
       </div>
 
       {/* Stats Cards Row */}
-      <DashboardStats stats={stats} allBookings={allBookings} />
+      <DashboardStats stats={stats} />
 
       <TodayOperations allBookings={allBookings} />
 
-      <DashboardCharts recentBookings={recentBookings} allBookings={allBookings} />
+      <DashboardCharts recentBookings={recentBookings} allBookings={allBookings} expenses={expenses} maintenance={maintenance} />
+
+      <FleetPerformanceMatrix 
+        vehicles={vehicles} 
+        allBookings={allBookings} 
+        expenses={expenses} 
+        maintenance={maintenance} 
+        vehicleLegalDocs={vehicleLegalDocs} 
+      />
 
       <DashboardCalendar vehicles={vehicles} allBookings={allBookings} />
     </div>
