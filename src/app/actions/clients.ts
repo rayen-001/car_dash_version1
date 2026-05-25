@@ -25,13 +25,25 @@ export async function addClient(formData: FormData) {
   const license_number = formData.get('license_number') as string
   const cin = formData.get('cin') as string
 
+  // Tunisian legal identity fields — same set updateClient already accepts.
+  // Captured up-front so new clients can flow straight into a contract without
+  // a second edit pass.
+  const date_naissance = (formData.get('date_naissance') as string) || null
+  const cin_delivre_le = (formData.get('cin_delivre_le') as string) || null
+  const permis_numero = (formData.get('permis_numero') as string) || null
+  const permis_delivre_le = (formData.get('permis_delivre_le') as string) || null
+
   const { error } = await supabase.from('clients').insert({
     owner_id: user.id,
     full_name,
     email: email || null,
     phone,
     license_number: license_number || null,
-    cin: cin || null
+    cin: cin || null,
+    date_naissance,
+    cin_delivre_le,
+    permis_numero,
+    permis_delivre_le,
   })
 
   if (error) throw new Error(error.message)
