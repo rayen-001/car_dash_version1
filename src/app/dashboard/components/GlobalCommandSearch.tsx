@@ -6,6 +6,9 @@ import { Search, Calendar, X, AlertTriangle, Edit2, ShieldAlert, ShieldCheck, Sh
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { updateBookingStatus } from '@/app/actions'
 import { useToast } from '@/components/Toast'
+import { Booking, Vehicle, Client } from '@/types'
+import { formatFuelFraction, calculateFuelDelta, calculateDrivenMileage } from '@/app/dashboard/bookings/components/HandoverCalculators'
+import { calculateTrustScore } from '@/lib/trustScore'
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface OmniBooking {
@@ -44,11 +47,26 @@ interface OmniBooking {
     license_plate?: string
     price_per_day?: number
   }
-  clients?: {
+  primary_client?: {
     id?: string
     full_name?: string
     phone?: string
     license_number?: string
+    cin?: string
+    address?: string
+    date_naissance?: string
+    cin_delivre_le?: string
+    permis_numero?: string
+    permis_delivre_le?: string
+    trust_score?: number | null
+  }
+  secondary_client?: {
+    id?: string
+    full_name?: string
+    phone?: string
+    license_number?: string
+    cin?: string
+    address?: string
     date_naissance?: string
     cin_delivre_le?: string
     permis_numero?: string
@@ -59,8 +77,8 @@ interface OmniBooking {
 
 interface GlobalCommandSearchProps {
   allBookings: OmniBooking[]
-  activeAlertFilter: 'overdue' | 'balances' | 'expiring' | null
-  setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | null) => void
+  activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null
+  setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null) => void
   vehicleLegalDocs?: any[]
   vehicles?: any[]
 }
@@ -87,8 +105,9 @@ const getClientRiskProfile = (
 
   // Filter bookings for this client (excluding cancelled)
   const clientBookings = allBookings.filter(b => {
-    if (clientId && b.clients?.id === clientId) return true
-    if (clientName && b.client_name === clientName) return true
+    if (clientId && b.primary_client?.id === clientId) return true
+    if (clientId && b.secondary_client?.id === clientId) return true
+    if (clientName && (b.client_name === clientName || b.secondary_client?.full_name === clientName)) return true
     return false
   }).filter(b => b.status !== 'cancelled')
 
@@ -99,129 +118,11 @@ const getClientRiskProfile = (
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-  const getDaysDiff = (d1Str: string, d2Str: string): number => {
-    const d1 = new Date(d1Str.split('T')[0] + 'T00:00:00')
-    const d2 = new Date(d2Str.split('T')[0] + 'T00:00:00')
-    const diffTime = d2.getTime() - d1.getTime()
-    return Math.round(diffTime / (1000 * 60 * 60 * 24))
-  }
-
-  let returnHygiene = 100
-  let totalContractValue = 0
-  let totalOverdueUnpaid = 0
-  let hasCriminalOverride = false
-  let behaviorPenalty = 0
-
-  const completedBookingsCount = clientBookings.filter(b => b.status === 'completed').length
-  const loyaltyBonus = Math.min(20, completedBookingsCount * 2.5)
-
-  clientBookings.forEach((b) => {
-    const isCompleted = b.status === 'completed'
-    const scheduledEnd = b.end_date
-    const totalAmt = Number(b.total_amount) || 0
-    const paidAmt = Number(b.acompte_paid) || 0
-    const balance = totalAmt - paidAmt
-    const installments = b.installments || []
-    const hasInstallments = Array.isArray(installments) && installments.length > 0
-
-    if (b.status === 'pending') {
-      return
-    }
-
-    totalContractValue += totalAmt
-
-    if (hasInstallments) {
-      installments.forEach((inst: any) => {
-        const amt = Number(inst.amount) || 0
-        if (inst.status === 'unpaid') {
-          if (getDaysDiff(inst.due_date, todayStr) > 0) {
-            totalOverdueUnpaid += amt
-          }
-        }
-      })
-    } else {
-      const isConfirmed = b.status === 'confirmed'
-      const isOverdue = isConfirmed && (getDaysDiff(scheduledEnd, todayStr) > 0)
-      if ((isCompleted || isOverdue) && balance > 0) {
-        totalOverdueUnpaid += balance
-      }
-    }
-
-    if (isCompleted) {
-      const actualEnd = b.actual_return_date || scheduledEnd
-      const lateDays = getDaysDiff(scheduledEnd, actualEnd)
-      if (lateDays > 0) {
-        returnHygiene -= Math.min(75, 4 * Math.pow(lateDays, 1.3))
-      }
-    } else if (b.status === 'confirmed') {
-      const overdueDays = getDaysDiff(scheduledEnd, todayStr)
-      if (overdueDays > 0) {
-        let hasUnpaidDebt = false
-        if (hasInstallments) {
-          hasUnpaidDebt = installments.some(
-            (inst: any) => inst.status === 'unpaid' && getDaysDiff(inst.due_date, todayStr) > 0
-          )
-        } else {
-          hasUnpaidDebt = balance > 0
-        }
-
-        if (overdueDays >= 5 && hasUnpaidDebt) {
-          hasCriminalOverride = true
-        } else {
-          returnHygiene -= overdueDays * 8
-        }
-      }
-    }
-
-    if (b.client_behavior_status) {
-      const infractions = b.client_behavior_status.split(',').map((s: string) => s.trim()).filter(Boolean);
-      
-      infractions.forEach((infraction: string) => {
-        let baseInfraction = 0
-        let isPermanent = false
-
-        if (infraction === 'dirty_return') {
-          baseInfraction = 5
-        } else if (infraction === 'speeding') {
-          baseInfraction = 15
-        } else if (infraction === 'minor_damage') {
-          baseInfraction = 25
-        } else if (infraction === 'major_damage') {
-          baseInfraction = 100
-          isPermanent = true
-          hasCriminalOverride = true
-        }
-
-        if (baseInfraction > 0) {
-          if (isPermanent) {
-            behaviorPenalty += baseInfraction
-          } else {
-            const infractionDate = b.actual_return_date || b.end_date || todayStr
-            const daysSince = Math.max(0, getDaysDiff(infractionDate, todayStr))
-            const decayFactor = Math.max(0, 1 - daysSince / 90)
-            behaviorPenalty += baseInfraction * decayFactor
-          }
-        }
-      });
-    }
-  })
-
-  returnHygiene = Math.max(0, Math.min(100, returnHygiene))
-
-  const overdueDebtRatio = totalContractValue > 0 ? (totalOverdueUnpaid / totalContractValue) : 0
-  const paymentHygiene = 100 - Math.min(100, overdueDebtRatio * 120)
-
-  let score = (0.40 * returnHygiene) + (0.40 * paymentHygiene) - behaviorPenalty + loyaltyBonus
-
-  if (hasCriminalOverride) {
-    score = 0
-  }
-
-  score = Math.max(0, Math.min(100, Math.round(score * 10) / 10))
+  const { trustScore: score, hasCriminalOverride } = calculateTrustScore(clientBookings as any, todayStr)
 
   let riskLevel: 'very_low_risk' | 'low_risk' | 'medium_risk' | 'high_risk' | 'very_high_risk' | 'criminal'
   
-  if (hasCriminalOverride || score < 15.0) {
+  if (hasCriminalOverride || score === null || score < 15.0) {
     riskLevel = 'criminal'
   } else if (score >= 92.0) {
     riskLevel = 'very_low_risk'
@@ -248,17 +149,19 @@ export default function GlobalCommandSearch({
 }: GlobalCommandSearchProps) {
   const [textQuery, setTextQuery]       = useState('')
   const [interceptDate, setInterceptDate] = useState('')
+  const [returnFrom, setReturnFrom] = useState('')
+  const [returnTo, setReturnTo] = useState('')
   const [editingBooking, setEditingBooking] = useState<OmniBooking | null>(null)
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null)
 
-  const isActive = textQuery.trim() !== '' || interceptDate !== '' || activeAlertFilter !== null
-  const isFineMode = textQuery.trim() !== '' || interceptDate !== ''
+  const isActive = textQuery.trim() !== '' || interceptDate !== '' || returnFrom !== '' || returnTo !== '' || activeAlertFilter !== null
+  const isFineMode = textQuery.trim() !== '' || interceptDate !== '' || returnFrom !== '' || returnTo !== ''
 
   const expiringDocs = useMemo(() => {
     const todayObj = new Date()
     todayObj.setHours(0, 0, 0, 0)
     
-    return (vehicleLegalDocs || [])
+    const docs = (vehicleLegalDocs || [])
       .filter(doc => {
         if (!doc.expiry_date) return false
         const expDate = new Date(doc.expiry_date)
@@ -284,6 +187,7 @@ export default function GlobalCommandSearch({
 
         return {
           id: doc.id,
+          type: 'doc',
           doc_type: doc.doc_type,
           expiry_date: doc.expiry_date,
           diffDays,
@@ -291,6 +195,44 @@ export default function GlobalCommandSearch({
           activeBooking
         }
       })
+
+    const tyStr = todayObj.getFullYear()
+    const tmStr = String(todayObj.getMonth() + 1).padStart(2, '0')
+    const tdStr = String(todayObj.getDate()).padStart(2, '0')
+    const todayStr = `${tyStr}-${tmStr}-${tdStr}`
+
+    const mechAlerts: any[] = []
+    vehicles.forEach(car => {
+      const current = car.current_km || 0
+      const nextOil = car.next_vidange_km || (car.last_vidange_km ? car.last_vidange_km + 10000 : null)
+      const nextPads = car.next_pads_km || (car.last_pads_km ? car.last_pads_km + 30000 : null)
+      
+      const activeBooking = allBookings.find(b => {
+        if (b.status === 'cancelled') return false
+        return b.vehicle_id === car.id && b.start_date <= todayStr && b.end_date >= todayStr
+      })
+
+      if (nextOil && (nextOil - current <= 1000)) {
+        mechAlerts.push({
+          id: `mech-oil-${car.id}`,
+          type: 'vidange',
+          remainingKm: nextOil - current,
+          vehicle: car,
+          activeBooking
+        })
+      }
+      if (nextPads && (nextPads - current <= 1000)) {
+        mechAlerts.push({
+          id: `mech-pads-${car.id}`,
+          type: 'pads',
+          remainingKm: nextPads - current,
+          vehicle: car,
+          activeBooking
+        })
+      }
+    })
+
+    return [...docs, ...mechAlerts]
   }, [vehicleLegalDocs, vehicles, allBookings])
 
   /* ── Core dual-mode filter engine ── */
@@ -301,6 +243,8 @@ export default function GlobalCommandSearch({
       .replace(/\D/g, '')      // strip all non-digit characters
       .trim()
   }
+
+
 
   const filteredExpiringDocs = useMemo(() => {
     if (!textQuery.trim()) return expiringDocs
@@ -329,7 +273,7 @@ export default function GlobalCommandSearch({
   }, [expiringDocs, textQuery])
 
   const results = useMemo<OmniBooking[]>(() => {
-    if (!textQuery.trim() && !interceptDate && !activeAlertFilter) return []
+    if (!textQuery.trim() && !interceptDate && !returnFrom && !returnTo && !activeAlertFilter) return []
 
     // Timezone-safe local today calculation
     const localToday = new Date()
@@ -346,11 +290,25 @@ export default function GlobalCommandSearch({
           if (b.status === 'completed' || b.status === 'cancelled') return false
           return b.end_date < todayStr
         })
+      } else if (activeAlertFilter === 'returns-today') {
+        filtered = filtered.filter(b => {
+          if (b.status === 'completed' || b.status === 'cancelled') return false
+          return b.end_date === todayStr
+        })
+      } else if (activeAlertFilter === 'pickups-today') {
+        filtered = filtered.filter(b => {
+          if (b.status === 'cancelled') return false
+          return b.start_date === todayStr
+        })
       } else if (activeAlertFilter === 'balances') {
         filtered = filtered.filter(b => {
           if (b.status === 'cancelled') return false
           const total = Number(b.total_amount) || 0
-          const acompte = Number(b.acompte_paid) || 0
+          const baseAcompte = Number(b.acompte_paid) || 0
+          const paidInstallmentsSum = (b.installments || [])
+            .filter((t: any) => t.status === 'paid')
+            .reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0)
+          const acompte = baseAcompte + paidInstallmentsSum
           return (total - acompte) > 0
         })
       } else if (activeAlertFilter === 'expiring') {
@@ -368,17 +326,32 @@ export default function GlobalCommandSearch({
             .map(doc => doc.vehicle_id)
         )
         filtered = filtered.filter(b => b.vehicle_id && expiringVehicleIds.has(b.vehicle_id))
+      } else if (activeAlertFilter === 'tranches') {
+        filtered = filtered.filter(b => b.installments && b.installments.length > 0)
       }
     }
 
     return filtered.filter(b => {
-      // ── GATE 1: Date interception (traffic-fine mode) ──
+      // ── GATE 1: Date interception (traffic-fine mode or tranches mode) ──
       if (interceptDate) {
-        const sd = b.start_date ?? ''
-        const ed = b.end_date   ?? ''
-        if (!sd || !ed) return false
-        const withinPeriod = interceptDate >= sd && interceptDate <= ed
-        if (!withinPeriod) return false
+        if (activeAlertFilter === 'tranches') {
+          const hasTrancheOnDate = b.installments?.some((inst: any) => inst.due_date === interceptDate)
+          if (!hasTrancheOnDate) return false
+        } else {
+          const sd = b.start_date ?? ''
+          const ed = b.end_date   ?? ''
+          if (!sd || !ed) return false
+          const withinPeriod = interceptDate >= sd && interceptDate <= ed
+          if (!withinPeriod) return false
+        }
+      }
+
+      // ── GATE 1.5: Return Date Range interception ──
+      if (returnFrom || returnTo) {
+        const ed = b.end_date ?? ''
+        if (!ed) return false
+        if (returnFrom && ed < returnFrom) return false
+        if (returnTo && ed > returnTo) return false
       }
 
       // ── GATE 2: Omni-text (7 dimensions, fully null-safe) ──
@@ -388,25 +361,27 @@ export default function GlobalCommandSearch({
       const matchPlate = b.vehicles?.license_plate?.toLowerCase()?.includes(q) ?? false
       const matchBrand = b.vehicles?.brand?.toLowerCase()?.includes(q)         ?? false
       const matchModel = b.vehicles?.model?.toLowerCase()?.includes(q)         ?? false
-      const matchName  = b.clients?.full_name?.toLowerCase()?.includes(q)      ?? false
-      const matchCin   = b.clients?.license_number?.toLowerCase()?.includes(q) ?? false
+      const matchName  = b.primary_client?.full_name?.toLowerCase()?.includes(q)      ?? false
+      const matchCin   = b.primary_client?.license_number?.toLowerCase()?.includes(q) ?? false
 
-      const normalizedStoredPhone = normalizePhone(b.clients?.phone)
+      const normalizedStoredPhone = normalizePhone(b.primary_client?.phone)
       const normalizedQuery       = normalizePhone(textQuery)
       const matchPhone = normalizedQuery.length >= 4
         ? normalizedStoredPhone.includes(normalizedQuery)
-        : (b.clients?.phone?.toLowerCase()?.includes(q) ?? false)
+        : (b.primary_client?.phone?.toLowerCase()?.includes(q) ?? false)
 
       const matchId    = b.id?.toLowerCase()?.includes(q)      ?? false
 
       return matchPlate || matchBrand || matchModel ||
              matchName  || matchCin   || matchPhone || matchId
     })
-  }, [allBookings, textQuery, interceptDate, activeAlertFilter, vehicleLegalDocs])
+  }, [allBookings, textQuery, interceptDate, activeAlertFilter, vehicleLegalDocs, returnFrom, returnTo])
 
   const clearAll = () => {
     setTextQuery('')
     setInterceptDate('')
+    setReturnFrom('')
+    setReturnTo('')
     setActiveAlertFilter(null)
   }
 
@@ -421,7 +396,7 @@ export default function GlobalCommandSearch({
     }
     if (results.length > 0) return null
     if (activeAlertFilter) {
-      const name = activeAlertFilter === 'overdue' ? 'Overdue Returns' : activeAlertFilter === 'balances' ? 'Pending Balances' : 'Expiring Vehicle Documents'
+      const name = activeAlertFilter === 'overdue' ? 'Overdue Returns' : activeAlertFilter === 'balances' ? 'Pending Balances' : activeAlertFilter === 'returns-today' ? 'Returns Today' : activeAlertFilter === 'pickups-today' ? 'Pickups Today' : activeAlertFilter === 'tranches' ? 'Scheduled Tranches' : 'Expiring Vehicle Documents'
       if (textQuery.trim()) {
         return `No bookings matching "${textQuery}" under the "${name}" alert filter.`
       }
@@ -431,8 +406,10 @@ export default function GlobalCommandSearch({
       return `No contract for "${textQuery}" was active on ${fmt(interceptDate)}.`
     if (interceptDate && !textQuery)
       return `No active rentals found on ${fmt(interceptDate)}.`
+    if ((returnFrom || returnTo) && !textQuery)
+      return `No returns scheduled between ${fmt(returnFrom)} and ${fmt(returnTo)}.`
     return `No contracts found matching "${textQuery}".`
-  }, [isActive, results.length, textQuery, interceptDate, activeAlertFilter, filteredExpiringDocs.length])
+  }, [isActive, results.length, textQuery, interceptDate, activeAlertFilter, filteredExpiringDocs.length, returnFrom, returnTo])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
@@ -524,6 +501,52 @@ export default function GlobalCommandSearch({
           />
         </div>
 
+        <div style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0, marginLeft: '0.5rem', marginRight: '0.5rem' }} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+          <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
+            Return From
+          </span>
+          <input
+            type="date"
+            value={returnFrom}
+            onChange={e => setReturnFrom(e.target.value)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: returnFrom ? '#10b981' : 'rgba(255,255,255,0.6)',
+              fontSize: '0.9rem',
+              fontFamily: 'var(--font-body)',
+              cursor: 'pointer',
+              colorScheme: 'dark',
+              padding: 0,
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, marginLeft: '0.5rem' }}>
+          <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
+            Return To
+          </span>
+          <input
+            type="date"
+            value={returnTo}
+            onChange={e => setReturnTo(e.target.value)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: returnTo ? '#10b981' : 'rgba(255,255,255,0.6)',
+              fontSize: '0.9rem',
+              fontFamily: 'var(--font-body)',
+              cursor: 'pointer',
+              colorScheme: 'dark',
+              padding: 0,
+            }}
+          />
+        </div>
+
         {isActive && (
           <button
             onClick={clearAll}
@@ -571,7 +594,10 @@ export default function GlobalCommandSearch({
               Drilling active: Showing bookings matching <strong>
                 {activeAlertFilter === 'overdue' && 'Overdue Returns'}
                 {activeAlertFilter === 'balances' && 'Pending Balances'}
+                {activeAlertFilter === 'returns-today' && 'Returns Today'}
+                {activeAlertFilter === 'pickups-today' && 'Pickups Today'}
                 {activeAlertFilter === 'expiring' && 'Expiring Vehicle Documents'}
+                {activeAlertFilter === 'tranches' && 'Scheduled Tranches'}
               </strong>
             </span>
           </div>
@@ -625,15 +651,23 @@ export default function GlobalCommandSearch({
       {activeAlertFilter === 'expiring' && filteredExpiringDocs.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(229,193,125,0.45)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-            {filteredExpiringDocs.length} Document{filteredExpiringDocs.length > 1 ? 's' : ''} Expiring Within 7 Days
+            {filteredExpiringDocs.length} Item{filteredExpiringDocs.length > 1 ? 's' : ''} Requiring Immediate Attention
           </p>
           {filteredExpiringDocs.map(doc => {
-            const docLabel =
-              doc.doc_type === 'assurance' ? 'Insurance (Assurance)' :
-              doc.doc_type === 'visite_technique' ? 'Technical Inspection (Visite)' :
-              doc.doc_type === 'laissez_passer' ? 'Transport Authorization (Laissez-Passer)' :
-              doc.doc_type
-            const urgency = doc.diffDays <= 2 ? 'critical' : doc.diffDays <= 4 ? 'warning' : 'caution'
+            let docLabel = ''
+            let urgency = 'caution'
+            let statusText = ''
+            
+            if (doc.type === 'doc') {
+              docLabel = doc.doc_type === 'assurance' ? 'Insurance (Assurance)' : doc.doc_type === 'visite_technique' ? 'Technical Inspection (Visite)' : doc.doc_type === 'laissez_passer' ? 'Transport Authorization (Laissez-Passer)' : doc.doc_type
+              urgency = doc.diffDays <= 2 ? 'critical' : doc.diffDays <= 4 ? 'warning' : 'caution'
+              statusText = doc.diffDays === 0 ? 'Expiring Today' : `Expiring in ${doc.diffDays} Days`
+            } else {
+              docLabel = doc.type === 'vidange' ? 'Oil Change (Vidange)' : 'Brake Pads'
+              urgency = doc.remainingKm <= 200 ? 'critical' : doc.remainingKm <= 500 ? 'warning' : 'caution'
+              statusText = doc.remainingKm <= 0 ? 'Overdue!' : `Due in ${doc.remainingKm} km`
+            }
+
             const urgencyColor = urgency === 'critical' ? '#ef4444' : urgency === 'warning' ? '#f59e0b' : '#E5C17D'
             const urgencyBg = urgency === 'critical' ? 'rgba(239,68,68,0.06)' : urgency === 'warning' ? 'rgba(245,158,11,0.06)' : 'rgba(229,193,125,0.04)'
             const urgencyBorder = urgency === 'critical' ? 'rgba(239,68,68,0.25)' : urgency === 'warning' ? 'rgba(245,158,11,0.25)' : 'rgba(229,193,125,0.2)'
@@ -671,11 +705,14 @@ export default function GlobalCommandSearch({
                     <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>{docLabel}</span>
                   </div>
 
-                  {/* Expiry Date */}
+                  {/* Expiry / Due Status */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
-                    <span style={{ fontSize: '0.68rem', color: 'rgba(229,193,125,0.45)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Expires</span>
+                    <span style={{ fontSize: '0.68rem', color: 'rgba(229,193,125,0.45)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{doc.type === 'doc' ? 'Expires' : 'Target'}</span>
                     <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 600 }}>
-                      {new Date(doc.expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {doc.type === 'doc' 
+                        ? new Date(doc.expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : `${(doc.vehicle.current_km + doc.remainingKm).toLocaleString()} km`
+                      }
                     </span>
                   </div>
 
@@ -692,7 +729,7 @@ export default function GlobalCommandSearch({
                   }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: urgencyColor, boxShadow: `0 0 6px ${urgencyColor}`, flexShrink: 0 }} />
                     <span style={{ fontSize: '0.75rem', fontWeight: 700, color: urgencyColor, whiteSpace: 'nowrap' }}>
-                      {doc.diffDays === 0 ? 'Expires TODAY' : `Expires in ${doc.diffDays} day${doc.diffDays > 1 ? 's' : ''}`}
+                      {statusText}
                     </span>
                   </div>
 
@@ -741,10 +778,10 @@ export default function GlobalCommandSearch({
                               color: '#1a1410', display: 'flex', alignItems: 'center',
                               justifyContent: 'center', fontWeight: 700, fontSize: '0.7rem', flexShrink: 0,
                             }}>
-                              {(doc.activeBooking.clients?.full_name || 'UN').split(' ').map((n: string) => n[0]).join('').toUpperCase().substring(0, 2)}
+                              {(doc.activeBooking.primary_client?.full_name || 'UN').split(' ').map((n: string) => n[0]).join('').toUpperCase().substring(0, 2)}
                             </div>
                             <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>
-                              {doc.activeBooking.clients?.full_name || 'Unknown'}
+                              {doc.activeBooking.primary_client?.full_name || 'Unknown'}
                             </span>
                           </div>
                         </div>
@@ -753,7 +790,7 @@ export default function GlobalCommandSearch({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                           <span style={{ fontSize: '0.68rem', color: 'rgba(229,193,125,0.4)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Phone</span>
                           <span style={{ color: '#fff', fontSize: '0.88rem', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
-                            {doc.activeBooking.clients?.phone || '—'}
+                            {doc.activeBooking.primary_client?.phone || '—'}
                           </span>
                         </div>
 
@@ -830,7 +867,7 @@ export default function GlobalCommandSearch({
 
       {/* ── Quick-Edit Return Modal ── */}
       <QuickEditBookingModal
-        booking={editingBooking}
+        booking={editingBooking as any}
         isOpen={!!editingBooking}
         onClose={() => setEditingBooking(null)}
         vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
@@ -869,7 +906,11 @@ function OmniResultCard({
   }
 
   const total   = Number(booking.total_amount) || 0
-  const acompte = Number(booking.acompte_paid)  || 0
+  const baseAcompte = Number(booking.acompte_paid)  || 0
+  const paidInstallmentsSum = (booking.installments || [])
+    .filter((t: any) => t.status === 'paid')
+    .reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0)
+  const acompte = baseAcompte + paidInstallmentsSum
   const reste   = total - acompte
   const notes   = booking.damage_notes || ''
   const isPerfectComment = notes.toLowerCase().includes('perfect normal return') || notes.includes('[GREEN]')
@@ -884,8 +925,8 @@ function OmniResultCard({
     : '0 4px 16px rgba(0,0,0,0.4)'
 
   // Render mathematical trust badge with security icons/stars
-  const renderTrustBadge = () => {
-    const { score, riskLevel } = getClientRiskProfile(booking.clients?.id, booking.client_name, allBookings)
+  const renderTrustBadge = (clientId?: string, clientName?: string) => {
+    const { score, riskLevel } = getClientRiskProfile(clientId, clientName, allBookings)
 
     if (score === null) {
       return (
@@ -1067,7 +1108,7 @@ function OmniResultCard({
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '90px 1.2fr 1fr 120px 1.2fr 130px 130px 140px 48px',
+      gridTemplateColumns: '90px 1.2fr 1fr 120px 1.2fr 130px 190px 140px 48px',
       gap: '0',
       background: 'rgba(14, 11, 9, 0.88)',
       border: `1px solid ${borderColor}`,
@@ -1097,26 +1138,54 @@ function OmniResultCard({
 
       {/* Client Main & Trust Score */}
       <Cell>
-        <Label>Client</Label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--accent-gold), #8a6d35)',
-            color: '#1a1410', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontWeight: 700, fontSize: '0.75rem',
-            flexShrink: 0,
-          }}>
-            {initials(booking.clients?.full_name)}
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              {booking.clients?.full_name || 'Unknown'}
+        <Label>Client & Co-Drivers</Label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Primary Client */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--accent-gold), #8a6d35)',
+              color: '#1a1410', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontWeight: 700, fontSize: '0.75rem',
+              flexShrink: 0,
+            }}>
+              {initials(booking.primary_client?.full_name)}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'rgba(229,193,125,0.5)', marginBottom: '0.2rem' }}>
-              {booking.clients?.phone || '—'}
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {booking.primary_client?.full_name || 'Unknown'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(229,193,125,0.5)', marginBottom: '0.2rem' }}>
+                {booking.primary_client?.phone || '—'}
+              </div>
+              {renderTrustBadge(booking.primary_client?.id, booking.primary_client?.full_name || booking.client_name)}
             </div>
-            {renderTrustBadge()}
           </div>
+
+          {/* Secondary Client */}
+          {booking.secondary_client && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(229,193,125,0.1)' }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #4a4030, #2a2010)',
+                color: 'var(--accent-gold)', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontWeight: 700, fontSize: '0.65rem',
+                flexShrink: 0, border: '1px solid rgba(229,193,125,0.2)'
+              }}>
+                {initials(booking.secondary_client.full_name)}
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  {booking.secondary_client.full_name}
+                  <span style={{ fontSize: '0.6rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', background: 'rgba(229,193,125,0.05)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>Co-Driver</span>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'rgba(229,193,125,0.4)', marginBottom: '0.2rem' }}>
+                  {booking.secondary_client.phone || '—'}
+                </div>
+                {renderTrustBadge(booking.secondary_client.id, booking.secondary_client.full_name)}
+              </div>
+            </div>
+          )}
         </div>
       </Cell>
 
@@ -1124,10 +1193,25 @@ function OmniResultCard({
       <Cell>
         <Label>Legal Docs</Label>
         <Stack>
-          <Row lbl="CIN" val={booking.clients?.license_number} />
-          <Row lbl="Iss" val={fmt(booking.clients?.cin_delivre_le)} />
-          <Row lbl="Permis" val={booking.clients?.permis_numero} />
-          <Row lbl="DOB" val={fmt(booking.clients?.date_naissance)} />
+          {/* Primary Client Docs — read live from joined CRM record so edits in
+              /dashboard/clients reflect here on next revalidation. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+            <Row lbl="CIN" val={booking.primary_client?.cin} />
+            <Row lbl="Iss" val={fmt(booking.primary_client?.cin_delivre_le)} />
+            <Row lbl="Permis" val={booking.primary_client?.permis_numero || booking.primary_client?.license_number} />
+            <Row lbl="DOB" val={fmt(booking.primary_client?.date_naissance)} />
+          </div>
+
+          {/* Secondary Client Docs */}
+          {booking.secondary_client && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingTop: '0.5rem', borderTop: '1px dashed rgba(229,193,125,0.1)' }}>
+              <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)' }}>CO-DRIVER</span>
+              <Row lbl="CIN" val={booking.secondary_client?.cin} />
+              <Row lbl="Iss" val={fmt(booking.secondary_client?.cin_delivre_le)} />
+              <Row lbl="Permis" val={booking.secondary_client?.permis_numero || booking.secondary_client?.license_number} />
+              <Row lbl="DOB" val={fmt(booking.secondary_client?.date_naissance)} />
+            </div>
+          )}
         </Stack>
       </Cell>
 
@@ -1158,7 +1242,7 @@ function OmniResultCard({
             padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: 700,
             fontSize: '0.75rem',
           }}>
-            {booking.rental_days_text || '—'} days
+            {booking.rental_days_text || (booking.start_date && booking.end_date ? Math.round((new Date(booking.end_date.split('T')[0] + 'T00:00:00').getTime() - new Date(booking.start_date.split('T')[0] + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)) : '—')} days
           </span>
         </Stack>
       </Cell>
@@ -1184,6 +1268,22 @@ function OmniResultCard({
               {reste.toFixed(0)} DT
             </strong>
           </div>
+          {booking.installments && booking.installments.length > 0 && (
+            <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              {[...booking.installments].sort((a: any, b: any) => a.due_date > b.due_date ? 1 : -1).map((inst: any, idx: number) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.2rem 0.35rem', borderRadius: '4px', borderLeft: inst.status === 'paid' ? '2px solid #10b981' : '2px solid #ef4444' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>
+                    {fmt(inst.due_date)}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: inst.status === 'paid' ? '#10b981' : '#ef4444' }}>
+                      {Number(inst.amount).toFixed(0)} DT
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Stack>
       </Cell>
 
@@ -1191,9 +1291,66 @@ function OmniResultCard({
       <Cell>
         <Label>Condition Δ</Label>
         <Stack>
-          <span style={tagStyle}>⛽ {booking.fuel_level_pickup || '—'} → {booking.fuel_level_return || '—'}</span>
-          <span style={tagStyle}>💧 {booking.lavage_pickup ? (booking.lavage_pickup === 'clean_wash' ? 'Clean' : booking.lavage_pickup === 'average_dust' ? 'Avg' : 'Dirty') : '—'} → {booking.lavage_return ? (booking.lavage_return === 'clean_wash' ? 'Clean' : booking.lavage_return === 'average_dust' ? 'Avg' : 'Dirty') : '—'}</span>
-          <span style={tagStyle}>🛣️ {booking.starting_km ?? '—'} → {booking.return_km !== undefined && booking.return_km !== null ? `${booking.return_km} km` : '-- km'}</span>
+          {(() => {
+            const h = (booking as any).vehicle_handovers || {}
+            const pKm = h.pickup_km ?? booking.starting_km
+            const rKm = h.return_km ?? booking.return_km
+            const pFuel = h.pickup_fuel
+            const rFuel = h.return_fuel
+            const pClean = h.pickup_cleanliness || booking.lavage_pickup
+            const rClean = h.return_cleanliness || booking.lavage_return
+            
+            const drivenKm = calculateDrivenMileage(pKm, rKm)
+            const fuelDelta = calculateFuelDelta(pFuel, rFuel)
+
+            const formatClean = (c: string) => c === 'clean_wash' || c === 'Clean' ? 'Clean' : c === 'average_dust' ? 'Avg' : 'Dirty'
+
+            return (
+              <>
+                {/* Fuel delta */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem' }}>
+                    <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>⛽</span>
+                    <span style={tagStyle}>{pFuel !== undefined ? formatFuelFraction(pFuel) : (booking.fuel_level_pickup || '—')}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
+                    <span style={tagStyle}>{rFuel !== undefined ? formatFuelFraction(rFuel) : (booking.fuel_level_return || '—')}</span>
+                  </div>
+                  {fuelDelta && (
+                    <div style={{ width: '100%', fontSize: '0.7rem', color: fuelDelta.color, fontWeight: 700, paddingLeft: '1.2rem', marginTop: '-0.15rem' }}>
+                      {fuelDelta.text}
+                    </div>
+                  )}
+                </div>
+
+                {/* Wash delta */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', marginTop: '0.1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem' }}>
+                    <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>💧</span>
+                    <span style={tagStyle}>{pClean ? formatClean(pClean) : '—'}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
+                    <span style={{...tagStyle, background: formatClean(rClean || '') === 'Dirty' ? 'rgba(239,68,68,0.12)' : tagStyle.background}}>
+                      {rClean ? formatClean(rClean) : '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Odometer delta */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', marginTop: '0.1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem' }}>
+                    <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>🛣️</span>
+                    <span style={tagStyle}>{pKm ?? '—'}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
+                    <span style={tagStyle}>{rKm !== undefined && rKm !== null ? `${rKm} km` : '-- km'}</span>
+                  </div>
+                  {drivenKm !== null && drivenKm > 0 && (
+                    <div style={{ width: '100%', fontSize: '0.68rem', color: '#E5C17D', fontWeight: 600, paddingLeft: '1.2rem', marginTop: '-0.15rem' }}>
+                      {drivenKm.toLocaleString()} km driven
+                    </div>
+                  )}
+                </div>
+              </>
+            )
+          })()}
           {hasDamage && (() => {
             const notes = booking.damage_notes || '';
             const isPerfect = notes.toLowerCase().includes('perfect normal return') || notes.includes('[GREEN]');

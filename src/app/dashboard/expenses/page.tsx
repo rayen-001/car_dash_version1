@@ -50,7 +50,7 @@ export default async function ExpensesPage() {
         rental_days_text,
         vehicles(brand, model, license_plate, price_per_day),
         installments:booking_installments(id, amount, due_date, status, paid_date),
-        clients(id, full_name, phone, license_number, trust_score, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le)
+        clients(id, full_name, phone, license_number, cin, address, trust_score, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le)
       `)
       .eq('owner_id', user.id)
       .in('status', ['confirmed', 'completed'])

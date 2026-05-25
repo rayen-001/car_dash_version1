@@ -25,14 +25,14 @@ export default async function OwnerDashboardPage() {
         vehicles(id, brand, model, license_plate, price_per_day),
         primary_client:clients!client_id(
           id,
-          full_name, phone, license_number,
+          full_name, phone, license_number, cin, address,
           trust_score,
           date_naissance, cin_delivre_le,
           permis_numero, permis_delivre_le
         ),
         secondary_client:clients!secondary_client_id(
           id,
-          full_name, phone, license_number,
+          full_name, phone, license_number, cin, address,
           trust_score,
           date_naissance, cin_delivre_le,
           permis_numero, permis_delivre_le
