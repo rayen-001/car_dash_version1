@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { X, User, Car, CalendarDays, Clock, Shield, DollarSign, Phone, CreditCard, MapPin, FileText, Gauge, Fuel, AlertTriangle, Plus, Trash2, Coins } from 'lucide-react'
 import { addBooking, updateBooking } from '@/app/actions'
 import { useToast } from '@/components/Toast'
@@ -26,10 +27,18 @@ export default function BookingFormModal({
 }: BookingFormModalProps) {
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Wait until mounted to use portal
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Form states
   const [clientId, setClientId] = useState('')
   const [clientName, setClientName] = useState('')
+  const [secondaryClientId, setSecondaryClientId] = useState('')
+  const [secondaryClientName, setSecondaryClientName] = useState('')
   const [vehicleId, setVehicleId] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -47,6 +56,12 @@ export default function BookingFormModal({
   const [clientLicenseNumber, setClientLicenseNumber] = useState('')
   const [clientCinPassport, setClientCinPassport] = useState('')
   const [clientAddress, setClientAddress] = useState('')
+
+  const [secondaryClientPhone, setSecondaryClientPhone] = useState('')
+  const [secondaryClientLicenseNumber, setSecondaryClientLicenseNumber] = useState('')
+  const [secondaryClientCinPassport, setSecondaryClientCinPassport] = useState('')
+  const [secondaryClientAddress, setSecondaryClientAddress] = useState('')
+
   const [pickupTime, setPickupTime] = useState('10:00')
   const [returnTime, setReturnTime] = useState('10:00')
 
@@ -55,6 +70,13 @@ export default function BookingFormModal({
 
   // Installments state
   const [installments, setInstallments] = useState<{ amount: number; due_date: string; status: 'paid' | 'unpaid' }[]>([])
+
+  // NOTE: snapshot field hydration is handled inline in each combobox onChange
+  // (see SearchableCombobox blocks below). We intentionally do NOT use a useEffect
+  // for this, because including `clients` in the dep array would re-fire after
+  // revalidation and silently overwrite any unsaved edits the user typed. The
+  // editingBooking branch of the form-reset useEffect handles edit-mode hydration
+  // separately (snapshot comes from the booking row, not the CRM record).
 
   const parsedTotal = useMemo(() => parseFloat(totalAmount) || 0, [totalAmount])
   const parsedAcompte = useMemo(() => parseFloat(acomptePaid) || 0, [acomptePaid])
@@ -69,13 +91,31 @@ export default function BookingFormModal({
 
   // Predictive Legal Document Expiry Collision Detector
   const legalDocConflicts = useMemo(() => {
-    if (!startDate || !endDate || !vehicleId) return []
-    return vehicleLegalDocs.filter(doc =>
-      doc.vehicle_id === vehicleId &&
-      doc.expiry_date >= startDate &&
-      doc.expiry_date <= endDate
-    )
-  }, [startDate, endDate, vehicleId, vehicleLegalDocs])
+    if (!vehicleId) return []
+    const vehicle = vehicles.find(v => v.id === vehicleId)
+    const current = vehicle?.current_km || 0
+    const nextPads = (vehicle as any)?.next_service_km || 0
+    const conflicts = []
+    if (nextPads && (nextPads - current <= 1000)) {
+      conflicts.push({ type: 'pads', label: 'Brake Pads', remainingKm: nextPads - current })
+    }
+    return conflicts
+  }, [vehicleId, vehicles])
+
+  // Blacklist Evaluation Engine
+  const isPrimaryBlacklisted = useMemo(() => {
+    if (!clientId || clientId === 'manual') return false
+    const score = clients.find(c => c.id === clientId)?.trust_score
+    return score !== null && score !== undefined && score < 30
+  }, [clientId, clients])
+
+  const isSecondaryBlacklisted = useMemo(() => {
+    if (!secondaryClientId || secondaryClientId === 'manual') return false
+    const score = clients.find(c => c.id === secondaryClientId)?.trust_score
+    return score !== null && score !== undefined && score < 30
+  }, [secondaryClientId, clients])
+
+  const isBlacklisted = isPrimaryBlacklisted || isSecondaryBlacklisted
 
   // Automatically calculate and set rental_days_text (read-only duration)
   useEffect(() => {
@@ -96,6 +136,8 @@ export default function BookingFormModal({
     if (editingBooking) {
       setClientId(editingBooking.client_id || 'manual')
       setClientName(editingBooking.client_name || '')
+      setSecondaryClientId(editingBooking.secondary_client_id || '')
+      setSecondaryClientName('')
       setVehicleId(editingBooking.vehicle_id || '')
       setStartDate(editingBooking.start_date ? editingBooking.start_date.split('T')[0] : '')
       setEndDate(editingBooking.end_date ? editingBooking.end_date.split('T')[0] : '')
@@ -112,6 +154,12 @@ export default function BookingFormModal({
       setClientLicenseNumber(editingBooking.client_license_number || '')
       setClientCinPassport(editingBooking.client_cin_passport || '')
       setClientAddress(editingBooking.client_address || '')
+      
+      setSecondaryClientPhone(editingBooking.secondary_client_phone || '')
+      setSecondaryClientLicenseNumber(editingBooking.secondary_client_license_number || '')
+      setSecondaryClientCinPassport(editingBooking.secondary_client_cin_passport || '')
+      setSecondaryClientAddress(editingBooking.secondary_client_address || '')
+
       setPickupTime(editingBooking.pickup_time || '10:00')
       setReturnTime(editingBooking.return_time || '10:00')
       setConflictInfo(null)
@@ -129,6 +177,8 @@ export default function BookingFormModal({
     } else {
       setClientId('')
       setClientName('')
+      setSecondaryClientId('')
+      setSecondaryClientName('')
       setVehicleId('')
       setStartDate('')
       setEndDate('')
@@ -142,6 +192,10 @@ export default function BookingFormModal({
       setClientLicenseNumber('')
       setClientCinPassport('')
       setClientAddress('')
+      setSecondaryClientPhone('')
+      setSecondaryClientLicenseNumber('')
+      setSecondaryClientCinPassport('')
+      setSecondaryClientAddress('')
       setPickupTime('10:00')
       setReturnTime('10:00')
       setConflictInfo(null)
@@ -257,11 +311,11 @@ export default function BookingFormModal({
     } catch (err: any) {
       showToast(err.message || 'Error saving booking. Please try again.', 'error')
     }
-    setLoading(true) // Keeps button in disabled state briefly to prevent double submission
+    setLoading(true) 
     setLoading(false)
   }
 
-  if (!isOpen) return null
+  if (!isOpen || !mounted) return null
 
   const sectionStyle: React.CSSProperties = {
     background: 'rgba(255,255,255,0.02)',
@@ -318,11 +372,11 @@ export default function BookingFormModal({
     marginBottom: '0.4rem',
   }
 
-  return (
+  const modalContent = (
     <div className="modal-overlay">
-      <div className="modal-content glass-panel" style={{ maxWidth: '780px', width: '95vw' }}>
+      <div className="modal-content glass-panel" style={{ maxWidth: '850px', width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '1.5rem 2rem' }}>
         {/* Header */}
-        <div className="modal-header" style={{ borderBottom: '1px solid rgba(229,193,125,0.15)', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+        <div className="modal-header" style={{ borderBottom: '1px solid rgba(229,193,125,0.15)', paddingBottom: '1rem', marginBottom: '1rem', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, rgba(174,146,96,0.25), rgba(174,146,96,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(229,193,125,0.2)' }}>
               <FileText size={16} style={{ color: '#ae9260' }} />
@@ -332,14 +386,16 @@ export default function BookingFormModal({
               <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>Pickup operational &amp; client parameters creation</p>
             </div>
           </div>
-          <button className="icon-btn" onClick={onClose}><X size={20} /></button>
+          <button className="icon-btn" type="button" onClick={onClose}><X size={20} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', maxHeight: 'calc(90vh - 140px)', paddingRight: '4px' }}>
+        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', flex: 1, paddingRight: '10px' }}>
 
           {/* hidden fields for form submission */}
           <input type="hidden" name="client_id" value={clientId} />
           <input type="hidden" name="client_name" value={clientName} />
+          <input type="hidden" name="secondary_client_id" value={secondaryClientId} />
+          <input type="hidden" name="secondary_client_name" value={secondaryClientName} />
           <input type="hidden" name="vehicle_id" value={vehicleId} />
           <input type="hidden" name="installments" value={JSON.stringify(installments)} />
 
@@ -365,28 +421,122 @@ export default function BookingFormModal({
                   onChange={(val, opt) => {
                     setClientId(val)
                     if (val === 'manual') {
+                      // Walk-in: blank the snapshot for free typing.
                       setClientName('')
                       setClientPhone('')
                       setClientLicenseNumber('')
-                    } else if (opt) {
+                      setClientCinPassport('')
+                      setClientAddress('')
+                    } else if (val && opt) {
+                      // Existing CRM client: hydrate ALL snapshot fields so the
+                      // operator sees what's on file. Edits made here will be
+                      // pushed back to the CRM record by upsertBooking on save.
                       const client = clients.find(c => c.id === val)
                       if (client) {
-                        setClientName(client.full_name)
+                        setClientName(client.full_name || '')
                         setClientPhone(client.phone || '')
                         setClientLicenseNumber(client.license_number || '')
+                        setClientCinPassport(client.cin || '')
+                        setClientAddress(client.address || '')
                       }
+                    } else {
+                      // Combobox cleared.
+                      setClientName('')
+                      setClientPhone('')
+                      setClientLicenseNumber('')
+                      setClientCinPassport('')
+                      setClientAddress('')
                     }
                   }}
                   placeholder="Select a client..."
                   searchPlaceholder="Search client by name or phone..."
                   pinnedOption={{ value: 'manual', label: '✏️ Manual / Walk-in Client' }}
                 />
-                {clientId && clientId !== 'manual' && clientName && (
-                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <span>✓</span> <strong>{clientName}</strong> selected from CRM
+                {clientId && clientId !== 'manual' && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span>✓</span> <strong>{clients.find(cl => cl.id === clientId)?.full_name}</strong> selected
+                    </div>
+                    {(() => {
+                      const c = clients.find(cl => cl.id === clientId)
+                      const score = c?.trust_score
+                      if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>Status: Unrated</div>
+                      return (
+                        <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
+                          Status: {score >= 80 ? 'Excellent' : score >= 60 ? 'Standard' : score >= 30 ? 'Watch' : 'Blacklisted'} ({score} DRI)
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
                 {clientId === 'manual' && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#ae9260' }}>✏️ Manual entry — fill name below</div>
+                )}
+              </div>
+
+              {/* ── CO-DRIVER COMBOBOX ── */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}><User size={11} /> Secondary / Co-Driver</label>
+                <SearchableCombobox
+                  options={clients.map(c => ({
+                    value: c.id,
+                    label: c.full_name,
+                    sublabel: c.phone || '',
+                    badge: c.license_number ? `Lic: ${c.license_number}` : ''
+                  }))}
+                  value={secondaryClientId}
+                  onChange={(val, opt) => {
+                    setSecondaryClientId(val)
+                    if (val === 'manual') {
+                      // Walk-in co-driver: blank the snapshot for free typing.
+                      setSecondaryClientName('')
+                      setSecondaryClientPhone('')
+                      setSecondaryClientLicenseNumber('')
+                      setSecondaryClientCinPassport('')
+                      setSecondaryClientAddress('')
+                    } else if (val && opt) {
+                      // Existing CRM client: hydrate ALL snapshot fields. Edits made
+                      // here will be pushed back to the CRM record by upsertBooking
+                      // on save (shared-liability DRI keeps both drivers in sync).
+                      const client = clients.find(c => c.id === val)
+                      if (client) {
+                        setSecondaryClientName(client.full_name || '')
+                        setSecondaryClientPhone(client.phone || '')
+                        setSecondaryClientLicenseNumber(client.license_number || '')
+                        setSecondaryClientCinPassport(client.cin || '')
+                        setSecondaryClientAddress(client.address || '')
+                      }
+                    } else {
+                      // Combobox cleared.
+                      setSecondaryClientName('')
+                      setSecondaryClientPhone('')
+                      setSecondaryClientLicenseNumber('')
+                      setSecondaryClientCinPassport('')
+                      setSecondaryClientAddress('')
+                    }
+                  }}
+                  placeholder="Select a secondary driver..."
+                  searchPlaceholder="Search client by name or phone..."
+                  pinnedOption={{ value: 'manual', label: '✏️ Manual / Walk-in Client' }}
+                />
+                {secondaryClientId && secondaryClientId !== 'manual' && (
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <span>✓</span> <strong>{clients.find(cl => cl.id === secondaryClientId)?.full_name}</strong> selected
+                    </div>
+                    {(() => {
+                      const c = clients.find(cl => cl.id === secondaryClientId)
+                      const score = c?.trust_score
+                      if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>Status: Unrated</div>
+                      return (
+                        <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
+                          Status: {score >= 80 ? 'Excellent' : score >= 60 ? 'Standard' : score >= 30 ? 'Watch' : 'Blacklisted'} ({score} DRI)
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+                {secondaryClientId === 'manual' && (
                   <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#ae9260' }}>✏️ Manual entry — fill name below</div>
                 )}
               </div>
@@ -415,18 +565,36 @@ export default function BookingFormModal({
             </div>
 
             {/* Manual client name input */}
-            {clientId === 'manual' && (
-              <div className="form-group animate-fade-in" style={{ margin: '0.85rem 0 0 0' }}>
-                <label style={labelStyle}>Client Name (Manual Input)</label>
-                <input
-                  type="text"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  required
-                  placeholder="e.g. Salim Ben Ali"
-                  className="form-input"
-                  style={{ margin: 0 }}
-                />
+            {(clientId === 'manual' || secondaryClientId === 'manual') && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem', marginTop: '0.85rem' }}>
+                {clientId === 'manual' && (
+                  <div className="form-group animate-fade-in" style={{ margin: 0 }}>
+                    <label style={labelStyle}>Client Name (Manual Input)</label>
+                    <input
+                      type="text"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      required
+                      placeholder="e.g. Salim Ben Ali"
+                      className="form-input"
+                      style={{ margin: 0 }}
+                    />
+                  </div>
+                )}
+                {secondaryClientId === 'manual' && (
+                  <div className="form-group animate-fade-in" style={{ margin: 0 }}>
+                    <label style={labelStyle}>Co-Driver Name (Manual Input)</label>
+                    <input
+                      type="text"
+                      value={secondaryClientName}
+                      onChange={(e) => setSecondaryClientName(e.target.value)}
+                      required
+                      placeholder="e.g. Amir Ben Ahmed"
+                      className="form-input"
+                      style={{ margin: 0 }}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -693,6 +861,70 @@ export default function BookingFormModal({
             </div>
           </div>
 
+          {/* ── SECTION 4.5: CO-DRIVER DETAILS (Conditional) ── */}
+          {(secondaryClientId || secondaryClientName) && (
+            <div style={sectionStyle}>
+              <div style={sectionHeaderStyle}>
+                <CreditCard size={14} style={{ color: '#ae9260' }} />
+                <span style={sectionTitleStyle}>Co-Driver Details <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>(Contract Snapshot)</span></span>
+              </div>
+              <div style={grid2Style}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}><Phone size={11} /> Phone Number</label>
+                  <input
+                    type="text"
+                    name="secondary_client_phone"
+                    value={secondaryClientPhone}
+                    onChange={(e) => setSecondaryClientPhone(e.target.value)}
+                    required
+                    placeholder="e.g. +216 98 765 432"
+                    className="form-input"
+                    style={{ margin: 0 }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}><CreditCard size={11} /> CIN / Passport ID</label>
+                  <input
+                    type="text"
+                    name="secondary_client_cin_passport"
+                    value={secondaryClientCinPassport}
+                    onChange={(e) => setSecondaryClientCinPassport(e.target.value)}
+                    required
+                    placeholder="e.g. 08765432"
+                    className="form-input"
+                    style={{ margin: 0 }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}><FileText size={11} /> Driver's License No.</label>
+                  <input
+                    type="text"
+                    name="secondary_client_license_number"
+                    value={secondaryClientLicenseNumber}
+                    onChange={(e) => setSecondaryClientLicenseNumber(e.target.value)}
+                    required
+                    placeholder="e.g. 23/456789"
+                    className="form-input"
+                    style={{ margin: 0 }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}><MapPin size={11} /> Full Address</label>
+                  <input
+                    type="text"
+                    name="secondary_client_address"
+                    value={secondaryClientAddress}
+                    onChange={(e) => setSecondaryClientAddress(e.target.value)}
+                    required
+                    placeholder="e.g. Rue Habib Bourguiba, Tunis"
+                    className="form-input"
+                    style={{ margin: 0 }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── SECTION 5: FINANCIALS ── */}
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
@@ -952,10 +1184,33 @@ export default function BookingFormModal({
             </div>
           </div>
 
+          {isBlacklisted && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              borderRadius: '8px',
+              color: '#fca5a5',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              boxShadow: '0 0 15px rgba(239, 68, 68, 0.15)'
+            }}>
+              <AlertTriangle size={24} style={{ color: '#ef4444' }} />
+              <div>
+                <strong style={{ display: 'block', fontSize: '0.9rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  🚨 Critical Safety Fraud
+                </strong>
+                <span style={{ fontSize: '0.8rem' }}>One or more assigned drivers are BLACKLISTED. Contract generation is strictly locked.</span>
+              </div>
+            </div>
+          )}
+
           {/* ── FOOTER ── */}
-          <div className="modal-footer" style={{ borderTop: '1px solid rgba(229,193,125,0.12)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+          <div className="modal-footer" style={{ borderTop: '1px solid rgba(229,193,125,0.12)', paddingTop: '1rem', marginTop: '0.5rem', position: 'sticky', bottom: '-1px', background: 'linear-gradient(155deg, #18130f, #110e0c)', paddingBottom: '10px', zIndex: 10, marginInline: '-10px', paddingInline: '10px' }}>
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={loading || !!conflictInfo}>
+            <button type="submit" className="btn-primary" disabled={loading || !!conflictInfo || isBlacklisted}>
               {loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="loading-spinner"></span>
@@ -968,4 +1223,6 @@ export default function BookingFormModal({
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }
