@@ -1190,8 +1190,14 @@ export default function RevenuesClient({
             1) one event for the acompte (paid at booking creation date)
             2) one event per installment (paid_date if paid, due_date if not)
             3) one event for the synthetic "unpaid-liability-*" balance (Solde)
-          Events are then grouped by YYYY-MM-DD. The flow filter further
-          restricts events to paid-only (Settled) or unpaid-only (Unpaid). */}
+          Events are then grouped by YYYY-MM-DD.
+
+          IMPORTANT: we source from `allRows` (NOT `filtered`) because the
+          parent-level date window in `filtered` uses the booking's row.date
+          (start/created/return) — which would hide a booking entirely if
+          its tranche was paid in a different month than the booking's date.
+          Date window is applied PER EVENT below so "This Month" means
+          "cash collected this month" regardless of when the booking opened. */}
       {(() => {
         type PaymentEvent = {
           id: string
@@ -1200,11 +1206,36 @@ export default function RevenuesClient({
           kind: 'acompte' | 'tranche' | 'solde' | 'expense'
           trancheLabel: string                                 // "Acompte Initial" / "Tranche 1/2" / "Solde"
           status: 'paid' | 'unpaid' | 'overdue'
-          parentRow: typeof filtered[number]
+          parentRow: typeof allRows[number]
         }
 
+        // Parent-level filters (flow, type, search) — same predicates as the
+        // existing `filtered` useMemo but WITHOUT the date window.
+        const q = searchQuery.trim().toLowerCase()
+        const isOverdueQuery = q === 'overdue'
+        const isDueTodayQuery = q === 'due today' || q === 'duetoday'
+        const isDueDateSearch = /^\d{4}-\d{2}-\d{2}$/.test(q)
+
+        const parentFiltered = allRows.filter(row => {
+          if (typeFilter !== 'all' && row.type !== typeFilter) return false
+          if (flowFilter === 'settled' && row.remainingAmount > 0) return false
+          if (flowFilter === 'unpaid' && !(row.hasOverdue || row.remainingAmount > 0)) return false
+
+          if (isOverdueQuery) return row.hasOverdue || row.remainingAmount > 0
+          if (isDueTodayQuery) return row.installments.some(t => t.status === 'unpaid' && t.due_date === TODAY)
+          if (isDueDateSearch) return row.installments.some(t => t.due_date === q) || row.date === q
+          if (!q) return true
+          return (
+            row.description.toLowerCase().includes(q) ||
+            row.entity.toLowerCase().includes(q) ||
+            row.vehicleLabel.toLowerCase().includes(q) ||
+            row.licensePlate.toLowerCase().includes(q) ||
+            row.installments.some(t => t.due_date.includes(q))
+          )
+        })
+
         const events: PaymentEvent[] = []
-        for (const row of filtered) {
+        for (const row of parentFiltered) {
           // Inflow expenses (rare) — passthrough as single event
           if (row.type !== 'inflow') continue
           if (row.rawRef !== 'booking' || !row.rawBooking) {
@@ -1278,8 +1309,12 @@ export default function RevenuesClient({
           }
         }
 
-        // Apply flow-filter at event level — daily totals must reflect ONLY visible events
+        // Apply date-window AND flow-filter at event level — daily totals must
+        // reflect ONLY visible events. The date window matches event.date (when
+        // cash was collected / when payment is due) instead of parent.date.
+        const { from: winFrom, to: winTo } = dateWindow
         const visibleEvents = events.filter(ev => {
+          if (ev.date < winFrom || ev.date > winTo) return false
           if (flowFilter === 'settled') return ev.status === 'paid'
           if (flowFilter === 'unpaid') return ev.status !== 'paid'
           return true
