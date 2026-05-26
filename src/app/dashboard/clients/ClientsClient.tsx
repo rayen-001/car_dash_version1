@@ -576,9 +576,42 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                               <span style={{ fontWeight: 600, color: '#ffffff', display: 'block' }}>{client.full_name}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.78rem', color: '#888' }}>Reg: {client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB') : 'N/A'}</span>
-                                {client.date_naissance && (
-                                  <span title="Date of Birth" style={{ fontSize: '0.68rem', color: 'rgba(174,146,96,0.95)', background: 'rgba(229,193,125,0.08)', border: '1px solid rgba(229,193,125,0.22)', padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 600, letterSpacing: '0.02em' }}>
-                                    DOB · {fmtDate(client.date_naissance)}
+                                {/* Always-on Legal Identity chips — empty fields render as '—' in muted style
+                                    so operators see structure at a glance and know what's missing. */}
+                                <span
+                                  title="Date of Birth"
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    color: client.date_naissance ? 'rgba(174,146,96,0.95)' : 'rgba(174,146,96,0.45)',
+                                    background: 'rgba(229,193,125,0.08)',
+                                    border: '1px solid rgba(229,193,125,0.22)',
+                                    padding: '0.1rem 0.45rem',
+                                    borderRadius: '4px',
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em',
+                                  }}
+                                >
+                                  DOB · {client.date_naissance ? fmtDate(client.date_naissance) : '—'}
+                                </span>
+                                {client.address && (
+                                  <span
+                                    title={client.address}
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      color: 'rgba(174,146,96,0.95)',
+                                      background: 'rgba(229,193,125,0.08)',
+                                      border: '1px solid rgba(229,193,125,0.22)',
+                                      padding: '0.1rem 0.45rem',
+                                      borderRadius: '4px',
+                                      fontWeight: 600,
+                                      letterSpacing: '0.02em',
+                                      maxWidth: '180px',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    📍 {client.address}
                                   </span>
                                 )}
                                 {renderRiskBadge(score, riskLevel)}
@@ -597,11 +630,9 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                             <span style={{ fontFamily: 'monospace', color: '#e0e0e0', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
                               {client.cin || '—'}
                             </span>
-                            {client.cin_delivre_le && (
-                              <span style={{ fontSize: '0.66rem', color: 'rgba(174,146,96,0.72)', fontStyle: 'italic', letterSpacing: '0.02em' }}>
-                                Iss · {fmtDate(client.cin_delivre_le)}
-                              </span>
-                            )}
+                            <span style={{ fontSize: '0.66rem', color: client.cin_delivre_le ? 'rgba(174,146,96,0.85)' : 'rgba(174,146,96,0.4)', fontStyle: 'italic', letterSpacing: '0.02em' }}>
+                              Iss · {client.cin_delivre_le ? fmtDate(client.cin_delivre_le) : '—'}
+                            </span>
                           </div>
                         </td>
 
@@ -610,11 +641,9 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                             <span style={{ fontFamily: 'monospace', color: '#e0e0e0', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
                               {client.permis_numero || client.license_number || '—'}
                             </span>
-                            {client.permis_delivre_le && (
-                              <span style={{ fontSize: '0.66rem', color: 'rgba(174,146,96,0.72)', fontStyle: 'italic', letterSpacing: '0.02em' }}>
-                                Issued · {fmtDate(client.permis_delivre_le)}
-                              </span>
-                            )}
+                            <span style={{ fontSize: '0.66rem', color: client.permis_delivre_le ? 'rgba(174,146,96,0.85)' : 'rgba(174,146,96,0.4)', fontStyle: 'italic', letterSpacing: '0.02em' }}>
+                              Issued · {client.permis_delivre_le ? fmtDate(client.permis_delivre_le) : '—'}
+                            </span>
                           </div>
                         </td>
 

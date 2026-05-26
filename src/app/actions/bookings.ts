@@ -73,6 +73,12 @@ export async function addBooking(formData: FormData) {
   let client_license_number = formData.get('client_license_number') as string || ''
   const client_cin_passport = formData.get('client_cin_passport') as string || ''
   const client_address = formData.get('client_address') as string || ''
+  // Tunisian Legal Identity (client-level fields synced back to CRM record on save).
+  // Empty values resolve to null so date columns stay clean.
+  const client_date_naissance = (formData.get('client_date_naissance') as string) || null
+  const client_cin_delivre_le = (formData.get('client_cin_delivre_le') as string) || null
+  const client_permis_numero = (formData.get('client_permis_numero') as string) || null
+  const client_permis_delivre_le = (formData.get('client_permis_delivre_le') as string) || null
   const pickup_time = formData.get('pickup_time') as string || '10:00'
   const return_time = formData.get('return_time') as string || '10:00'
 
@@ -90,6 +96,10 @@ export async function addBooking(formData: FormData) {
   const secondary_client_license_number = formData.get('secondary_client_license_number') as string || ''
   const secondary_client_cin_passport = formData.get('secondary_client_cin_passport') as string || ''
   const secondary_client_address = formData.get('secondary_client_address') as string || ''
+  const secondary_client_date_naissance = (formData.get('secondary_client_date_naissance') as string) || null
+  const secondary_client_cin_delivre_le = (formData.get('secondary_client_cin_delivre_le') as string) || null
+  const secondary_client_permis_numero = (formData.get('secondary_client_permis_numero') as string) || null
+  const secondary_client_permis_delivre_le = (formData.get('secondary_client_permis_delivre_le') as string) || null
 
   // Ensure manual secondary client names are related/created in the CRM immediately
   if (!secondary_client_id && secondary_client_name) {
@@ -161,6 +171,10 @@ export async function addBooking(formData: FormData) {
     if (client_license_number) updatePayload.license_number = client_license_number
     if (client_cin_passport) updatePayload.cin = client_cin_passport
     if (client_address) updatePayload.address = client_address
+    if (client_date_naissance) updatePayload.date_naissance = client_date_naissance
+    if (client_cin_delivre_le) updatePayload.cin_delivre_le = client_cin_delivre_le
+    if (client_permis_numero) updatePayload.permis_numero = client_permis_numero
+    if (client_permis_delivre_le) updatePayload.permis_delivre_le = client_permis_delivre_le
 
     if (Object.keys(updatePayload).length > 0) {
       await supabase.from('clients').update(updatePayload).eq('id', client_id).eq('owner_id', user.id)
@@ -173,6 +187,10 @@ export async function addBooking(formData: FormData) {
     if (secondary_client_license_number) updateSecondaryPayload.license_number = secondary_client_license_number
     if (secondary_client_cin_passport) updateSecondaryPayload.cin = secondary_client_cin_passport
     if (secondary_client_address) updateSecondaryPayload.address = secondary_client_address
+    if (secondary_client_date_naissance) updateSecondaryPayload.date_naissance = secondary_client_date_naissance
+    if (secondary_client_cin_delivre_le) updateSecondaryPayload.cin_delivre_le = secondary_client_cin_delivre_le
+    if (secondary_client_permis_numero) updateSecondaryPayload.permis_numero = secondary_client_permis_numero
+    if (secondary_client_permis_delivre_le) updateSecondaryPayload.permis_delivre_le = secondary_client_permis_delivre_le
 
     if (Object.keys(updateSecondaryPayload).length > 0) {
       await supabase.from('clients').update(updateSecondaryPayload).eq('id', secondary_client_id).eq('owner_id', user.id)
@@ -316,6 +334,12 @@ export async function updateBooking(formData: FormData) {
   let client_license_number = formData.get('client_license_number') as string || ''
   const client_cin_passport = formData.get('client_cin_passport') as string || ''
   const client_address = formData.get('client_address') as string || ''
+  // Tunisian Legal Identity (client-level fields synced back to CRM record on save).
+  // Empty values resolve to null so date columns stay clean.
+  const client_date_naissance = (formData.get('client_date_naissance') as string) || null
+  const client_cin_delivre_le = (formData.get('client_cin_delivre_le') as string) || null
+  const client_permis_numero = (formData.get('client_permis_numero') as string) || null
+  const client_permis_delivre_le = (formData.get('client_permis_delivre_le') as string) || null
   const pickup_time = formData.get('pickup_time') as string || '10:00'
   const return_time = formData.get('return_time') as string || '10:00'
 
@@ -332,6 +356,10 @@ export async function updateBooking(formData: FormData) {
   const secondary_client_license_number = formData.get('secondary_client_license_number') as string || ''
   const secondary_client_cin_passport = formData.get('secondary_client_cin_passport') as string || ''
   const secondary_client_address = formData.get('secondary_client_address') as string || ''
+  const secondary_client_date_naissance = (formData.get('secondary_client_date_naissance') as string) || null
+  const secondary_client_cin_delivre_le = (formData.get('secondary_client_cin_delivre_le') as string) || null
+  const secondary_client_permis_numero = (formData.get('secondary_client_permis_numero') as string) || null
+  const secondary_client_permis_delivre_le = (formData.get('secondary_client_permis_delivre_le') as string) || null
 
   if (!secondary_client_id && secondary_client_name) {
     const normName = secondary_client_name.trim()
@@ -401,6 +429,10 @@ export async function updateBooking(formData: FormData) {
     if (client_license_number) updatePayload.license_number = client_license_number
     if (client_cin_passport) updatePayload.cin = client_cin_passport
     if (client_address) updatePayload.address = client_address
+    if (client_date_naissance) updatePayload.date_naissance = client_date_naissance
+    if (client_cin_delivre_le) updatePayload.cin_delivre_le = client_cin_delivre_le
+    if (client_permis_numero) updatePayload.permis_numero = client_permis_numero
+    if (client_permis_delivre_le) updatePayload.permis_delivre_le = client_permis_delivre_le
 
     if (Object.keys(updatePayload).length > 0) {
       await supabase.from('clients').update(updatePayload).eq('id', client_id).eq('owner_id', user.id)
@@ -413,6 +445,10 @@ export async function updateBooking(formData: FormData) {
     if (secondary_client_license_number) updateSecondaryPayload.license_number = secondary_client_license_number
     if (secondary_client_cin_passport) updateSecondaryPayload.cin = secondary_client_cin_passport
     if (secondary_client_address) updateSecondaryPayload.address = secondary_client_address
+    if (secondary_client_date_naissance) updateSecondaryPayload.date_naissance = secondary_client_date_naissance
+    if (secondary_client_cin_delivre_le) updateSecondaryPayload.cin_delivre_le = secondary_client_cin_delivre_le
+    if (secondary_client_permis_numero) updateSecondaryPayload.permis_numero = secondary_client_permis_numero
+    if (secondary_client_permis_delivre_le) updateSecondaryPayload.permis_delivre_le = secondary_client_permis_delivre_le
 
     if (Object.keys(updateSecondaryPayload).length > 0) {
       await supabase.from('clients').update(updateSecondaryPayload).eq('id', secondary_client_id).eq('owner_id', user.id)

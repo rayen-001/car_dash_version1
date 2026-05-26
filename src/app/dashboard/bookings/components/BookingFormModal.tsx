@@ -62,6 +62,18 @@ export default function BookingFormModal({
   const [secondaryClientCinPassport, setSecondaryClientCinPassport] = useState('')
   const [secondaryClientAddress, setSecondaryClientAddress] = useState('')
 
+  // Tunisian Legal Identity (client-level, not booking-snapshot). Captured here
+  // so operators can fill them during the booking flow; upsertBooking pushes
+  // them back to the clients table on save. Stored as YYYY-MM-DD strings.
+  const [clientDateNaissance, setClientDateNaissance] = useState('')
+  const [clientCinDelivreLe, setClientCinDelivreLe] = useState('')
+  const [clientPermisNumero, setClientPermisNumero] = useState('')
+  const [clientPermisDelivreLe, setClientPermisDelivreLe] = useState('')
+  const [secondaryClientDateNaissance, setSecondaryClientDateNaissance] = useState('')
+  const [secondaryClientCinDelivreLe, setSecondaryClientCinDelivreLe] = useState('')
+  const [secondaryClientPermisNumero, setSecondaryClientPermisNumero] = useState('')
+  const [secondaryClientPermisDelivreLe, setSecondaryClientPermisDelivreLe] = useState('')
+
   const [pickupTime, setPickupTime] = useState('10:00')
   const [returnTime, setReturnTime] = useState('10:00')
 
@@ -160,6 +172,25 @@ export default function BookingFormModal({
       setSecondaryClientCinPassport(editingBooking.secondary_client_cin_passport || '')
       setSecondaryClientAddress(editingBooking.secondary_client_address || '')
 
+      // Tunisian Legal Identity isn't snapshot-frozen on the booking — it's
+      // intrinsic to the client. Hydrate from the current CRM record so edits
+      // reflect what's on file right now (not what was true at booking time).
+      const primaryClient = editingBooking.client_id
+        ? (clients.find(c => c.id === editingBooking.client_id) as any)
+        : null
+      setClientDateNaissance(((primaryClient?.date_naissance) || '').split('T')[0] || '')
+      setClientCinDelivreLe(((primaryClient?.cin_delivre_le) || '').split('T')[0] || '')
+      setClientPermisNumero(primaryClient?.permis_numero || '')
+      setClientPermisDelivreLe(((primaryClient?.permis_delivre_le) || '').split('T')[0] || '')
+
+      const secondaryClientRow = editingBooking.secondary_client_id
+        ? (clients.find(c => c.id === editingBooking.secondary_client_id) as any)
+        : null
+      setSecondaryClientDateNaissance(((secondaryClientRow?.date_naissance) || '').split('T')[0] || '')
+      setSecondaryClientCinDelivreLe(((secondaryClientRow?.cin_delivre_le) || '').split('T')[0] || '')
+      setSecondaryClientPermisNumero(secondaryClientRow?.permis_numero || '')
+      setSecondaryClientPermisDelivreLe(((secondaryClientRow?.permis_delivre_le) || '').split('T')[0] || '')
+
       setPickupTime(editingBooking.pickup_time || '10:00')
       setReturnTime(editingBooking.return_time || '10:00')
       setConflictInfo(null)
@@ -196,6 +227,14 @@ export default function BookingFormModal({
       setSecondaryClientLicenseNumber('')
       setSecondaryClientCinPassport('')
       setSecondaryClientAddress('')
+      setClientDateNaissance('')
+      setClientCinDelivreLe('')
+      setClientPermisNumero('')
+      setClientPermisDelivreLe('')
+      setSecondaryClientDateNaissance('')
+      setSecondaryClientCinDelivreLe('')
+      setSecondaryClientPermisNumero('')
+      setSecondaryClientPermisDelivreLe('')
       setPickupTime('10:00')
       setReturnTime('10:00')
       setConflictInfo(null)
@@ -427,17 +466,25 @@ export default function BookingFormModal({
                       setClientLicenseNumber('')
                       setClientCinPassport('')
                       setClientAddress('')
+                      setClientDateNaissance('')
+                      setClientCinDelivreLe('')
+                      setClientPermisNumero('')
+                      setClientPermisDelivreLe('')
                     } else if (val && opt) {
-                      // Existing CRM client: hydrate ALL snapshot fields so the
-                      // operator sees what's on file. Edits made here will be
-                      // pushed back to the CRM record by upsertBooking on save.
-                      const client = clients.find(c => c.id === val)
+                      // Existing CRM client: hydrate ALL snapshot fields + the
+                      // Tunisian Legal Identity (DOB / CIN-Issue / Permit / Permit-Issue).
+                      // Edits flow back to the CRM record on save via upsertBooking.
+                      const client = clients.find(c => c.id === val) as any
                       if (client) {
                         setClientName(client.full_name || '')
                         setClientPhone(client.phone || '')
                         setClientLicenseNumber(client.license_number || '')
                         setClientCinPassport(client.cin || '')
                         setClientAddress(client.address || '')
+                        setClientDateNaissance((client.date_naissance || '').split('T')[0] || '')
+                        setClientCinDelivreLe((client.cin_delivre_le || '').split('T')[0] || '')
+                        setClientPermisNumero(client.permis_numero || '')
+                        setClientPermisDelivreLe((client.permis_delivre_le || '').split('T')[0] || '')
                       }
                     } else {
                       // Combobox cleared.
@@ -446,6 +493,10 @@ export default function BookingFormModal({
                       setClientLicenseNumber('')
                       setClientCinPassport('')
                       setClientAddress('')
+                      setClientDateNaissance('')
+                      setClientCinDelivreLe('')
+                      setClientPermisNumero('')
+                      setClientPermisDelivreLe('')
                     }
                   }}
                   placeholder="Select a client..."
@@ -494,17 +545,25 @@ export default function BookingFormModal({
                       setSecondaryClientLicenseNumber('')
                       setSecondaryClientCinPassport('')
                       setSecondaryClientAddress('')
+                      setSecondaryClientDateNaissance('')
+                      setSecondaryClientCinDelivreLe('')
+                      setSecondaryClientPermisNumero('')
+                      setSecondaryClientPermisDelivreLe('')
                     } else if (val && opt) {
-                      // Existing CRM client: hydrate ALL snapshot fields. Edits made
-                      // here will be pushed back to the CRM record by upsertBooking
-                      // on save (shared-liability DRI keeps both drivers in sync).
-                      const client = clients.find(c => c.id === val)
+                      // Existing CRM client: hydrate ALL fields including the
+                      // Tunisian Legal Identity. Shared-liability DRI keeps both
+                      // drivers in sync via the trust score recalc on save.
+                      const client = clients.find(c => c.id === val) as any
                       if (client) {
                         setSecondaryClientName(client.full_name || '')
                         setSecondaryClientPhone(client.phone || '')
                         setSecondaryClientLicenseNumber(client.license_number || '')
                         setSecondaryClientCinPassport(client.cin || '')
                         setSecondaryClientAddress(client.address || '')
+                        setSecondaryClientDateNaissance((client.date_naissance || '').split('T')[0] || '')
+                        setSecondaryClientCinDelivreLe((client.cin_delivre_le || '').split('T')[0] || '')
+                        setSecondaryClientPermisNumero(client.permis_numero || '')
+                        setSecondaryClientPermisDelivreLe((client.permis_delivre_le || '').split('T')[0] || '')
                       }
                     } else {
                       // Combobox cleared.
@@ -513,6 +572,10 @@ export default function BookingFormModal({
                       setSecondaryClientLicenseNumber('')
                       setSecondaryClientCinPassport('')
                       setSecondaryClientAddress('')
+                      setSecondaryClientDateNaissance('')
+                      setSecondaryClientCinDelivreLe('')
+                      setSecondaryClientPermisNumero('')
+                      setSecondaryClientPermisDelivreLe('')
                     }
                   }}
                   placeholder="Select a secondary driver..."
@@ -859,6 +922,66 @@ export default function BookingFormModal({
                 />
               </div>
             </div>
+
+            {/* Tunisian Legal Identity — client-level, syncs back to CRM record on save */}
+            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed rgba(229,193,125,0.18)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ae9260', boxShadow: '0 0 8px rgba(229,193,125,0.55)' }} />
+                <span style={{ fontSize: '0.68rem', color: '#ae9260', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                  Tunisian Legal Identity
+                </span>
+                <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
+                  — updates the CRM record on save
+                </span>
+              </div>
+              <div style={grid2Style}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}>Date of Birth (DOB)</label>
+                  <input
+                    type="date"
+                    name="client_date_naissance"
+                    value={clientDateNaissance}
+                    onChange={(e) => setClientDateNaissance(e.target.value)}
+                    className="form-input"
+                    style={{ margin: 0, colorScheme: 'dark' }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}>CIN Issue Date (Iss)</label>
+                  <input
+                    type="date"
+                    name="client_cin_delivre_le"
+                    value={clientCinDelivreLe}
+                    onChange={(e) => setClientCinDelivreLe(e.target.value)}
+                    className="form-input"
+                    style={{ margin: 0, colorScheme: 'dark' }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}>Permit Number (Permis)</label>
+                  <input
+                    type="text"
+                    name="client_permis_numero"
+                    value={clientPermisNumero}
+                    onChange={(e) => setClientPermisNumero(e.target.value)}
+                    placeholder="e.g. 12345678"
+                    className="form-input"
+                    style={{ margin: 0 }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}>Permit Issue Date</label>
+                  <input
+                    type="date"
+                    name="client_permis_delivre_le"
+                    value={clientPermisDelivreLe}
+                    onChange={(e) => setClientPermisDelivreLe(e.target.value)}
+                    className="form-input"
+                    style={{ margin: 0, colorScheme: 'dark' }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── SECTION 4.5: CO-DRIVER DETAILS (Conditional) ── */}
@@ -920,6 +1043,66 @@ export default function BookingFormModal({
                     className="form-input"
                     style={{ margin: 0 }}
                   />
+                </div>
+              </div>
+
+              {/* Co-Driver Tunisian Legal Identity — same round-trip semantics as primary */}
+              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed rgba(229,193,125,0.18)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ae9260', boxShadow: '0 0 8px rgba(229,193,125,0.55)' }} />
+                  <span style={{ fontSize: '0.68rem', color: '#ae9260', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    Tunisian Legal Identity
+                  </span>
+                  <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
+                    — updates the co-driver's CRM record on save
+                  </span>
+                </div>
+                <div style={grid2Style}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={labelStyle}>Date of Birth (DOB)</label>
+                    <input
+                      type="date"
+                      name="secondary_client_date_naissance"
+                      value={secondaryClientDateNaissance}
+                      onChange={(e) => setSecondaryClientDateNaissance(e.target.value)}
+                      className="form-input"
+                      style={{ margin: 0, colorScheme: 'dark' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={labelStyle}>CIN Issue Date (Iss)</label>
+                    <input
+                      type="date"
+                      name="secondary_client_cin_delivre_le"
+                      value={secondaryClientCinDelivreLe}
+                      onChange={(e) => setSecondaryClientCinDelivreLe(e.target.value)}
+                      className="form-input"
+                      style={{ margin: 0, colorScheme: 'dark' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={labelStyle}>Permit Number (Permis)</label>
+                    <input
+                      type="text"
+                      name="secondary_client_permis_numero"
+                      value={secondaryClientPermisNumero}
+                      onChange={(e) => setSecondaryClientPermisNumero(e.target.value)}
+                      placeholder="e.g. 12345678"
+                      className="form-input"
+                      style={{ margin: 0 }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={labelStyle}>Permit Issue Date</label>
+                    <input
+                      type="date"
+                      name="secondary_client_permis_delivre_le"
+                      value={secondaryClientPermisDelivreLe}
+                      onChange={(e) => setSecondaryClientPermisDelivreLe(e.target.value)}
+                      className="form-input"
+                      style={{ margin: 0, colorScheme: 'dark' }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
