@@ -37,12 +37,14 @@ export default async function BookingsPage() {
     .eq('owner_id', user.id)
 
   // Fetch clients belonging to this owner for dropdown selection.
-  // Must include license_number + address — BookingFormModal hydrates these
-  // into the contract snapshot fields when an existing client is picked, and
-  // upsertBooking writes them back to the CRM record on save.
+  // BookingFormModal hydrates ALL of these into the contract snapshot fields
+  // (and the Tunisian Legal Identity block) when an existing client is picked.
+  // upsertBooking writes everything back to the CRM record on save — full
+  // round-trip. If a column is missing here the hydration silently falls
+  // through to '' and the user sees empty inputs even when CRM has data.
   const { data: clients } = await supabase
     .from('clients')
-    .select('id, full_name, phone, trust_score, cin, license_number, address')
+    .select('id, full_name, phone, trust_score, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le')
     .eq('owner_id', user.id)
     .order('full_name')
 
