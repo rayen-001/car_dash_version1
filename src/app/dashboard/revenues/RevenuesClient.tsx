@@ -1326,6 +1326,10 @@ export default function RevenuesClient({
         const totalEventsExist = events.length > 0
 
         if (visibleEvents.length === 0) {
+          // Diagnostic counts surface up exactly where the pipeline drops data
+          // so we can tell whether the SELECT is empty, the parent filter
+          // ate everything, or just the date window is the restriction.
+          const debugInfo = `allRows=${allRows.length} · parentFiltered=${parentFiltered.length} · events=${events.length} · visible=${visibleEvents.length}`
           // Smart empty state: if events exist outside the window, offer a
           // one-click widening so the operator isn't left wondering whether
           // the data is missing or just out-of-range.
@@ -1369,8 +1373,45 @@ export default function RevenuesClient({
                   <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
                     Create a booking with an acompte or scheduled tranches and they will surface here.
                   </p>
+                  {allRows.length > 0 && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8rem', color: '#fbbf24', fontWeight: 600 }}>
+                        ⚠ But there ARE {allRows.length} ledger row{allRows.length > 1 ? 's' : ''} loaded — one of these checks is dropping them:
+                      </p>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.74rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.8 }}>
+                        <li>· acompte_paid &gt; 0 — needed for "Acompte Initial" event</li>
+                        <li>· installments array non-empty — needed for "Tranche" events</li>
+                        <li>· remainingAmount &gt; 0 — needed for "Solde" event</li>
+                      </ul>
+                      <button
+                        onClick={() => {
+                          setCustomFrom('2024-01-01')
+                          setCustomTo(TODAY)
+                          setPreset('custom')
+                        }}
+                        style={{
+                          marginTop: '1rem',
+                          padding: '0.55rem 1.1rem',
+                          borderRadius: '999px',
+                          background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
+                          border: 'none',
+                          color: '#000',
+                          fontWeight: 800,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          letterSpacing: '0.02em',
+                          boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
+                        }}
+                      >
+                        Widen date range (2024 → today)
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
+              <p style={{ margin: '1.25rem 0 0 0', fontSize: '0.65rem', color: 'rgba(255,255,255,0.18)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
+                {debugInfo}
+              </p>
             </div>
           )
         }
