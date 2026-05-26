@@ -23,16 +23,17 @@ export default async function ExpensesPage() {
       .order('service_date', { ascending: false }),
     supabase
       .from('bookings')
-      // Use `*` for the bookings row — see commit 493f23f for why enumeration
-      // is fragile. Same fix applied to revenues/page.tsx in parallel.
+      // Same fixes applied as revenues/page.tsx — see commit 493f23f for
+      // the column-enumeration bug and 69d487c for the FK ambiguity bug.
       .select(`
         *,
-        vehicles(brand, model, license_plate, price_per_day),
-        installments:booking_installments(id, amount, due_date, status, paid_date),
-        clients(id, full_name, phone, license_number, cin, address, trust_score, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le)
+        vehicles(*),
+        installments:booking_installments(*),
+        clients:clients!client_id(*),
+        secondary_client:clients!secondary_client_id(*)
       `)
       .eq('owner_id', user.id)
-      .in('status', ['confirmed', 'completed'])
+      .neq('status', 'cancelled')
       .order('created_at', { ascending: false }),
     supabase
       .from('vehicles')

@@ -36,11 +36,17 @@ export default async function RevenuesPage() {
       .order('service_date', { ascending: false }),
     supabase
       .from('bookings')
+      // Joined `clients(*)` is AMBIGUOUS — bookings has two FKs to clients
+      // (client_id for primary renter, secondary_client_id for co-driver),
+      // so PostgREST can't pick which one to use and rejects the whole SELECT.
+      // Disambiguate by passing the FK column explicitly. Alias to `clients`
+      // so downstream code that reads `row.rawBooking.clients` keeps working.
       .select(`
         *,
         vehicles(*),
         installments:booking_installments(*),
-        clients(*)
+        clients:clients!client_id(*),
+        secondary_client:clients!secondary_client_id(*)
       `)
       .eq('owner_id', user.id)
       .neq('status', 'cancelled')
@@ -58,9 +64,17 @@ export default async function RevenuesPage() {
   ])
 
   // Server-side diagnostic — surfaces silent Supabase errors that previously
-  // hid behind `bookingsRes.data || []`. Visible in the dev-server terminal.
+  // hid behind `bookingsRes.data || []`. PostgrestError has non-enumerable
+  // props that print as `{}` with plain console.error, so unpack the useful
+  // fields explicitly. Visible in the dev-server terminal.
   if (bookingsRes.error) {
-    console.error('[revenues/page.tsx] bookings SELECT failed:', bookingsRes.error)
+    const e = bookingsRes.error as { message?: string; code?: string; details?: string; hint?: string }
+    console.error('[revenues/page.tsx] bookings SELECT failed:', {
+      message: e.message,
+      code: e.code,
+      details: e.details,
+      hint: e.hint,
+    })
   }
   console.log('[revenues/page.tsx] bookings fetched:', bookingsRes.data?.length ?? 0, 'rows')
 
