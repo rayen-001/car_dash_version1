@@ -21,7 +21,8 @@ interface OmniBooking {
   total_amount?: number
   acompte_paid?: number
   rental_days_text?: string
-  departure_time?: string
+  pickup_time?: string
+  departure_time?: string  // legacy alias — DB column is pickup_time
   return_time?: string
   // Phase 17a — off-site Handover / Delivery
   handover_location?: string | null
@@ -1237,7 +1238,7 @@ function OmniResultCard({
       <Cell>
         <Label>Rental Period</Label>
         <Stack>
-          <Row lbl="Dep" val={`${fmt(booking.start_date)} ${booking.departure_time || ''}`} />
+          <Row lbl="Dep" val={`${fmt(booking.start_date)} ${booking.pickup_time || booking.departure_time || ''}`} />
           <Row lbl="Ret" val={`${fmt(booking.end_date)} ${booking.return_time || ''}`} />
           <span style={{
             display: 'inline-block', marginTop: '0.25rem',

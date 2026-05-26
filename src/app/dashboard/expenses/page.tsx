@@ -45,7 +45,7 @@ export default async function ExpensesPage() {
         fuel_level_return,
         lavage_pickup,
         lavage_return,
-        departure_time,
+        pickup_time,
         return_time,
         rental_days_text,
         vehicles(brand, model, license_plate, price_per_day),

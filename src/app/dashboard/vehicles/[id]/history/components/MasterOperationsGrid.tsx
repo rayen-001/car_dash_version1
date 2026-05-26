@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, Edit2 } from 'lucide-react'
+import { Search, Edit2, Edit3, X, Check } from 'lucide-react'
 import styles from '../history.module.css'
 import QuickEditBookingModal from './QuickEditBookingModal'
+import { updateBookingHistoricalDetails } from '@/app/actions'
+import { formatFuelFraction, calculateFuelDelta, calculateDrivenMileage } from '@/app/dashboard/bookings/components/HandoverCalculators'
 
 interface Client {
   id: string
@@ -43,6 +45,16 @@ interface Booking {
   return_km?: number | null
   client_behavior_status?: string | null
   damage_notes?: string
+  vehicle_handovers?: {
+    booking_id: string
+    vehicle_id: string
+    pickup_km?: number | null
+    return_km?: number | null
+    pickup_fuel?: number | null
+    return_fuel?: number | null
+    pickup_cleanliness?: 'Clean' | 'Dirty' | null
+    return_cleanliness?: 'Clean' | 'Dirty' | null
+  }[]
   clients?: Client
   vehicles?: Vehicle
 }
@@ -69,6 +81,28 @@ const BEHAVIOR_LABELS: Record<string, { label: string; color: string }> = {
 export default function MasterOperationsGrid({ bookings }: MasterOperationsGridProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null)
+  
+  // Inline Financial Editing State
+  const [editingFinId, setEditingFinId] = useState<string | null>(null)
+  const [tempTotal, setTempTotal] = useState<string>('')
+  const [tempAcompte, setTempAcompte] = useState<string>('')
+  const [isSavingFin, setIsSavingFin] = useState(false)
+
+  const handleSaveFinancials = async (booking: Booking) => {
+    setIsSavingFin(true)
+    try {
+      await updateBookingHistoricalDetails(booking.id, booking.vehicle_id, {
+        total_amount: parseFloat(tempTotal),
+        acompte_paid: parseFloat(tempAcompte)
+      })
+      setEditingFinId(null)
+    } catch (error) {
+      console.error('Failed to update financials', error)
+      alert('Error updating financials')
+    } finally {
+      setIsSavingFin(false)
+    }
+  }
 
   const filteredBookings = useMemo(() => {
     if (!searchQuery) return bookings
@@ -182,54 +216,133 @@ export default function MasterOperationsGrid({ bookings }: MasterOperationsGridP
 
                     {/* Rental Period */}
                     <td className={`${styles['col-period']} ${styles['dense-stack']}`}>
-                      <div><span className={styles['lbl']}>Dep:</span> {formatDate(booking.start_date)} {booking.departure_time || ''}</div>
+                      <div><span className={styles['lbl']}>Dep:</span> {formatDate(booking.start_date)} {(booking as any).pickup_time || booking.departure_time || ''}</div>
                       <div><span className={styles['lbl']}>Ret:</span> {formatDate(booking.end_date)} {booking.return_time || ''}</div>
                       <div className={styles['cumulative-days']}>{booking.rental_days_text || '—'} Days</div>
                     </td>
 
                     {/* Financials */}
                     <td className={`${styles['col-financials']} ${styles['dense-stack']}`}>
-                      <div className={styles['fin-row']}>
-                        <span>Total:</span> <strong>{total.toFixed(2)} DT</strong>
-                      </div>
-                      <div className={styles['fin-row']}>
-                        <span>Acompte:</span> <strong style={{ color: 'var(--accent-gold)' }}>{acompte.toFixed(2)} DT</strong>
-                      </div>
-                      <div className={`${styles['fin-row']} ${styles['fin-border-top']}`}>
-                        <span>Reste:</span>
-                        <strong style={{ color: reste > 0 ? '#ef4444' : '#10b981' }}>
-                          {reste.toFixed(2)} DT
-                        </strong>
-                      </div>
+                      {editingFinId === booking.id ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', background: 'rgba(255,255,255,0.02)', padding: '0.5rem', borderRadius: '6px', border: '1px solid rgba(229,193,125,0.3)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total:</span>
+                            <input 
+                              type="number" 
+                              value={tempTotal} 
+                              onChange={(e) => setTempTotal(e.target.value)}
+                              style={{ width: '70px', padding: '0.15rem 0.3rem', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Acompte:</span>
+                            <input 
+                              type="number" 
+                              value={tempAcompte} 
+                              onChange={(e) => setTempAcompte(e.target.value)}
+                              style={{ width: '70px', padding: '0.15rem 0.3rem', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem', marginTop: '0.2rem' }}>
+                            <button onClick={() => setEditingFinId(null)} className="icon-btn" style={{ color: '#ef4444', padding: '0.2rem' }} disabled={isSavingFin}><X size={14} /></button>
+                            <button onClick={() => handleSaveFinancials(booking)} className="icon-btn" style={{ color: '#10b981', padding: '0.2rem' }} disabled={isSavingFin}>
+                              {isSavingFin ? <span style={{ fontSize: '10px' }}>...</span> : <Check size={14} />}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ position: 'relative', paddingRight: '1.2rem' }}>
+                          <button 
+                            className="icon-btn" 
+                            style={{ position: 'absolute', right: 0, top: 0, opacity: 0.5 }}
+                            onClick={() => {
+                              setTempTotal(total.toString())
+                              setTempAcompte(acompte.toString())
+                              setEditingFinId(booking.id)
+                            }}
+                          >
+                            <Edit3 size={12} />
+                          </button>
+                          <div className={styles['fin-row']}>
+                            <span>Total:</span> <strong>{total.toFixed(2)} DT</strong>
+                          </div>
+                          <div className={styles['fin-row']}>
+                            <span>Acompte:</span> <strong style={{ color: 'var(--accent-gold)' }}>{acompte.toFixed(2)} DT</strong>
+                          </div>
+                          <div className={`${styles['fin-row']} ${styles['fin-border-top']}`}>
+                            <span>Reste:</span>
+                            <strong style={{ color: reste > 0 ? '#ef4444' : '#10b981' }}>
+                              {reste.toFixed(2)} DT
+                            </strong>
+                          </div>
+                        </div>
+                      )}
                     </td>
 
                     {/* Condition Delta */}
                     <td className={`${styles['col-condition']} ${styles['dense-stack']}`}>
-                      {/* Lavage delta */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
-                        <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>💧</span>
-                        <span className={styles['cond-tag']}>{lavageLabel(booking.lavage_pickup)}</span>
-                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
-                        <span className={styles['cond-tag']} style={{ background: booking.lavage_return === 'dirty' ? 'rgba(239,68,68,0.12)' : undefined }}>
-                          {lavageLabel(booking.lavage_return) || '—'}
-                        </span>
-                      </div>
-                      {/* KM delta */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
-                        <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>🛣️</span>
-                        <span className={styles['cond-tag']}>{booking.starting_km ?? '—'}</span>
-                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
-                        <span className={styles['cond-tag']}>
-                          {booking.return_km !== undefined && booking.return_km !== null ? `${booking.return_km} km` : '-- km'}
-                        </span>
-                      </div>
-                      {/* Fuel delta */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
-                        <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>⛽</span>
-                        <span className={styles['cond-tag']}>{booking.fuel_level_pickup || '—'}</span>
-                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
-                        <span className={styles['cond-tag']}>{booking.fuel_level_return || '—'}</span>
-                      </div>
+                      {(() => {
+                        const h = (booking.vehicle_handovers?.[0] || {}) as any
+                        // Fallback to old flat columns if new handovers table isn't populated yet
+                        const pKm = h.pickup_km ?? booking.starting_km
+                        const rKm = h.return_km ?? booking.return_km
+                        const pFuel = h.pickup_fuel // Will be undefined if using old string system
+                        const rFuel = h.return_fuel
+                        
+                        const drivenKm = calculateDrivenMileage(pKm, rKm)
+                        const fuelDelta = calculateFuelDelta(pFuel, rFuel)
+
+                        return (
+                          <>
+                            {/* Lavage delta */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', flexWrap: 'wrap' }}>
+                              <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>💧</span>
+                              <span className={styles['cond-tag']}>{h.pickup_cleanliness || lavageLabel(booking.lavage_pickup)}</span>
+                              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
+                              <span className={styles['cond-tag']} style={{ background: (h.return_cleanliness || booking.lavage_return) === 'dirty' || (h.return_cleanliness || booking.lavage_return) === 'Dirty' ? 'rgba(239,68,68,0.12)' : undefined }}>
+                                {h.return_cleanliness || lavageLabel(booking.lavage_return) || '—'}
+                              </span>
+                            </div>
+
+                            {/* KM delta */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>🛣️</span>
+                                <span className={styles['cond-tag']}>{pKm ?? '—'}</span>
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
+                                <span className={styles['cond-tag']}>
+                                  {rKm !== undefined && rKm !== null ? `${rKm} km` : '-- km'}
+                                </span>
+                              </div>
+                              {drivenKm !== null && drivenKm > 0 && (
+                                <div style={{ width: '100%', fontSize: '0.7rem', color: '#E5C17D', fontWeight: 600, paddingLeft: '1.2rem', marginTop: '-0.1rem' }}>
+                                  {drivenKm.toLocaleString()} km driven
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Fuel delta */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', marginTop: '0.1rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}>
+                                <span style={{ color: 'rgba(229,193,125,0.5)', fontWeight: 700, fontSize: '0.65rem' }}>⛽</span>
+                                <span className={styles['cond-tag']}>
+                                  {pFuel !== undefined ? formatFuelFraction(pFuel) : (booking.fuel_level_pickup || '—')}
+                                </span>
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>→</span>
+                                <span className={styles['cond-tag']}>
+                                  {rFuel !== undefined ? formatFuelFraction(rFuel) : (booking.fuel_level_return || '—')}
+                                </span>
+                              </div>
+                              {fuelDelta && (
+                                <div style={{ width: '100%', fontSize: '0.72rem', color: fuelDelta.color, fontWeight: 700, paddingLeft: '1.2rem', marginTop: '-0.1rem' }}>
+                                  {fuelDelta.text}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )
+                      })()}
+                      
                       {booking.damage_notes && (() => {
                         const isPerfect = booking.damage_notes.toLowerCase().includes('perfect normal return') || booking.damage_notes.includes('[GREEN]');
                         const cleanNotes = booking.damage_notes.replace('[GREEN]', '').trim();
