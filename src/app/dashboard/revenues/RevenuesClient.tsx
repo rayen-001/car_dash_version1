@@ -1320,14 +1320,57 @@ export default function RevenuesClient({
           return true
         })
 
+        // Count events the date window hid so the empty state can offer a
+        // one-click widening when the operator's data is real but out-of-range.
+        const eventsOutsideWindow = events.length - visibleEvents.length
+        const totalEventsExist = events.length > 0
+
         if (visibleEvents.length === 0) {
+          // Smart empty state: if events exist outside the window, offer a
+          // one-click widening so the operator isn't left wondering whether
+          // the data is missing or just out-of-range.
           return (
-            <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
+            <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem 1.5rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
               <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
-              <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No transactions match the active filters.</p>
-              <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
-                Use the status, date range, or search bar to expose overdue liabilities and contract cash flows.
-              </p>
+              {totalEventsExist ? (
+                <>
+                  <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
+                    No cash inflows in the current date range.
+                  </p>
+                  <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
+                    You have <strong style={{ color: '#E5C17D' }}>{eventsOutsideWindow}</strong> inflow event{eventsOutsideWindow > 1 ? 's' : ''} outside this window
+                    {flowFilter !== 'all' ? <> (filter: <em style={{ color: '#E5C17D' }}>{flowFilter === 'settled' ? 'Fully Settled' : 'Unpaid/Overdue'}</em>)</> : null}.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setCustomFrom('2024-01-01')
+                      setCustomTo(TODAY)
+                      setPreset('custom')
+                    }}
+                    style={{
+                      padding: '0.55rem 1.1rem',
+                      borderRadius: '999px',
+                      background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
+                      border: 'none',
+                      color: '#000',
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      letterSpacing: '0.02em',
+                      boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
+                    }}
+                  >
+                    Show all inflows ever →
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No inflows recorded yet.</p>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
+                    Create a booking with an acompte or scheduled tranches and they will surface here.
+                  </p>
+                </>
+              )}
             </div>
           )
         }
