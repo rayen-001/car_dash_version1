@@ -532,8 +532,17 @@ export default function BookingsClient({
                           : (lc.includes('hotel') || lc.includes('hôtel'))
                             ? Hotel
                             : MapPin
+                        // Render the full DD/MM/YYYY HH:MM so the badge shows when the
+                        // delivery actually happens, not just the time-of-day.
                         const hhmm = booking.handover_datetime
-                          ? new Date(booking.handover_datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                          ? new Date(booking.handover_datetime).toLocaleString('en-GB', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: false,
+                            })
                           : ''
                         return (
                           <div
