@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Calendar, X, AlertTriangle, Edit2, ShieldAlert, ShieldCheck, ShieldAlert as ShieldIcon, Star } from 'lucide-react'
+import { Search, Calendar, X, AlertTriangle, Edit2, ShieldAlert, ShieldCheck, ShieldAlert as ShieldIcon, Star, Plane, Hotel, MapPin } from 'lucide-react'
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { updateBookingStatus } from '@/app/actions'
 import { useToast } from '@/components/Toast'
@@ -23,6 +23,9 @@ interface OmniBooking {
   rental_days_text?: string
   departure_time?: string
   return_time?: string
+  // Phase 17a — off-site Handover / Delivery
+  handover_location?: string | null
+  handover_datetime?: string | null
   starting_km?: number | null
   return_km?: number | null
   fuel_level_pickup?: string
@@ -1244,6 +1247,52 @@ function OmniResultCard({
           }}>
             {booking.rental_days_text || (booking.start_date && booking.end_date ? Math.round((new Date(booking.end_date.split('T')[0] + 'T00:00:00').getTime() - new Date(booking.start_date.split('T')[0] + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)) : '—')} days
           </span>
+
+          {/* Phase 17a — Optional off-site Handover badge. Renders nothing when
+              handover_location is null/empty so the cell stays compact. */}
+          {booking.handover_location && booking.handover_location.trim() && (() => {
+            const loc = booking.handover_location.trim()
+            const lc = loc.toLowerCase()
+            const Icon = (lc.includes('matar') || lc.includes('airport') || lc.includes('aéroport') || lc.includes('aeroport'))
+              ? Plane
+              : (lc.includes('hotel') || lc.includes('hôtel'))
+                ? Hotel
+                : MapPin
+            const hhmm = booking.handover_datetime
+              ? new Date(booking.handover_datetime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+              : ''
+            return (
+              <span
+                title={`Handover · ${loc}${hhmm ? ' @ ' + hhmm : ''}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  marginTop: '0.35rem',
+                  padding: '0.22rem 0.55rem',
+                  background: 'linear-gradient(135deg, rgba(229,193,125,0.18) 0%, rgba(229,193,125,0.06) 100%)',
+                  border: '1px solid rgba(229,193,125,0.35)',
+                  borderRadius: '999px',
+                  boxShadow: '0 0 14px rgba(229,193,125,0.18), inset 0 0 6px rgba(229,193,125,0.06)',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: '#E5C17D',
+                  letterSpacing: '0.02em',
+                  maxWidth: '100%',
+                  width: 'fit-content',
+                }}
+              >
+                <Icon size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{loc}</span>
+                {hhmm && (
+                  <>
+                    <span style={{ opacity: 0.4 }}>·</span>
+                    <span style={{ color: '#fff' }}>{hhmm}</span>
+                  </>
+                )}
+              </span>
+            )
+          })()}
         </Stack>
       </Cell>
 

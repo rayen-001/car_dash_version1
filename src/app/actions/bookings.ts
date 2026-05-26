@@ -82,6 +82,15 @@ export async function addBooking(formData: FormData) {
   const pickup_time = formData.get('pickup_time') as string || '10:00'
   const return_time = formData.get('return_time') as string || '10:00'
 
+  // Phase 17a — Optional off-site Handover / Delivery
+  // (handover_location + handover_datetime columns must exist on bookings;
+  // see migration in the project changelog). Empty values → null so the row
+  // stays clean and the conditional UI rendering does not surface a badge.
+  const handover_location_raw = (formData.get('handover_location') as string) || ''
+  const handover_location = handover_location_raw.trim() || null
+  const handover_datetime_raw = (formData.get('handover_datetime') as string) || ''
+  const handover_datetime = handover_datetime_raw ? handover_datetime_raw : null
+
   // Safely parse client_id to prevent type parsing issues with "manual" or empty values
   let client_id = client_id_raw
   if (client_id === 'manual' || client_id === 'null' || !client_id) {
@@ -252,7 +261,9 @@ export async function addBooking(formData: FormData) {
     client_cin_passport,
     client_address,
     pickup_time,
-    return_time
+    return_time,
+    handover_location,
+    handover_datetime,
   }).select('id').single()
 
   if (error) throw new Error(error.message)
@@ -342,6 +353,15 @@ export async function updateBooking(formData: FormData) {
   const client_permis_delivre_le = (formData.get('client_permis_delivre_le') as string) || null
   const pickup_time = formData.get('pickup_time') as string || '10:00'
   const return_time = formData.get('return_time') as string || '10:00'
+
+  // Phase 17a — Optional off-site Handover / Delivery
+  // (handover_location + handover_datetime columns must exist on bookings;
+  // see migration in the project changelog). Empty values → null so the row
+  // stays clean and the conditional UI rendering does not surface a badge.
+  const handover_location_raw = (formData.get('handover_location') as string) || ''
+  const handover_location = handover_location_raw.trim() || null
+  const handover_datetime_raw = (formData.get('handover_datetime') as string) || ''
+  const handover_datetime = handover_datetime_raw ? handover_datetime_raw : null
 
   let client_id = client_id_raw
   if (client_id === 'manual' || client_id === 'null' || !client_id) {
@@ -517,7 +537,9 @@ export async function updateBooking(formData: FormData) {
       client_address,
       pickup_time,
       return_time,
-      actual_return_date
+      actual_return_date,
+      handover_location,
+      handover_datetime,
     })
     .eq('id', id)
     .eq('owner_id', user.id)

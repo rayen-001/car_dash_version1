@@ -77,6 +77,11 @@ export default function BookingFormModal({
   const [pickupTime, setPickupTime] = useState('10:00')
   const [returnTime, setReturnTime] = useState('10:00')
 
+  // Phase 17a — Optional off-site Handover / Delivery (Airport, Hotel, etc.)
+  // Empty string = no handover; persisted as NULL by upsertBooking.
+  const [handoverLocation, setHandoverLocation] = useState('')
+  const [handoverDatetime, setHandoverDatetime] = useState('')
+
   // Conflict info state
   const [conflictInfo, setConflictInfo] = useState<{ occupiedRange: string, freeDates: string[] } | null>(null)
 
@@ -193,6 +198,13 @@ export default function BookingFormModal({
 
       setPickupTime(editingBooking.pickup_time || '10:00')
       setReturnTime(editingBooking.return_time || '10:00')
+      setHandoverLocation(editingBooking.handover_location || '')
+      // datetime-local needs `YYYY-MM-DDTHH:MM`; Supabase returns full ISO with seconds + Z.
+      setHandoverDatetime(
+        editingBooking.handover_datetime
+          ? editingBooking.handover_datetime.slice(0, 16)
+          : ''
+      )
       setConflictInfo(null)
 
       // Sync installments state
@@ -237,6 +249,8 @@ export default function BookingFormModal({
       setSecondaryClientPermisDelivreLe('')
       setPickupTime('10:00')
       setReturnTime('10:00')
+      setHandoverLocation('')
+      setHandoverDatetime('')
       setConflictInfo(null)
       setInstallments([])
     }
@@ -817,6 +831,49 @@ export default function BookingFormModal({
                     )
                   })}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── SECTION 2.5: LOGISTICS HANDOVER (OPTIONAL) ── */}
+          {/* Phase 17a — off-site delivery (Airport / Hotel / etc.). Empty
+              location → no badge surfaces on the dashboard or bookings table. */}
+          <div style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <MapPin size={14} style={{ color: '#ae9260' }} />
+              <span style={sectionTitleStyle}>
+                Logistics Handover <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>(Optional · Airport / Hotel / Custom)</span>
+              </span>
+            </div>
+            <div style={grid2Style}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}><MapPin size={11} /> Handover Location</label>
+                <input
+                  type="text"
+                  name="handover_location"
+                  value={handoverLocation}
+                  onChange={(e) => setHandoverLocation(e.target.value)}
+                  placeholder="e.g. Tunis Carthage Airport, Hotel Laico, Sousse"
+                  className="form-input"
+                  style={{ margin: 0 }}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}><Clock size={11} /> Handover Date &amp; Time</label>
+                <input
+                  type="datetime-local"
+                  name="handover_datetime"
+                  value={handoverDatetime}
+                  onChange={(e) => setHandoverDatetime(e.target.value)}
+                  className="form-input"
+                  style={{ margin: 0, colorScheme: 'dark' }}
+                />
+              </div>
+            </div>
+            {handoverLocation && (
+              <div style={{ marginTop: '0.6rem', fontSize: '0.7rem', color: 'rgba(229,193,125,0.7)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px rgba(16,185,129,0.7)' }} />
+                <span>This booking will surface a delivery badge on the Operations grid and Bookings table.</span>
               </div>
             )}
           </div>

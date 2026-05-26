@@ -10,6 +10,11 @@ export interface Vehicle {
   status?: string
   price_per_day: number
   image_url?: string | null
+  last_vidange_km?: number
+  next_vidange_km?: number
+  last_pads_km?: number
+  next_pads_km?: number
+  current_km?: number
   created_at?: string
 }
 
@@ -20,6 +25,8 @@ export interface Client {
   email?: string | null
   phone: string
   license_number?: string | null
+  cin?: string | null
+  address?: string | null
   trust_score?: number | null
   date_naissance?: string
   cin_delivre_le?: string
@@ -32,6 +39,7 @@ export interface Booking {
   id: string
   owner_id?: string
   client_id?: string | null
+  secondary_client_id?: string | null
   client_name: string
   vehicle_id: string
   start_date: string
@@ -41,6 +49,9 @@ export interface Booking {
   payment_status?: string
   
   // Joins
+  primary_client?: Client
+  secondary_client?: Client
+  vehicle_handovers?: VehicleHandover[]
   vehicles?: {
     brand: string
     model: string
@@ -76,6 +87,12 @@ export interface Booking {
   client_license_number?: string
   client_cin_passport?: string
   client_address?: string
+  
+  secondary_client_phone?: string
+  secondary_client_license_number?: string
+  secondary_client_cin_passport?: string
+  secondary_client_address?: string
+  
   pickup_time?: string
   return_time?: string
   
@@ -87,6 +104,12 @@ export interface Booking {
   actual_return_date?: string
   installments?: Installment[]
   created_at?: string
+
+  // Optional off-site Handover / Delivery (Airport, Hotel, …). When set, the
+  // dashboard cards + bookings table render a gold glassmorphic badge under
+  // the rental window. Empty/null → nothing rendered (grid stays compact).
+  handover_location?: string | null
+  handover_datetime?: string | null
 }
 
 export interface Installment {
@@ -108,5 +131,38 @@ export interface BusinessSettings {
   address: string
   currency: string
   rental_terms: string
+  matricule_fiscal?: string
+  rne_number?: string
+  owner_full_name?: string
+  email?: string
+  city?: string
+  contract_language?: string
+  tva_number?: string
+  tva_rate?: number
+  created_at?: string
+}
+
+export interface VehicleHandover {
+  booking_id: string
+  vehicle_id: string
+  pickup_km?: number | null
+  return_km?: number | null
+  pickup_fuel?: number | null
+  return_fuel?: number | null
+  pickup_cleanliness?: 'Clean' | 'Dirty' | null
+  return_cleanliness?: 'Clean' | 'Dirty' | null
+  created_at?: string
+}
+
+export interface Expense {
+  id: string
+  owner_id?: string
+  vehicle_id?: string | null
+  client_id?: string | null
+  client_name?: string | null
+  amount: number
+  date: string
+  category: string
+  description?: string
   created_at?: string
 }
