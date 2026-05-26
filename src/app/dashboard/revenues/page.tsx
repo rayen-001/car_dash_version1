@@ -10,6 +10,19 @@ export default async function RevenuesPage() {
 
   // Parallel fan-out: every read is independently scoped to the active tenant
   // via .eq('owner_id', user.id) so isolation is preserved per-query.
+  //
+  // The bookings SELECT is INTENTIONALLY permissive — use '*' on the booking
+  // row + on every joined table. Two prior debugging cycles burned on missing
+  // columns (departure_time, then Tunisian legal columns on the clients join)
+  // silently nuking the whole query and producing allRows=0 in the client.
+  // Keeping it permissive eliminates that failure mode for good.
+  //
+  // We also dropped the status .in(['confirmed', 'completed']) filter —
+  // bookings in other states (e.g. 'pending', 'in_progress', or any custom
+  // status the operator uses) may still have collected acompte / paid
+  // tranches, and the operator expects to see ALL collected cash on the
+  // Rental Inflows hub. The client-side flow filter still hides irrelevant
+  // states if needed.
   const [expensesRes, maintenanceRes, bookingsRes, vehiclesRes, legalDocsRes, settings] = await Promise.all([
     supabase
       .from('expenses')
@@ -23,18 +36,14 @@ export default async function RevenuesPage() {
       .order('service_date', { ascending: false }),
     supabase
       .from('bookings')
-      // Use `*` for the bookings row — enumerating columns is fragile (any
-      // missing one nukes the entire SELECT and we end up with empty data,
-      // see commit 493f23f for the departure_time precedent). The dashboard
-      // SELECT uses `*` too and works; matching the pattern here.
       .select(`
         *,
-        vehicles(brand, model, license_plate, price_per_day),
-        installments:booking_installments(id, amount, due_date, status, paid_date),
-        clients(id, full_name, phone, license_number, cin, address, trust_score, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le)
+        vehicles(*),
+        installments:booking_installments(*),
+        clients(*)
       `)
       .eq('owner_id', user.id)
-      .in('status', ['confirmed', 'completed'])
+      .neq('status', 'cancelled')
       .order('created_at', { ascending: false }),
     supabase
       .from('vehicles')
@@ -47,6 +56,13 @@ export default async function RevenuesPage() {
       .eq('doc_type', 'assurance'),
     getBusinessSettings(),
   ])
+
+  // Server-side diagnostic — surfaces silent Supabase errors that previously
+  // hid behind `bookingsRes.data || []`. Visible in the dev-server terminal.
+  if (bookingsRes.error) {
+    console.error('[revenues/page.tsx] bookings SELECT failed:', bookingsRes.error)
+  }
+  console.log('[revenues/page.tsx] bookings fetched:', bookingsRes.data?.length ?? 0, 'rows')
 
   return (
     <RevenuesClient

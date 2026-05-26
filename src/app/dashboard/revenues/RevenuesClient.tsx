@@ -13,6 +13,7 @@ import ExpenseReportModal from '../expenses/components/ExpenseReportModal'
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { BusinessSettings } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
+import { bookingToRentalInflows, type RentalInflow } from '@/lib/rentalInflows'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1199,6 +1200,9 @@ export default function RevenuesClient({
           Date window is applied PER EVENT below so "This Month" means
           "cash collected this month" regardless of when the booking opened. */}
       {(() => {
+        // Adapter type — what the renderer below was already consuming. Maps
+        // 1:1 from RentalInflow but adds the `parentRow` back-reference the
+        // 3-column layout uses to read vehicle / phone metadata.
         type PaymentEvent = {
           id: string
           date: string                                         // YYYY-MM-DD
@@ -1234,10 +1238,17 @@ export default function RevenuesClient({
           )
         })
 
+        // Use the shared helper bookingToRentalInflows() instead of inlining the
+        // mapping. Single source of truth for the booking → inflow event timeline.
+        // See src/lib/rentalInflows.ts for the rules. Then translate the helper's
+        // RentalInflow records into the local PaymentEvent shape (renderer-friendly).
         const events: PaymentEvent[] = []
         for (const row of parentFiltered) {
-          // Inflow expenses (rare) — passthrough as single event
           if (row.type !== 'inflow') continue
+
+          // Inflow rows that aren't bookings (rare — claim refunds, etc.) pass
+          // through as a single 'expense' event so they still surface on the
+          // daily ledger.
           if (row.rawRef !== 'booking' || !row.rawBooking) {
             events.push({
               id: row.id,
@@ -1251,59 +1262,27 @@ export default function RevenuesClient({
             continue
           }
 
-          const b: any = row.rawBooking
-          const acompte = Number(b.acompte_paid) || 0
-          const acompteRawDate = b.acompte_paid_date || b.created_at || b.start_date || row.date
-          const acompteDate = (acompteRawDate || '').split('T')[0] || row.date
-
-          // 1. Acompte event
-          if (acompte > 0) {
-            events.push({
-              id: `${row.id}__acompte`,
-              date: acompteDate,
-              amount: acompte,
-              kind: 'acompte',
-              trancheLabel: 'Acompte Initial',
-              status: 'paid',
-              parentRow: row,
-            })
-          }
-
-          // 2. Installment events — exclude the synthetic "Solde" row; handle separately
-          const realInstallments = (row.installments || []).filter(t => !String(t.id).startsWith('unpaid-liability-'))
-          const totalCount = realInstallments.length
-          realInstallments.forEach((inst, idx) => {
-            const trancheLabel = `Tranche ${idx + 1}/${totalCount}`
-            const isPaid = inst.status === 'paid'
-            const dateField = isPaid ? (inst.paid_date || inst.due_date) : inst.due_date
-            const date = (dateField || row.date).split('T')[0] || row.date
-            const status: 'paid' | 'unpaid' | 'overdue' = isPaid
-              ? 'paid'
-              : (inst.due_date && inst.due_date < TODAY ? 'overdue' : 'unpaid')
+          // Real bookings → delegate to the shared helper, then translate the
+          // RentalInflow records into renderer-friendly PaymentEvent objects.
+          const inflows: RentalInflow[] = bookingToRentalInflows(row.rawBooking, TODAY)
+          for (const inf of inflows) {
+            const kind: PaymentEvent['kind'] =
+              inf.paymentType === 'acompte' ? 'acompte'
+              : inf.paymentType === 'balance' ? 'solde'
+              : 'tranche'   // both 'installment' and 'close_collection' render as tranches
+            const trancheLabel =
+              inf.paymentType === 'acompte' ? 'Acompte Initial'
+              : inf.paymentType === 'balance' ? 'Solde'
+              : inf.paymentType === 'close_collection' ? 'Cash Collected'
+              : 'Tranche'   // bare; the render shows numbering separately if needed
 
             events.push({
-              id: `${row.id}__inst_${inst.id}`,
-              date,
-              amount: Number(inst.amount) || 0,
-              kind: 'tranche',
+              id: inf.id,
+              date: inf.date,
+              amount: inf.amount,
+              kind,
               trancheLabel,
-              status,
-              parentRow: row,
-            })
-          })
-
-          // 3. Synthetic Solde (remaining contract balance not covered by tranches)
-          const solde = (row.installments || []).find(t => String(t.id).startsWith('unpaid-liability-'))
-          if (solde) {
-            const date = (solde.due_date || row.date).split('T')[0] || row.date
-            const status: 'paid' | 'unpaid' | 'overdue' = solde.due_date && solde.due_date < TODAY ? 'overdue' : 'unpaid'
-            events.push({
-              id: `${row.id}__solde`,
-              date,
-              amount: Number(solde.amount) || 0,
-              kind: 'solde',
-              trancheLabel: 'Solde',
-              status,
+              status: inf.status,
               parentRow: row,
             })
           }
