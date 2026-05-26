@@ -812,6 +812,35 @@ export async function updateBookingHistoricalDetails(
           }
         }
       }
+
+      // Bug fix: if there were installments but they're ALL already paid AND
+      // the contract still has an outstanding balance (e.g. the operator added
+      // mid-contract cash that exceeds the scheduled tranches), the loop above
+      // would silently drop the cash. Capture the leftover into a synthetic
+      // paid installment so it surfaces on the Rental Inflows ledger.
+      if (remainingCash > 0) {
+        const paidSoFar = installments
+          .filter(t => t.status === 'paid')
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+        const contractRemaining = (Number(booking?.total_amount) || 0)
+          - (Number(booking?.acompte_paid) || 0)
+          - paidSoFar
+        if (contractRemaining > 0) {
+          const payAmt = Math.min(remainingCash, contractRemaining)
+          const { error: insErr } = await supabase
+            .from('booking_installments')
+            .insert({
+              booking_id: bookingId,
+              amount: payAmt,
+              due_date: todayStr,
+              status: 'paid',
+              paid_date: todayStr
+            })
+          if (insErr) {
+            console.error('Error inserting leftover-cash installment in updateBookingHistoricalDetails:', insErr.message)
+          }
+        }
+      }
     } else {
       // Fallback: no scheduled tranches — create a synthetic paid installment
       const remainingAmount = (Number(booking?.total_amount) || 0) - (Number(booking?.acompte_paid) || 0)
@@ -1071,6 +1100,40 @@ export async function settleBookingTrancheCascade(bookingId: string, amount: num
       if (insErr) throw new Error(insErr.message)
 
       remainingCash = 0
+    }
+  }
+
+  // Same leftover-cash bug fix as updateBookingHistoricalDetails: if the
+  // booking has installments but they're all already paid AND there's still
+  // outstanding contract balance, capture the leftover so it surfaces on
+  // the Rental Inflows ledger instead of being silently dropped.
+  if (remainingCash > 0) {
+    const { data: bookingForLeftover } = await supabase
+      .from('bookings')
+      .select('total_amount, acompte_paid')
+      .eq('id', bookingId)
+      .eq('owner_id', user.id)
+      .single()
+    const paidSoFar = installments
+      .filter(t => t.status === 'paid')
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+    const contractRemaining = (Number(bookingForLeftover?.total_amount) || 0)
+      - (Number(bookingForLeftover?.acompte_paid) || 0)
+      - paidSoFar
+    if (contractRemaining > 0) {
+      const payAmt = Math.min(remainingCash, contractRemaining)
+      const { error: insErr } = await supabase
+        .from('booking_installments')
+        .insert({
+          booking_id: bookingId,
+          amount: payAmt,
+          due_date: todayStr,
+          status: 'paid',
+          paid_date: todayStr
+        })
+      if (insErr) {
+        console.error('Error inserting leftover-cash installment in settleBookingTrancheCascade:', insErr.message)
+      }
     }
   }
 
