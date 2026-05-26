@@ -23,31 +23,12 @@ export default async function RevenuesPage() {
       .order('service_date', { ascending: false }),
     supabase
       .from('bookings')
+      // Use `*` for the bookings row — enumerating columns is fragile (any
+      // missing one nukes the entire SELECT and we end up with empty data,
+      // see commit 493f23f for the departure_time precedent). The dashboard
+      // SELECT uses `*` too and works; matching the pattern here.
       .select(`
-        id,
-        client_name,
-        client_id,
-        vehicle_id,
-        start_date,
-        end_date,
-        actual_return_date,
-        total_amount,
-        acompte_paid,
-        status,
-        created_at,
-        client_phone,
-        client_license_number,
-        client_behavior_status,
-        damage_notes,
-        starting_km,
-        return_km,
-        fuel_level_pickup,
-        fuel_level_return,
-        lavage_pickup,
-        lavage_return,
-        pickup_time,
-        return_time,
-        rental_days_text,
+        *,
         vehicles(brand, model, license_plate, price_per_day),
         installments:booking_installments(id, amount, due_date, status, paid_date),
         clients(id, full_name, phone, license_number, cin, address, trust_score, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le)
