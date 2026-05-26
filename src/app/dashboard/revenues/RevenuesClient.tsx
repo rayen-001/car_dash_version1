@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus, X, Edit2, Trash2, Loader2, TrendingUp, TrendingDown, Landmark,
-  Search, FileText, AlertCircle, Clock, Star, ShieldAlert as ShieldAlertIcon
+  Search, FileText, AlertCircle, Clock, Star, ShieldAlert as ShieldAlertIcon, Calendar, Phone, Car as CarIcon
 } from 'lucide-react'
 import { addExpense, updateExpense, deleteExpense, clearOutstandingLedgerItem, updateBookingHistoricalDetails, toggleTrancheStatus, settleBookingTrancheCascade } from '@/app/actions'
 import { useToast } from '@/components/Toast'
@@ -1185,245 +1185,374 @@ export default function RevenuesClient({
         </div>
         </div>
 
-      {/* ── Unified Ledger Grid ───────────────────────────────────────────── */}
-      <div className="table-responsive-wrapper glass-panel" style={{ marginBottom: '2rem' }}>
-        <table className="master-operations-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Reference</th>
-              <th>Category</th>
-              <th>Entity / Client</th>
-              <th>Vehicle Node</th>
-              <th>Amount (Delta)</th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(229,193,125,0.35)' }}>
-                  <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
-                  <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No transactions match the active filters.</p>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
-                    Use the status, date range, or search bar to expose overdue liabilities and contract cash flows.
-                  </p>
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row, idx) => {
-                let categoryMeta = CATEGORY_META[row.category] || {
-                  label: getInfractionLabel(row.category),
-                  emoji: row.rawRef === 'claim' ? '⚠️' : '📦',
-                  color: '#fbbf24',
-                  bg: 'rgba(251,191,36,0.12)',
-                  border: 'rgba(251,191,36,0.24)',
-                }
+      {/* ── Daily Chronological Inflow Ledger (Phase 17c) ─────────────────── */}
+      {/* Each booking row is EXPLODED into atomic PaymentEvent objects:
+            1) one event for the acompte (paid at booking creation date)
+            2) one event per installment (paid_date if paid, due_date if not)
+            3) one event for the synthetic "unpaid-liability-*" balance (Solde)
+          Events are then grouped by YYYY-MM-DD. The flow filter further
+          restricts events to paid-only (Settled) or unpaid-only (Unpaid). */}
+      {(() => {
+        type PaymentEvent = {
+          id: string
+          date: string                                         // YYYY-MM-DD
+          amount: number
+          kind: 'acompte' | 'tranche' | 'solde' | 'expense'
+          trancheLabel: string                                 // "Acompte Initial" / "Tranche 1/2" / "Solde"
+          status: 'paid' | 'unpaid' | 'overdue'
+          parentRow: typeof filtered[number]
+        }
 
-                if (row.rawRef === 'maintenance' || row.category === 'maintenance') {
-                  categoryMeta = {
-                    label: 'Maintenance',
-                    emoji: '🛠️',
-                    color: '#ef4444',
-                    bg: 'rgba(239,68,68,0.1)',
-                    border: 'rgba(239,68,68,0.25)'
-                  }
-                }
+        const events: PaymentEvent[] = []
+        for (const row of filtered) {
+          // Inflow expenses (rare) — passthrough as single event
+          if (row.type !== 'inflow') continue
+          if (row.rawRef !== 'booking' || !row.rawBooking) {
+            events.push({
+              id: row.id,
+              date: (row.date || '').split('T')[0] || row.date,
+              amount: row.amount,
+              kind: 'expense',
+              trancheLabel: 'Inflow',
+              status: 'paid',
+              parentRow: row,
+            })
+            continue
+          }
 
-                const contractTotal = row.type === 'inflow' ? row.collectedAmount + row.remainingAmount : row.amount
-                const isExpanded = expandedRowId === row.id
+          const b: any = row.rawBooking
+          const acompte = Number(b.acompte_paid) || 0
+          const acompteRawDate = b.acompte_paid_date || b.created_at || b.start_date || row.date
+          const acompteDate = (acompteRawDate || '').split('T')[0] || row.date
 
-                return (
-                  <tr 
-                    key={row.id} 
-                    onClick={() => setExpandedRowId(isExpanded ? null : row.id)}
-                    style={{ cursor: 'pointer', background: isExpanded ? 'rgba(229,193,125,0.05)' : row.rawRef === 'claim' ? 'rgba(251,191,36,0.03)' : idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}
-                  >
-                    <td>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>{fmtDate(row.date)}</div>
-                    </td>
-                    <td>
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          padding: '0.35rem 0.85rem', borderRadius: '999px', border: '1px solid rgba(229,193,125,0.25)',
-                          background: 'rgba(255,255,255,0.06)', color: 'rgba(229,193,125,0.95)', fontWeight: 700,
-                          fontFamily: 'mono', letterSpacing: '0.05em', cursor: 'default',
-                        }}
-                      >
-                        {row.contractKey}
-                      </button>
-                    </td>
-                    <td>
-                      <span style={{
-                        padding: '0.3rem 0.75rem', borderRadius: '999px', background: categoryMeta.bg,
-                        color: categoryMeta.color, fontSize: '0.72rem', fontWeight: 700, border: `1px solid ${categoryMeta.border}`,
-                      }}>{categoryMeta.emoji} {categoryMeta.label}</span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        {row.category === 'insurance' ? (
-                          <div style={{
-                            width: '32px', height: '32px', borderRadius: '10px', display: 'grid', placeItems: 'center',
-                            background: 'linear-gradient(135deg, rgba(56,189,248,0.25), rgba(255,255,255,0.06))',
-                            border: '1px solid rgba(56,189,248,0.3)',
-                          }}>
-                            <ShieldIcon />
-                          </div>
-                        ) : row.category === 'maintenance' ? (
-                          <div style={{
-                            width: '32px', height: '32px', borderRadius: '10px', display: 'grid', placeItems: 'center',
-                            background: 'linear-gradient(135deg, rgba(239,68,68,0.25), rgba(255,255,255,0.06))',
-                            border: '1px solid rgba(239,68,68,0.3)',
-                          }}>
-                            <ToolIcon />
-                          </div>
-                        ) : (
-                          <div style={{
-                            width: '32px', height: '32px', borderRadius: '10px', display: 'grid', placeItems: 'center',
-                            background: 'linear-gradient(135deg,rgba(229,193,125,0.25),rgba(255,255,255,0.06))',
-                            border: '1px solid rgba(229,193,125,0.14)', color: '#fff', fontWeight: 800, fontSize: '0.75rem'
-                          }}>
-                            {getInitials(row.entity)}
-                          </div>
-                        )}
-                        <div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
-                            {row.category === 'insurance'
-                              ? 'COMAR Assurances | Pol-984372'
-                              : row.category === 'maintenance'
-                              ? 'Speedy Motors Workshop'
-                              : row.entity}
-                          </div>
-                          {row.rawRef === 'booking' && renderTrustBadge(row, initialBookings)}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      {row.licensePlate ? (
-                        <div style={{
-                          display: 'inline-flex',
-                          alignItems: 'stretch',
-                          background: 'linear-gradient(180deg, #1f1f1f 0%, #111 100%)',
-                          border: '1.5px solid rgba(229,193,125,0.3)',
-                          borderRadius: '6px',
-                          fontSize: '0.78rem',
-                          fontFamily: "'Courier New', Courier, monospace",
-                          fontWeight: 800,
-                          color: '#fff',
-                          overflow: 'hidden',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-                        }}>
-                          <div style={{
-                            background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
-                            color: '#000',
-                            padding: '0.2rem 0.5rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.65rem',
-                            fontWeight: 900,
-                            letterSpacing: '0.05em'
-                          }}>
-                            TN
-                          </div>
-                          <div style={{
-                            padding: '0.2rem 0.65rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            letterSpacing: '0.05em',
-                            textShadow: '0 0 4px rgba(255,255,255,0.2)'
-                          }}>
-                            {row.licensePlate}
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.25)' }}>No Vehicle Linked</span>
-                      )}
-                    </td>
-                    <td>
-                      {row.type === 'outflow' ? (
-                        <div style={{ color: '#f87171', fontWeight: 800 }}>-{row.amount.toFixed(2)} DT</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          <span style={{ color: '#10b981', fontWeight: 800 }}>+{row.collectedAmount.toFixed(2)} DT</span>
-                          {row.remainingAmount > 0 && (
-                            <span style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: 700 }}>Reste: {row.remainingAmount.toFixed(2)} DT</span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
-                        {row.type === 'outflow' && row.rawRef === 'expense' && (
-                          <>
-                            <button className="icon-btn" onClick={() => setEditingExpense(row)}><Edit2 size={13} /></button>
-                            <button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))}><Trash2 size={13} /></button>
-                          </>
-                        )}
-                        {row.type === 'inflow' && row.remainingAmount > 0 && (
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.3rem 0.6rem',
-                            borderRadius: '999px',
-                            background: 'rgba(239,68,68,0.12)',
-                            border: '1px solid rgba(239,68,68,0.25)',
-                            color: '#f87171',
-                            fontSize: '0.7rem',
-                            fontWeight: 700
-                          }}>
-                            ❌ UNPAID
-                          </div>
-                        )}
-                        {row.type === 'inflow' && row.remainingAmount <= 0 && (
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.3rem 0.6rem',
-                            borderRadius: '999px',
-                            background: 'rgba(16,185,129,0.12)',
-                            border: '1px solid rgba(16,185,129,0.25)',
-                            color: '#34d399',
-                            fontSize: '0.7rem',
-                            fontWeight: 700
-                          }}>
-                            🟢 SETTLED
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-          {filtered.length > 0 && (
-            <tfoot>
-              <tr>
-                <td colSpan={5} style={{ color: 'rgba(229,193,125,0.65)', fontWeight: 700, fontSize: '0.8rem' }}>
-                  Period Totals (Live cash reconciliation)
-                  {totalOwedInPeriod > 0 && <span style={{ marginLeft: '1rem', color: '#fbbf24' }}>Owed Today: {totalOwedInPeriod.toFixed(2)} DT</span>}
-                </td>
-                <td colSpan={2} style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'flex-end' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ color: 'rgba(16,185,129,0.75)', fontSize: '0.72rem', fontWeight: 700 }}>Total Inflow</span>
-                      <span style={{ color: '#10b981', fontSize: '1.15rem', fontWeight: 800 }}>+{totalInflow.toFixed(2)} DT</span>
+          // 1. Acompte event
+          if (acompte > 0) {
+            events.push({
+              id: `${row.id}__acompte`,
+              date: acompteDate,
+              amount: acompte,
+              kind: 'acompte',
+              trancheLabel: 'Acompte Initial',
+              status: 'paid',
+              parentRow: row,
+            })
+          }
+
+          // 2. Installment events — exclude the synthetic "Solde" row; handle separately
+          const realInstallments = (row.installments || []).filter(t => !String(t.id).startsWith('unpaid-liability-'))
+          const totalCount = realInstallments.length
+          realInstallments.forEach((inst, idx) => {
+            const trancheLabel = `Tranche ${idx + 1}/${totalCount}`
+            const isPaid = inst.status === 'paid'
+            const dateField = isPaid ? (inst.paid_date || inst.due_date) : inst.due_date
+            const date = (dateField || row.date).split('T')[0] || row.date
+            const status: 'paid' | 'unpaid' | 'overdue' = isPaid
+              ? 'paid'
+              : (inst.due_date && inst.due_date < TODAY ? 'overdue' : 'unpaid')
+
+            events.push({
+              id: `${row.id}__inst_${inst.id}`,
+              date,
+              amount: Number(inst.amount) || 0,
+              kind: 'tranche',
+              trancheLabel,
+              status,
+              parentRow: row,
+            })
+          })
+
+          // 3. Synthetic Solde (remaining contract balance not covered by tranches)
+          const solde = (row.installments || []).find(t => String(t.id).startsWith('unpaid-liability-'))
+          if (solde) {
+            const date = (solde.due_date || row.date).split('T')[0] || row.date
+            const status: 'paid' | 'unpaid' | 'overdue' = solde.due_date && solde.due_date < TODAY ? 'overdue' : 'unpaid'
+            events.push({
+              id: `${row.id}__solde`,
+              date,
+              amount: Number(solde.amount) || 0,
+              kind: 'solde',
+              trancheLabel: 'Solde',
+              status,
+              parentRow: row,
+            })
+          }
+        }
+
+        // Apply flow-filter at event level — daily totals must reflect ONLY visible events
+        const visibleEvents = events.filter(ev => {
+          if (flowFilter === 'settled') return ev.status === 'paid'
+          if (flowFilter === 'unpaid') return ev.status !== 'paid'
+          return true
+        })
+
+        if (visibleEvents.length === 0) {
+          return (
+            <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
+              <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
+              <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No transactions match the active filters.</p>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
+                Use the status, date range, or search bar to expose overdue liabilities and contract cash flows.
+              </p>
+            </div>
+          )
+        }
+
+        // Group by ISO date — newest day first
+        const groups: Record<string, PaymentEvent[]> = {}
+        visibleEvents.forEach(ev => {
+          if (!groups[ev.date]) groups[ev.date] = []
+          groups[ev.date].push(ev)
+        })
+        const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
+            {sortedKeys.map((dateKey) => {
+              const dayEvents = groups[dateKey]
+              const dailyInflow = dayEvents.filter(e => e.status === 'paid').reduce((s, e) => s + e.amount, 0)
+              const dailyPending = dayEvents.filter(e => e.status !== 'paid').reduce((s, e) => s + e.amount, 0)
+              const localized = (() => {
+                try {
+                  const d = new Date(dateKey + 'T00:00:00')
+                  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+                } catch { return dateKey }
+              })()
+
+              return (
+                <div
+                  key={dateKey}
+                  className="glass-panel"
+                  style={{
+                    padding: '1.25rem 1.35rem',
+                    borderRadius: '14px',
+                    border: '1px solid rgba(229,193,125,0.12)',
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.25), inset 0 0 1px rgba(229,193,125,0.08)',
+                  }}
+                >
+                  {/* Header matrix */}
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    flexWrap: 'wrap', gap: '0.75rem',
+                    marginBottom: '1rem', paddingBottom: '0.85rem',
+                    borderBottom: '1px dashed rgba(229,193,125,0.15)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ae9260', boxShadow: '0 0 10px rgba(229,193,125,0.6)' }} />
+                      <Calendar size={14} style={{ color: '#ae9260' }} />
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', letterSpacing: '0.01em', textTransform: 'capitalize' }}>
+                        {localized}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginLeft: '0.25rem' }}>
+                        · {dayEvents.length} transaction{dayEvents.length > 1 ? 's' : ''}
+                      </span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ color: 'rgba(239,68,68,0.75)', fontSize: '0.72rem', fontWeight: 700 }}>Total Outflow</span>
-                      <span style={{ color: '#f87171', fontSize: '1.15rem', fontWeight: 800 }}>-{totalOutflow.toFixed(2)} DT</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
+                      {dailyPending > 0 && (
+                        <div style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                          padding: '0.32rem 0.7rem', borderRadius: '999px',
+                          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+                          color: '#f87171', fontSize: '0.78rem', fontWeight: 700,
+                        }}>
+                          <Clock size={11} />
+                          <span>Pending: {dailyPending.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</span>
+                        </div>
+                      )}
+                      {dailyInflow > 0 && (
+                        <div style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
+                          padding: '0.4rem 0.85rem', borderRadius: '999px',
+                          background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.35)',
+                          color: '#34d399', fontSize: '0.82rem', fontWeight: 800,
+                          letterSpacing: '0.02em',
+                          boxShadow: '0 0 14px rgba(16,185,129,0.18), inset 0 0 4px rgba(16,185,129,0.05)',
+                        }}>
+                          <TrendingUp size={13} />
+                          <span style={{ opacity: 0.85 }}>Total Daily Inflow:</span>
+                          <span>+{dailyInflow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+
+                  {/* Itemized event rows */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    {dayEvents.map((ev) => {
+                      const row = ev.parentRow
+                      const isPaid = ev.status === 'paid'
+                      const isOverdue = ev.status === 'overdue'
+                      const tone = isPaid ? '#34d399' : isOverdue ? '#f87171' : 'rgba(229,193,125,0.85)'
+                      const toneBg = isPaid
+                        ? 'rgba(16,185,129,0.05)'
+                        : isOverdue ? 'rgba(239,68,68,0.05)'
+                        : 'rgba(255,255,255,0.02)'
+                      const toneBorder = isPaid
+                        ? 'rgba(16,185,129,0.15)'
+                        : isOverdue ? 'rgba(239,68,68,0.18)'
+                        : 'rgba(255,255,255,0.04)'
+
+                      const kindIcon = ev.kind === 'acompte' ? '💰' : ev.kind === 'solde' ? '⚖️' : '🧩'
+                      const phoneMasked = row.clientPhone
+                        ? (row.clientPhone.length > 6 ? row.clientPhone.replace(/(\d{4})(\d+)(\d{3})$/, '$1····$3') : row.clientPhone)
+                        : ''
+
+                      return (
+                        <div
+                          key={ev.id}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(280px, 1.6fr) minmax(180px, 1fr) minmax(180px, 0.9fr)',
+                            gap: '1rem',
+                            padding: '0.85rem 1rem',
+                            background: toneBg,
+                            border: `1px solid ${toneBorder}`,
+                            borderRadius: '10px',
+                            alignItems: 'center',
+                          }}
+                        >
+                          {/* ── Column A — Client & Fleet Node Identity ── */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                            {/* Client block */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+                              <div style={{
+                                width: '36px', height: '36px', borderRadius: '50%',
+                                background: 'linear-gradient(135deg, rgba(229,193,125,0.3), rgba(255,255,255,0.05))',
+                                border: '1px solid rgba(229,193,125,0.3)',
+                                display: 'grid', placeItems: 'center',
+                                color: '#fff', fontWeight: 800, fontSize: '0.78rem',
+                                flexShrink: 0,
+                              }}>
+                                {getInitials(row.entity)}
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{
+                                  fontSize: '0.85rem', fontWeight: 700, color: '#fff',
+                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  maxWidth: '170px',
+                                }} title={row.entity}>
+                                  {row.entity}
+                                </div>
+                                {phoneMasked && (
+                                  <div style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                                    fontSize: '0.66rem', color: 'rgba(255,255,255,0.45)', marginTop: '0.1rem',
+                                  }} title={row.clientPhone}>
+                                    <Phone size={9} />
+                                    <span>{phoneMasked}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Vehicle block */}
+                            {row.licensePlate ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
+                                <div style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'stretch',
+                                  width: 'fit-content',
+                                  background: 'linear-gradient(180deg, #1f1f1f 0%, #111 100%)',
+                                  border: '1.5px solid rgba(229,193,125,0.3)',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontFamily: "'Courier New', Courier, monospace",
+                                  fontWeight: 800,
+                                  color: '#fff',
+                                  overflow: 'hidden',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                                }}>
+                                  <div style={{
+                                    background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
+                                    color: '#000',
+                                    padding: '0.18rem 0.45rem',
+                                    fontSize: '0.6rem', fontWeight: 900, letterSpacing: '0.05em',
+                                    display: 'grid', placeItems: 'center',
+                                  }}>TN</div>
+                                  <div style={{
+                                    padding: '0.18rem 0.55rem',
+                                    letterSpacing: '0.05em',
+                                    textShadow: '0 0 4px rgba(255,255,255,0.2)',
+                                    display: 'grid', placeItems: 'center',
+                                  }}>{row.licensePlate}</div>
+                                </div>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                                  fontSize: '0.66rem', color: 'rgba(255,255,255,0.55)', fontWeight: 600,
+                                }}>
+                                  <CarIcon size={9} />
+                                  <span>{row.vehicleLabel}</span>
+                                </span>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>No vehicle linked</span>
+                            )}
+                          </div>
+
+                          {/* ── Column B — Tranche / Payment segment ── */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            <div style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                              padding: '0.3rem 0.7rem', borderRadius: '999px',
+                              background: ev.kind === 'acompte'
+                                ? 'linear-gradient(135deg, rgba(229,193,125,0.15), rgba(229,193,125,0.05))'
+                                : ev.kind === 'solde'
+                                  ? 'rgba(251,191,36,0.1)'
+                                  : 'rgba(255,255,255,0.04)',
+                              border: `1px solid ${ev.kind === 'acompte'
+                                ? 'rgba(229,193,125,0.35)'
+                                : ev.kind === 'solde'
+                                  ? 'rgba(251,191,36,0.3)'
+                                  : 'rgba(229,193,125,0.18)'}`,
+                              color: ev.kind === 'acompte' ? '#E5C17D' : ev.kind === 'solde' ? '#fbbf24' : 'rgba(229,193,125,0.95)',
+                              fontSize: '0.72rem', fontWeight: 700,
+                              width: 'fit-content',
+                            }}>
+                              <span>{kindIcon}</span>
+                              <span>{ev.trancheLabel}</span>
+                            </div>
+                            <div style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              padding: '0.2rem 0.55rem', borderRadius: '999px',
+                              background: isPaid ? 'rgba(16,185,129,0.1)' : isOverdue ? 'rgba(239,68,68,0.1)' : 'rgba(251,191,36,0.08)',
+                              border: `1px solid ${isPaid ? 'rgba(16,185,129,0.25)' : isOverdue ? 'rgba(239,68,68,0.3)' : 'rgba(251,191,36,0.22)'}`,
+                              color: tone,
+                              fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.05em',
+                              width: 'fit-content',
+                            }}>
+                              {isPaid ? '🟢 PAID' : isOverdue ? '🔴 OVERDUE' : '⚪ PENDING'}
+                            </div>
+                          </div>
+
+                          {/* ── Column C — Financial Balance Ledger ── */}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
+                            <span style={{
+                              color: tone,
+                              fontWeight: 800,
+                              fontSize: '1.05rem',
+                              letterSpacing: '-0.01em',
+                              fontFamily: 'system-ui, -apple-system, sans-serif',
+                              textShadow: isPaid ? '0 0 12px rgba(16,185,129,0.25)' : 'none',
+                            }}>
+                              {isPaid ? '+' : ''}{ev.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT
+                            </span>
+                            <span style={{
+                              fontSize: '0.62rem', color: 'rgba(229,193,125,0.55)',
+                              fontFamily: 'monospace', letterSpacing: '0.04em',
+                            }}>
+                              {row.contractKey}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
+
 
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {isAddModalOpen && (
