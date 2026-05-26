@@ -2,10 +2,10 @@
 
 import { useState, useEffect, Fragment } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { 
-  Users, UserPlus, Search, Mail, Phone, CreditCard, 
+import {
+  Users, UserPlus, Search, Mail, Phone, CreditCard,
   Calendar, History, Edit, Trash2, X, FileText, CheckCircle2, ShieldAlert, Loader2,
-  ChevronRight, ChevronDown, ShieldAlert as ShieldIcon, Star, Shield
+  ChevronRight, ChevronDown, ShieldAlert as ShieldIcon, Star, Shield, MapPin, Cake
 } from 'lucide-react'
 import { addClient, updateClient, deleteClient } from '@/app/actions'
 import { useToast } from '@/components/Toast'
@@ -572,50 +572,74 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                             }}>
                               {getInitials(client.full_name)}
                             </div>
-                            <div>
-                              <span style={{ fontWeight: 600, color: '#ffffff', display: 'block' }}>{client.full_name}</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.78rem', color: '#888' }}>Reg: {client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB') : 'N/A'}</span>
-                                {/* Always-on Legal Identity chips — empty fields render as '—' in muted style
-                                    so operators see structure at a glance and know what's missing. */}
-                                <span
-                                  title="Date of Birth"
-                                  style={{
-                                    fontSize: '0.68rem',
-                                    color: client.date_naissance ? 'rgba(174,146,96,0.95)' : 'rgba(174,146,96,0.45)',
-                                    background: 'rgba(229,193,125,0.08)',
-                                    border: '1px solid rgba(229,193,125,0.22)',
-                                    padding: '0.1rem 0.45rem',
-                                    borderRadius: '4px',
-                                    fontWeight: 600,
-                                    letterSpacing: '0.02em',
-                                  }}
-                                >
-                                  DOB · {client.date_naissance ? fmtDate(client.date_naissance) : '—'}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              {/* Tier 1: name */}
+                              <span style={{ fontWeight: 600, color: '#ffffff', display: 'block', fontSize: '0.95rem', letterSpacing: '-0.005em' }}>
+                                {client.full_name}
+                              </span>
+
+                              {/* Tier 2: anchor row — Reg date + DRI score (always present) */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>
+                                  Reg {client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB') : '—'}
                                 </span>
-                                {client.address && (
-                                  <span
-                                    title={client.address}
-                                    style={{
-                                      fontSize: '0.68rem',
-                                      color: 'rgba(174,146,96,0.95)',
-                                      background: 'rgba(229,193,125,0.08)',
-                                      border: '1px solid rgba(229,193,125,0.22)',
-                                      padding: '0.1rem 0.45rem',
-                                      borderRadius: '4px',
-                                      fontWeight: 600,
-                                      letterSpacing: '0.02em',
-                                      maxWidth: '180px',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    📍 {client.address}
-                                  </span>
-                                )}
                                 {renderRiskBadge(score, riskLevel)}
                               </div>
+
+                              {/* Tier 3: optional chips — only render when populated, so empty
+                                  rows stay clean and populated rows look intentional. */}
+                              {(client.date_naissance || client.address) && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                                  {client.date_naissance && (
+                                    <span
+                                      title="Date of Birth"
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        fontSize: '0.7rem',
+                                        color: 'rgba(229,193,125,0.95)',
+                                        background: 'rgba(229,193,125,0.06)',
+                                        border: '1px solid rgba(229,193,125,0.18)',
+                                        padding: '0.18rem 0.5rem',
+                                        borderRadius: '999px',
+                                        fontWeight: 600,
+                                        letterSpacing: '0.01em',
+                                        lineHeight: 1,
+                                      }}
+                                    >
+                                      <Cake size={11} strokeWidth={2.2} />
+                                      <span>{fmtDate(client.date_naissance)}</span>
+                                    </span>
+                                  )}
+                                  {client.address && (
+                                    <span
+                                      title={client.address}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        fontSize: '0.7rem',
+                                        color: 'rgba(229,193,125,0.95)',
+                                        background: 'rgba(229,193,125,0.06)',
+                                        border: '1px solid rgba(229,193,125,0.18)',
+                                        padding: '0.18rem 0.5rem',
+                                        borderRadius: '999px',
+                                        fontWeight: 500,
+                                        letterSpacing: '0.01em',
+                                        lineHeight: 1,
+                                        maxWidth: '220px',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      <MapPin size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{client.address}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -626,24 +650,30 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                         </td>
 
                         <td style={{ padding: '1rem 0.75rem' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
-                            <span style={{ fontFamily: 'monospace', color: '#e0e0e0', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'flex-start' }}>
+                            <span style={{ fontFamily: 'monospace', color: client.cin ? '#e0e0e0' : 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', padding: '0.22rem 0.5rem', borderRadius: '6px', fontSize: '0.82rem', letterSpacing: '0.02em' }}>
                               {client.cin || '—'}
                             </span>
-                            <span style={{ fontSize: '0.66rem', color: client.cin_delivre_le ? 'rgba(174,146,96,0.85)' : 'rgba(174,146,96,0.4)', fontStyle: 'italic', letterSpacing: '0.02em' }}>
-                              Iss · {client.cin_delivre_le ? fmtDate(client.cin_delivre_le) : '—'}
-                            </span>
+                            {client.cin_delivre_le && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.66rem', color: 'rgba(229,193,125,0.7)', letterSpacing: '0.02em' }}>
+                                <Calendar size={10} strokeWidth={2.2} />
+                                <span>Iss {fmtDate(client.cin_delivre_le)}</span>
+                              </span>
+                            )}
                           </div>
                         </td>
 
                         <td style={{ padding: '1rem 0.75rem' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
-                            <span style={{ fontFamily: 'monospace', color: '#e0e0e0', background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'flex-start' }}>
+                            <span style={{ fontFamily: 'monospace', color: (client.permis_numero || client.license_number) ? '#e0e0e0' : 'rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', padding: '0.22rem 0.5rem', borderRadius: '6px', fontSize: '0.82rem', letterSpacing: '0.02em' }}>
                               {client.permis_numero || client.license_number || '—'}
                             </span>
-                            <span style={{ fontSize: '0.66rem', color: client.permis_delivre_le ? 'rgba(174,146,96,0.85)' : 'rgba(174,146,96,0.4)', fontStyle: 'italic', letterSpacing: '0.02em' }}>
-                              Issued · {client.permis_delivre_le ? fmtDate(client.permis_delivre_le) : '—'}
-                            </span>
+                            {client.permis_delivre_le && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.66rem', color: 'rgba(229,193,125,0.7)', letterSpacing: '0.02em' }}>
+                                <Calendar size={10} strokeWidth={2.2} />
+                                <span>Issued {fmtDate(client.permis_delivre_le)}</span>
+                              </span>
+                            )}
                           </div>
                         </td>
 
