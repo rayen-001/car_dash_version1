@@ -9,10 +9,10 @@ export default async function FleetPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Fetch vehicles belonging to this owner
+  // Fetch vehicles belonging to this owner with legal documents joined
   const { data: vehicles } = await supabase
     .from('vehicles')
-    .select('*')
+    .select('*, vehicle_legal_docs(*)')
     .eq('owner_id', user.id)
     .order('created_at', { ascending: false })
 
@@ -22,5 +22,10 @@ export default async function FleetPage() {
     .select('*')
     .eq('owner_id', user.id)
 
-  return <FleetClient initialVehicles={vehicles || []} bookings={bookings || []} />
+  const { data: expenses } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('owner_id', user.id)
+
+  return <FleetClient initialVehicles={vehicles || []} bookings={bookings || []} expenses={expenses || []} />
 }

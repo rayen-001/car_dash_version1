@@ -73,11 +73,14 @@ interface BookingLike {
   vehicle_id?: string | null
   total_amount?: number | string | null
   acompte_paid?: number | string | null
-  acompte_paid_date?: string | null   // optional; falls back to created_at
+  acompte_paid_date?: string | null   // optional; falls back to start_date / created_at
   created_at?: string | null
   start_date?: string | null
   status?: string | null
   vehicles?: { brand?: string; model?: string; license_plate?: string } | null
+  // Allow the joined clients row so we can prefer full_name over the
+  // denormalized client_name snapshot on the booking row itself.
+  clients?: { full_name?: string | null; id?: string | null } | null
   installments?: Array<{
     id: string
     booking_id?: string
@@ -112,14 +115,29 @@ export function bookingToRentalInflows(booking: BookingLike, today: string): Ren
   const out: RentalInflow[] = []
 
   const bookingId = booking.id
-  const clientName = booking.client_name || 'Client'
-  const clientId = booking.client_id ?? null
+  // Prefer the denormalized join (clients.full_name) over the snapshot
+  // column (client_name). The snapshot can be stale or null for bookings
+  // where the operator typed the name manually then later linked the CRM
+  // record — the join is always authoritative.
+  const clientName = booking.clients?.full_name || booking.client_name || 'Client'
+  const clientId = booking.clients?.id || booking.client_id || null
   const vehicle = booking.vehicles || null
   const vehicleId = booking.vehicle_id ?? null
   const refKey = contractKey(bookingId)
 
   const total = Number(booking.total_amount) || 0
   const acompte = Number(booking.acompte_paid) || 0
+  // Prefer the explicit acompte_paid_date, then created_at (when the
+  // booking was actually created = when money was handed over), then start_date
+  // as a last resort.
+  // We deliberately avoid using start_date as the primary anchor because
+  // advance bookings have a start_date in the future — using it would place
+  // the acompte event outside the current month window even though the money
+  // was collected today.
+  // Note: created_at is a UTC ISO timestamp. In Africa/Tunis (UTC+2), a
+  // booking created at 22:30 local time has created_at dated tomorrow in UTC.
+  // asYMD strips only the date part so this is at most 1 day off — acceptable
+  // as a secondary anchor when no explicit acompte_paid_date exists.
   const acompteDate = asYMD(booking.acompte_paid_date || booking.created_at || booking.start_date)
 
   // ── 1. Acompte (initial deposit) ─────────────────────────────────────
@@ -165,12 +183,18 @@ export function bookingToRentalInflows(booking: BookingLike, today: string): Ren
     }
 
     // close_collection heuristic: a paid installment whose due_date equals
-    // its paid_date AND both equal today means the operator collected this
-    // cash via the Live Cash Ledger Update modal (the cascade inserts the
-    // row with due_date = paid_date = today). Tag it distinctly so the UI
-    // can show "Cash collected at counter" vs a regular scheduled payment.
+    // its paid_date is tagged as close_collection so the UI can show
+    // "Cash Collected at counter" vs a regular scheduled payment.
+    // We deliberately do NOT compare paidDate against today — the server
+    // writes paid_date in UTC (getTodayYMD) while the client renders in
+    // Africa/Tunis (UTC+2). Payments made after 22:00 local time would
+    // have paid_date = yesterday in UTC, breaking the heuristic and making
+    // all late-night cash collections silently render as generic tranches.
+    // Matching dueDate === paidDate is sufficient to distinguish ad-hoc
+    // cash from pre-scheduled installments because scheduled tranches
+    // always have a due_date in the future when they are created.
     const paymentType: PaymentType =
-      isPaid && paidDate && dueDate === paidDate && paidDate === today
+      isPaid && paidDate && dueDate === paidDate
         ? 'close_collection'
         : 'installment'
 

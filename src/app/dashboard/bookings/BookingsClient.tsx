@@ -43,6 +43,15 @@ export default function BookingsClient({
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
+  // Reset to first page when search query or filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, statusFilter, vehicleFilter, dateFrom, dateTo])
+
   // Modals for Invoices and Agreements
   const [selectedInvoice, setSelectedInvoice] = useState<Booking | null>(null)
   const [selectedAgreement, setSelectedAgreement] = useState<Booking | null>(null)
@@ -100,8 +109,24 @@ export default function BookingsClient({
   // Filter logic
   const filteredBookings = initialBookings.filter((booking) => {
     const searchLower = searchQuery.toLowerCase()
+
+    const primary = booking.primary_client || {
+      full_name: booking.client_name,
+      phone: booking.client_phone,
+      cin: booking.client_cin_passport,
+      license_number: booking.client_license_number
+    }
+    const secondary = booking.secondary_client
+
     const matchesSearch = 
-      (booking.client_name?.toLowerCase() || '').includes(searchLower) ||
+      (primary.full_name?.toLowerCase() || '').includes(searchLower) ||
+      (primary.phone?.toLowerCase() || '').includes(searchLower) ||
+      (primary.cin?.toLowerCase() || '').includes(searchLower) ||
+      (primary.license_number?.toLowerCase() || '').includes(searchLower) ||
+      (secondary?.full_name?.toLowerCase() || '').includes(searchLower) ||
+      (secondary?.phone?.toLowerCase() || '').includes(searchLower) ||
+      (secondary?.cin?.toLowerCase() || '').includes(searchLower) ||
+      (secondary?.license_number?.toLowerCase() || '').includes(searchLower) ||
       (booking.vehicles?.brand && `${booking.vehicles.brand} ${booking.vehicles.model}`.toLowerCase().includes(searchLower)) ||
       booking.id.toLowerCase().includes(searchLower)
 
@@ -114,6 +139,23 @@ export default function BookingsClient({
 
     return matchesSearch && matchesStatus && matchesVehicle && matchesDateFrom && matchesDateTo
   })
+
+  // Sort by rental start date descending (recent ones first, then oldest ones)
+  const sortedBookings = [...filteredBookings].sort((a, b) => {
+    const da = a.start_date || ''
+    const db = b.start_date || ''
+    if (da !== db) return db.localeCompare(da)
+    const ca = a.created_at || ''
+    const cb = b.created_at || ''
+    return cb.localeCompare(ca)
+  })
+
+  const totalItems = sortedBookings.length
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1
+  const paginatedBookings = sortedBookings.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
 
   // Helper to map payment status to badge variant
   const getPaymentVariant = (status?: string) => {
@@ -190,7 +232,7 @@ export default function BookingsClient({
             <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text" 
-              placeholder="Search by client name, vehicle, or booking ID..." 
+              placeholder="Search by name, phone, CIN, license, vehicle, or ID..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="form-input"
@@ -282,8 +324,8 @@ export default function BookingsClient({
               </tr>
             </thead>
             <tbody>
-              {filteredBookings && filteredBookings.length > 0 ? (
-                filteredBookings.map((booking: any) => {
+              {paginatedBookings && paginatedBookings.length > 0 ? (
+                paginatedBookings.map((booking: any) => {
                   const { deltaKm, deltaFuel } = getHandoverTelemetry(booking)
                   const totalPaid = Number(booking.acompte_paid || 0)
                   const reste = Number(booking.total_amount || 0) - totalPaid
@@ -534,44 +576,42 @@ export default function BookingsClient({
                             : MapPin
                         // Render the full DD/MM/YYYY HH:MM so the badge shows when the
                         // delivery actually happens, not just the time-of-day.
-                        const hhmm = booking.handover_datetime
-                          ? new Date(booking.handover_datetime).toLocaleString('en-GB', {
+                        const rawDt = booking.handover_datetime
+                        const hasTime = rawDt && !rawDt.includes('T00:00:00') && !rawDt.includes(' 00:00')
+                        const hhmm = rawDt
+                          ? new Date(rawDt).toLocaleString('en-GB', {
                               day: '2-digit',
                               month: '2-digit',
                               year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: false,
+                              ...(hasTime ? { hour: '2-digit', minute: '2-digit', hour12: false } : {})
                             })
                           : ''
                         return (
                           <div
                             title={`Handover · ${loc}${hhmm ? ' @ ' + hhmm : ''}`}
                             style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.2rem',
                               marginTop: '0.5rem',
-                              padding: '0.22rem 0.55rem',
-                              background: 'linear-gradient(135deg, rgba(229,193,125,0.18) 0%, rgba(229,193,125,0.06) 100%)',
-                              border: '1px solid rgba(229,193,125,0.35)',
-                              borderRadius: '999px',
-                              boxShadow: '0 0 14px rgba(229,193,125,0.18), inset 0 0 6px rgba(229,193,125,0.06)',
+                              padding: '0.35rem 0.6rem',
+                              background: 'linear-gradient(135deg, rgba(229,193,125,0.12) 0%, rgba(229,193,125,0.04) 100%)',
+                              border: '1px solid rgba(229,193,125,0.25)',
+                              borderRadius: '6px',
                               fontSize: '0.7rem',
-                              fontWeight: 600,
                               color: '#E5C17D',
-                              letterSpacing: '0.02em',
-                              maxWidth: '100%',
-                              width: 'fit-content',
+                              width: '100%',
+                              maxWidth: '220px',
                             }}
                           >
-                            <Icon size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>{loc}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700, color: '#fff' }}>
+                              <Icon size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                              <span style={{ wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: 1.25 }}>{loc}</span>
+                            </div>
                             {hhmm && (
-                              <>
-                                <span style={{ opacity: 0.4 }}>·</span>
-                                <span style={{ color: '#fff' }}>{hhmm}</span>
-                              </>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'rgba(255,255,255,0.55)', fontSize: '0.68rem', paddingLeft: '1.1rem', marginTop: '0.05rem' }}>
+                                <span>{hhmm}</span>
+                              </div>
                             )}
                           </div>
                         )
@@ -658,6 +698,74 @@ export default function BookingsClient({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '1rem 1.25rem', marginTop: '1rem', borderRadius: '12px',
+            background: 'rgba(38, 30, 24, 0.4)', border: '1px solid var(--border-color)',
+            flexWrap: 'wrap', gap: '0.75rem'
+          }} className="glass-panel">
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Showing <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(totalItems, currentPage * itemsPerPage)}</span> of <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> bookings
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: currentPage === 1 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                className="hover-bg-glass"
+              >
+                Previous
+              </button>
+              {Array.from({ length: totalPages }).map((_, idx) => {
+                const p = idx + 1
+                const active = currentPage === p
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    style={{
+                      width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                      background: active ? 'rgba(229,193,125,0.12)' : 'transparent',
+                      border: `1px solid ${active ? 'rgba(229,193,125,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                      color: active ? '#ae9260' : 'rgba(255,255,255,0.7)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    className="hover-bg-glass"
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: currentPage === totalPages ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                className="hover-bg-glass"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <BookingFormModal

@@ -76,6 +76,32 @@ export async function saveBusinessSettings(formData: FormData) {
   const tva_number = formData.get('tva_number') as string
   const tva_rate = parseFloat(formData.get('tva_rate') as string) || 0.00
 
+  // Phase 16.4 — Bilingual Tunisian rental contract identity fields.
+  // Captured from the "Bilingual Contract Identity" sub-section in
+  // SettingsClient.tsx. Empty strings resolve to null so the contract template
+  // falls back to the dotted-placeholder for handwriting overlay.
+  const business_name_ar = (formData.get('business_name_ar') as string || '').trim() || null
+  const siege_social_fr_1 = (formData.get('siege_social_fr_1') as string || '').trim() || null
+  const siege_social_fr_2 = (formData.get('siege_social_fr_2') as string || '').trim() || null
+  const siege_social_ar_1 = (formData.get('siege_social_ar_1') as string || '').trim() || null
+  const siege_social_ar_2 = (formData.get('siege_social_ar_2') as string || '').trim() || null
+  const phone_secondary = (formData.get('phone_secondary') as string || '').trim() || null
+  const franchise_amount = parseFloat(formData.get('franchise_amount') as string)
+  const late_fee_per_hour = parseFloat(formData.get('late_fee_per_hour') as string)
+  const km_per_day = parseInt(formData.get('km_per_day') as string)
+
+  const contractIdentityPayload = {
+    business_name_ar,
+    siege_social_fr_1,
+    siege_social_fr_2,
+    siege_social_ar_1,
+    siege_social_ar_2,
+    phone_secondary,
+    franchise_amount: Number.isFinite(franchise_amount) ? franchise_amount : 1000,
+    late_fee_per_hour: Number.isFinite(late_fee_per_hour) ? late_fee_per_hour : 10,
+    km_per_day: Number.isFinite(km_per_day) ? km_per_day : 250,
+  }
+
   const { data: existing } = await supabase
     .from('business_settings')
     .select('id')
@@ -100,7 +126,8 @@ export async function saveBusinessSettings(formData: FormData) {
         city,
         contract_language,
         tva_number,
-        tva_rate
+        tva_rate,
+        ...contractIdentityPayload,
       })
       .eq('owner_id', user.id)
     error = res.error
@@ -122,7 +149,8 @@ export async function saveBusinessSettings(formData: FormData) {
         city,
         contract_language,
         tva_number,
-        tva_rate
+        tva_rate,
+        ...contractIdentityPayload,
       })
     error = res.error
   }

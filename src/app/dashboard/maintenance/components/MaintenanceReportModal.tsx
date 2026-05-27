@@ -60,7 +60,7 @@ export default function MaintenanceReportModal({
             Maintenance Report ready for Printing / PDF generation.
           </span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn-primary" style={{ background: '#d4b46a', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
+            <button className="btn-primary" style={{ background: '#e5c17d', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
                <Printer size={16} />
                <span>Print / Save as PDF</span>
             </button>

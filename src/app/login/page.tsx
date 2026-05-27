@@ -20,13 +20,24 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (error) {
-      setError(error.message)
+      if (error) {
+        setError(error.message)
+        setLoading(false)
+        return
+      }
+    } catch (err: any) {
+      console.error('Login error:', err)
+      if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+        setError('Network error: Unable to reach the authentication server. If you recently added .env.local, please restart your development server (Ctrl+C then npm run dev).')
+      } else {
+        setError(err.message || 'An unexpected error occurred during login.')
+      }
       setLoading(false)
       return
     }

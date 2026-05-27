@@ -57,6 +57,7 @@ interface Booking {
   }[]
   clients?: Client
   vehicles?: Vehicle
+  installments?: any[]
 }
 
 interface MasterOperationsGridProps {
@@ -275,6 +276,30 @@ export default function MasterOperationsGrid({ bookings }: MasterOperationsGridP
                               {reste.toFixed(2)} DT
                             </strong>
                           </div>
+                          {booking.installments && booking.installments.length > 0 && (
+                            <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              {[...booking.installments]
+                                .sort((a: any, b: any) => a.due_date > b.due_date ? 1 : -1)
+                                .map((inst: any, idx: number) => (
+                                  <div
+                                    key={inst.id || idx}
+                                    style={{
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      background: 'rgba(255,255,255,0.03)',
+                                      padding: '0.2rem 0.35rem', borderRadius: '4px',
+                                      borderLeft: inst.status === 'paid' ? '2px solid #10b981' : '2px solid #ef4444',
+                                    }}
+                                  >
+                                    <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>
+                                      {formatDate(inst.due_date)}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: inst.status === 'paid' ? '#10b981' : '#ef4444' }}>
+                                      {Number(inst.amount).toFixed(0)} DT
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </td>

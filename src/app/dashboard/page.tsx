@@ -59,6 +59,8 @@ export default async function OwnerDashboardPage() {
   const expenses = expensesRes.data
   const maintenance = maintenanceRes.data
 
+
+
   const fleetSize = vehicles?.length || 0
 
   let revenueYTD = 0

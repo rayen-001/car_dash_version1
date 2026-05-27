@@ -881,3 +881,98 @@
   font-size: 1.1rem;
   color: var(--accent-gold);
 }
+
+/* ============================================================
+   PREMIUM CALENDAR DESIGN REFINEMENTS
+   ============================================================ */
+.day-cell {
+  overflow: hidden !important;
+  padding-bottom: 0.95rem !important;
+}
+
+.cell-status-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  transition: var(--transition-fast);
+}
+
+.cell-status-bar.green {
+  background: #10b981;
+  box-shadow: 0 -1px 8px rgba(16, 185, 129, 0.4);
+}
+
+.cell-status-bar.orange {
+  background: #f97316;
+  box-shadow: 0 -1px 8px rgba(249, 115, 22, 0.4);
+}
+
+.cell-status-bar.red {
+  background: #ef4444;
+  box-shadow: 0 -1px 8px rgba(239, 68, 68, 0.4);
+}
+
+.cell-micro-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cell-micro-badge.green {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1.5px solid rgba(16, 185, 129, 0.25);
+}
+
+.cell-micro-badge.orange {
+  background: rgba(249, 115, 22, 0.1);
+  color: #fb923c;
+  border: 1.5px solid rgba(249, 115, 22, 0.25);
+}
+
+.cell-micro-badge.red {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1.5px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Right side Inquiry Matrix visual progress bars */
+.mini-progress-track {
+  width: 100%;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 0.35rem;
+  border: 1px solid rgba(229, 193, 125, 0.06);
+}
+
+.mini-progress-bar {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mini-progress-bar.green {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
+}
+
+.mini-progress-bar.orange {
+  background: linear-gradient(90deg, #f97316, #fb923c);
+  box-shadow: 0 0 6px rgba(249, 115, 22, 0.3);
+}
+
+.mini-progress-bar.red {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.3);
+}
+

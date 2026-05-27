@@ -52,7 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     info: {
       bg: 'linear-gradient(135deg, rgba(212,180,106,0.18), rgba(212,180,106,0.06))',
       border: 'rgba(212,180,106,0.4)',
-      icon: '#d4b46a',
+      icon: '#e5c17d',
     },
   }
 

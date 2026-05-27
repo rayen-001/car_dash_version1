@@ -30,5 +30,11 @@ export default async function ClientsPage() {
     .eq('owner_id', user.id)
     .order('start_date', { ascending: false })
 
-  return <ClientsClient initialClients={clients || []} bookings={bookings || []} />
+  // Fetch all expenses to calculate Net LTV (Damage Deductions)
+  const { data: expenses } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('owner_id', user.id)
+
+  return <ClientsClient initialClients={clients || []} bookings={bookings || []} expenses={expenses || []} />
 }

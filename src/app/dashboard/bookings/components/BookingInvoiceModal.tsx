@@ -18,7 +18,7 @@ export default function BookingInvoiceModal({
   const end = new Date(booking.end_date)
   const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
   const calculatedDiffMileage = booking.return_mileage !== undefined && booking.return_mileage !== null 
-    ? Math.max(0, booking.return_mileage - (booking.starting_mileage || 0)) 
+    ? Math.max(0, booking.return_mileage - (booking.starting_km ?? booking.starting_mileage ?? 0)) 
     : null
   const statusLower = booking.status?.toLowerCase()
 
@@ -50,7 +50,7 @@ export default function BookingInvoiceModal({
             Invoice Document ready for Printing / PDF generation.
           </span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn-primary" style={{ background: '#d4b46a', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
+            <button className="btn-primary" style={{ background: '#e5c17d', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
                <Printer size={16} />
                <span>Print / Save as PDF</span>
             </button>
@@ -156,7 +156,7 @@ export default function BookingInvoiceModal({
                       <Gauge size={12} style={{ color: '#ca8a04' }} />
                       <span>Odometer Logs</span>
                     </div>
-                    <div style={{ color: '#475569' }}>Start: <strong style={{ color: '#0f172a' }}>{booking.starting_mileage ?? 0} km</strong></div>
+                    <div style={{ color: '#475569' }}>Start: <strong style={{ color: '#0f172a' }}>{booking.starting_km ?? booking.starting_mileage ?? 0} km</strong></div>
                     <div style={{ color: '#475569' }}>Return: <strong style={{ color: '#0f172a' }}>{booking.return_mileage !== undefined && booking.return_mileage !== null ? `${booking.return_mileage} km` : '-- km'}</strong></div>
                     <div style={{ color: '#16a34a', fontSize: '0.7rem', marginTop: '0.15rem', fontWeight: 700 }}>Driven: {calculatedDiffMileage !== null ? `${calculatedDiffMileage} km` : '-- km'}</div>
                   </div>

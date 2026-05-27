@@ -100,6 +100,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   // Tunisian legal identity fields — surfaced under the "Legal Identity" sub-section
   // in both Add and Edit modals. Stored as YYYY-MM-DD strings (HTML date inputs).
   const [dateNaissance, setDateNaissance] = useState('')
+  const [lieuNaissance, setLieuNaissance] = useState('')
   const [cinDelivreLe, setCinDelivreLe] = useState('')
   const [permisNumero, setPermisNumero] = useState('')
   const [permisDelivreLe, setPermisDelivreLe] = useState('')
@@ -229,6 +230,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     setLicenseNumber('')
     setCin('')
     setDateNaissance('')
+    setLieuNaissance('')
     setCinDelivreLe('')
     setPermisNumero('')
     setPermisDelivreLe('')
@@ -245,6 +247,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     setLicenseNumber(client.license_number || '')
     setCin(client.cin || '')
     setDateNaissance(ymd(client.date_naissance))
+    setLieuNaissance(client.lieu_naissance || '')
     setCinDelivreLe(ymd(client.cin_delivre_le))
     setPermisNumero(client.permis_numero || '')
     setPermisDelivreLe(ymd(client.permis_delivre_le))
@@ -265,6 +268,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       formData.append('license_number', licenseNumber)
       formData.append('cin', cin)
       formData.append('date_naissance', dateNaissance)
+      formData.append('lieu_naissance', lieuNaissance)
       formData.append('cin_delivre_le', cinDelivreLe)
       formData.append('permis_numero', permisNumero)
       formData.append('permis_delivre_le', permisDelivreLe)
@@ -300,6 +304,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       formData.append('license_number', licenseNumber)
       formData.append('cin', cin)
       formData.append('date_naissance', dateNaissance)
+      formData.append('lieu_naissance', lieuNaissance)
       formData.append('cin_delivre_le', cinDelivreLe)
       formData.append('permis_numero', permisNumero)
       formData.append('permis_delivre_le', permisDelivreLe)
@@ -973,6 +978,17 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                     />
                   </div>
                   <div className="form-group">
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 500 }}>Lieu de Naissance (Place of Birth)</label>
+                    <input
+                      type="text"
+                      value={lieuNaissance}
+                      onChange={(e) => setLieuNaissance(e.target.value)}
+                      placeholder="e.g. Tunis"
+                      className="form-input"
+                      style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                    />
+                  </div>
+                  <div className="form-group">
                     <label style={{ display: 'block', fontSize: '0.85rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 500 }}>CIN Issue Date (Iss)</label>
                     <input
                       type="date"
@@ -1134,6 +1150,17 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                       onChange={(e) => setDateNaissance(e.target.value)}
                       className="form-input"
                       style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px', color: '#ffffff', outline: 'none', colorScheme: 'dark' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 500 }}>Lieu de Naissance (Place of Birth)</label>
+                    <input
+                      type="text"
+                      value={lieuNaissance}
+                      onChange={(e) => setLieuNaissance(e.target.value)}
+                      placeholder="e.g. Tunis"
+                      className="form-input"
+                      style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
                     />
                   </div>
                   <div className="form-group">

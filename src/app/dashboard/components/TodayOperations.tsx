@@ -39,12 +39,76 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
   }
 
   const getInitials = (name: string) => {
+    if (!name) return ''
     return name
       .split(' ')
       .map((n) => n[0])
       .slice(0, 2)
       .join('')
       .toUpperCase()
+  }
+
+  const TwinMonogram = ({ b, color, bg }: { b: any, color: string, bg: string }) => {
+    const primaryName = b.client_name || 'Unknown'
+    const primaryInitials = getInitials(primaryName)
+    const secondaryName = b.secondary_client?.full_name
+    const hasSecondary = !!secondaryName
+    const secondaryInitials = hasSecondary ? getInitials(secondaryName) : ''
+
+    const pPhone = b.primary_client?.phone || 'N/A'
+    const pScore = b.primary_client?.trust_score ?? 'Unrated'
+    const sPhone = b.secondary_client?.phone || 'N/A'
+    const sScore = b.secondary_client?.trust_score ?? 'Unrated'
+
+    return (
+      <div className="twin-monogram-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+        <style>{`
+          .twin-monogram-wrapper .tooltip-panel { opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+          .twin-monogram-wrapper:hover .tooltip-panel { opacity: 1; pointer-events: auto; }
+        `}</style>
+        {/* Primary Circle */}
+        <div style={{ 
+          width: '28px', height: '28px', borderRadius: '50%', background: bg, color: color, 
+          fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: '2px solid var(--background-dark)', zIndex: 2, position: 'relative'
+        }}>
+          {primaryInitials}
+        </div>
+        {/* Secondary Circle (Overlapping) */}
+        {hasSecondary && (
+          <div style={{ 
+            width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(229,193,125,0.15)', color: '#E5C17D', 
+            fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid var(--background-dark)', marginLeft: '-12px', zIndex: 1, position: 'relative'
+          }}>
+            {secondaryInitials}
+          </div>
+        )}
+
+        {/* Glassmorphic Tooltip */}
+        <div className="tooltip-panel" style={{
+          position: 'absolute', top: '100%', left: '0', marginTop: '0.5rem',
+          background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px',
+          padding: '0.75rem', width: 'max-content', zIndex: 50,
+          boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+          display: 'flex', flexDirection: 'column', gap: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Primary Driver</span>
+            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>{primaryName}</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>📞 {pPhone} | 🛡️ {pScore} DRI</span>
+          </div>
+          {hasSecondary && (
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem' }}>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Co-Driver</span>
+              <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>{secondaryName}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>📞 {sPhone} | 🛡️ {sScore} DRI</span>
+            </div>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -75,9 +139,7 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
             {departures.length > 0 ? (
               departures.map((b) => (
                 <div key={b.id} style={{ display: 'flex', gap: '0.75rem', background: 'rgba(255,255,255,0.02)', padding: '0.65rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)', alignItems: 'center' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {getInitials(b.client_name)}
-                  </div>
+                  <TwinMonogram b={b} color="#38bdf8" bg="rgba(56, 189, 248, 0.15)" />
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>{b.client_name}</span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b.vehicles?.brand} {b.vehicles?.model}</span>
@@ -110,9 +172,7 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
             {returns.length > 0 ? (
               returns.map((b) => (
                 <div key={b.id} style={{ display: 'flex', gap: '0.75rem', background: 'rgba(255,255,255,0.02)', padding: '0.65rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)', alignItems: 'center' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(74, 222, 128, 0.15)', color: '#4ade80', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {getInitials(b.client_name)}
-                  </div>
+                  <TwinMonogram b={b} color="#4ade80" bg="rgba(74, 222, 128, 0.15)" />
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>{b.client_name}</span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b.vehicles?.brand} {b.vehicles?.model}</span>
@@ -145,9 +205,7 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
             {overdue.length > 0 ? (
               overdue.map((b) => (
                 <div key={b.id} style={{ display: 'flex', gap: '0.75rem', background: 'rgba(255,255,255,0.02)', padding: '0.65rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)', alignItems: 'center' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(248, 113, 113, 0.15)', color: '#f87171', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {getInitials(b.client_name)}
-                  </div>
+                  <TwinMonogram b={b} color="#f87171" bg="rgba(248, 113, 113, 0.15)" />
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>{b.client_name}</span>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b.vehicles?.brand} {b.vehicles?.model}</span>

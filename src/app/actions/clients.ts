@@ -27,8 +27,10 @@ export async function addClient(formData: FormData) {
 
   // Tunisian legal identity fields — same set updateClient already accepts.
   // Captured up-front so new clients can flow straight into a contract without
-  // a second edit pass.
+  // a second edit pass. Phase 16.4 adds lieu_naissance for the printed contract
+  // "Date et lieu de naissance" combined slot.
   const date_naissance = (formData.get('date_naissance') as string) || null
+  const lieu_naissance = (formData.get('lieu_naissance') as string || '').trim() || null
   const cin_delivre_le = (formData.get('cin_delivre_le') as string) || null
   const permis_numero = (formData.get('permis_numero') as string) || null
   const permis_delivre_le = (formData.get('permis_delivre_le') as string) || null
@@ -41,6 +43,7 @@ export async function addClient(formData: FormData) {
     license_number: license_number || null,
     cin: cin || null,
     date_naissance,
+    lieu_naissance,
     cin_delivre_le,
     permis_numero,
     permis_delivre_le,
@@ -60,6 +63,8 @@ export async function updateClient(formData: FormData) {
   const license_number = formData.get('license_number') as string
   const cin = formData.get('cin') as string
 
+  const lieu_naissance = (formData.get('lieu_naissance') as string || '').trim() || null
+
   const { error } = await supabase
     .from('clients')
     .update({
@@ -69,6 +74,7 @@ export async function updateClient(formData: FormData) {
       license_number: license_number || null,
       cin: cin || null,
       date_naissance: formData.get('date_naissance') || null,
+      lieu_naissance,
       cin_delivre_le: formData.get('cin_delivre_le') || null,
       permis_numero: formData.get('permis_numero') || null,
       permis_delivre_le: formData.get('permis_delivre_le') || null,

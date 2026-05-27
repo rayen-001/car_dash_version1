@@ -20,6 +20,29 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
   const [address, setAddress] = useState(initialSettings.address || '')
   const [currency, setCurrency] = useState(initialSettings.currency || 'DT')
   const [rentalTerms, setRentalTerms] = useState(initialSettings.rental_terms || '')
+  const [matriculeFiscal, setMatriculeFiscal] = useState(initialSettings.matricule_fiscal || '')
+  const [rneNumber, setRneNumber] = useState(initialSettings.rne_number || '')
+  const [ownerFullName, setOwnerFullName] = useState(initialSettings.owner_full_name || '')
+  const [email, setEmail] = useState(initialSettings.email || '')
+  const [city, setCity] = useState(initialSettings.city || '')
+  const [contractLanguage, setContractLanguage] = useState(initialSettings.contract_language || 'fr')
+  const [tvaNumber, setTvaNumber] = useState(initialSettings.tva_number || '')
+  const [tvaRate, setTvaRate] = useState(initialSettings.tva_rate?.toString() || '0.00')
+
+  // Phase 16.4 — Bilingual Tunisian contract identity fields. These are
+  // consumed exclusively by the printed contract template (BookingAgreement
+  // Modal / RentalContractPDF). Empty values render as dotted-placeholder
+  // rows in the printout so the operator can hand-write them temporarily.
+  const [businessNameAr, setBusinessNameAr] = useState(initialSettings.business_name_ar || '')
+  const [siegeSocialFr1, setSiegeSocialFr1] = useState(initialSettings.siege_social_fr_1 || '')
+  const [siegeSocialFr2, setSiegeSocialFr2] = useState(initialSettings.siege_social_fr_2 || '')
+  const [siegeSocialAr1, setSiegeSocialAr1] = useState(initialSettings.siege_social_ar_1 || '')
+  const [siegeSocialAr2, setSiegeSocialAr2] = useState(initialSettings.siege_social_ar_2 || '')
+  const [phoneSecondary, setPhoneSecondary] = useState(initialSettings.phone_secondary || '')
+  const [franchiseAmount, setFranchiseAmount] = useState(initialSettings.franchise_amount?.toString() || '1000')
+  const [lateFeePerHour, setLateFeePerHour] = useState(initialSettings.late_fee_per_hour?.toString() || '10')
+  const [kmPerDay, setKmPerDay] = useState(initialSettings.km_per_day?.toString() || '250')
+
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -73,6 +96,25 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
       formData.append('address', address)
       formData.append('currency', currency)
       formData.append('rental_terms', rentalTerms)
+      formData.append('matricule_fiscal', matriculeFiscal)
+      formData.append('rne_number', rneNumber)
+      formData.append('owner_full_name', ownerFullName)
+      formData.append('email', email)
+      formData.append('city', city)
+      formData.append('contract_language', contractLanguage)
+      formData.append('tva_number', tvaNumber)
+      formData.append('tva_rate', tvaRate)
+
+      // Phase 16.4 — bilingual contract identity
+      formData.append('business_name_ar', businessNameAr)
+      formData.append('siege_social_fr_1', siegeSocialFr1)
+      formData.append('siege_social_fr_2', siegeSocialFr2)
+      formData.append('siege_social_ar_1', siegeSocialAr1)
+      formData.append('siege_social_ar_2', siegeSocialAr2)
+      formData.append('phone_secondary', phoneSecondary)
+      formData.append('franchise_amount', franchiseAmount)
+      formData.append('late_fee_per_hour', lateFeePerHour)
+      formData.append('km_per_day', kmPerDay)
 
       await saveBusinessSettings(formData)
       setMessage({ type: 'success', text: 'Business settings saved successfully!' })
@@ -273,6 +315,265 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
               />
             </div>
 
+            <div className={styles['panel-header-row']} style={{ marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem', marginBottom: '1.25rem' }}>
+              <h3 className={styles['section-subtitle']}>⚖️ Legal & Tax Information (Tunisia Compliance)</h3>
+              <span className={styles['badge-branding']}>Legal Compliance</span>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Matricule Fiscal (Tax ID)</span>
+                </label>
+                <input
+                  type="text"
+                  value={matriculeFiscal}
+                  onChange={(e) => setMatriculeFiscal(e.target.value)}
+                  placeholder="e.g. 1234567/A/M/000"
+                  className={styles['form-input']}
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <span>RNE Number (Enterprise Register)</span>
+                </label>
+                <input
+                  type="text"
+                  value={rneNumber}
+                  onChange={(e) => setRneNumber(e.target.value)}
+                  placeholder="e.g. 1234567B"
+                  className={styles['form-input']}
+                />
+              </div>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Owner / Signatory Name</span>
+                </label>
+                <input
+                  type="text"
+                  value={ownerFullName}
+                  onChange={(e) => setOwnerFullName(e.target.value)}
+                  placeholder="e.g. Rayen Belhadj"
+                  className={styles['form-input']}
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Legal Contact Email</span>
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. agency@cardash.tn"
+                  className={styles['form-input']}
+                />
+              </div>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>City / Jurisdiction (Tunisia)</span>
+                </label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="e.g. Tunis"
+                  className={styles['form-input']}
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Contract Language Preference</span>
+                </label>
+                <select
+                  value={contractLanguage}
+                  onChange={(e) => setContractLanguage(e.target.value)}
+                  className={`${styles['form-input']} ${styles['select-input']}`}
+                >
+                  <option value="fr">French (fr)</option>
+                  <option value="ar">Arabic (ar)</option>
+                  <option value="fr_ar">Bilingual (fr + ar)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>TVA Tax Code</span>
+                </label>
+                <input
+                  type="text"
+                  value={tvaNumber}
+                  onChange={(e) => setTvaNumber(e.target.value)}
+                  placeholder="e.g. 1234567/A/N/000"
+                  className={styles['form-input']}
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <span>TVA Rate (%)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={tvaRate}
+                  onChange={(e) => setTvaRate(e.target.value)}
+                  placeholder="e.g. 19.00"
+                  className={styles['form-input']}
+                />
+              </div>
+            </div>
+
+            {/* ── Phase 16.4 — Bilingual Contract Identity ── */}
+            <div className={styles['panel-header-row']} style={{ marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem', marginBottom: '1.25rem' }}>
+              <h3 className={styles['section-subtitle']}>🇹🇳 Bilingual Contract Identity (French / Arabic)</h3>
+              <span className={styles['badge-branding']}>Print Engine</span>
+            </div>
+
+            <div className={styles['form-group']}>
+              <label>
+                <span>Business Name (Arabic)</span>
+              </label>
+              <input
+                type="text"
+                value={businessNameAr}
+                onChange={(e) => setBusinessNameAr(e.target.value)}
+                placeholder="e.g. شركة إلين لكراء السيارات"
+                dir="rtl"
+                lang="ar"
+                className={styles['form-input']}
+                style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
+              />
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Siège Social — Line 1 (FR)</span>
+                </label>
+                <input
+                  type="text"
+                  value={siegeSocialFr1}
+                  onChange={(e) => setSiegeSocialFr1(e.target.value)}
+                  placeholder="e.g. Blvd de la république - Lamta 5099"
+                  className={styles['form-input']}
+                />
+              </div>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Siège Social — Line 2 (FR)</span>
+                </label>
+                <input
+                  type="text"
+                  value={siegeSocialFr2}
+                  onChange={(e) => setSiegeSocialFr2(e.target.value)}
+                  placeholder="e.g. Blvd de la république - Sayada 5035"
+                  className={styles['form-input']}
+                />
+              </div>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>المقر الرئيسي — Line 1 (AR)</span>
+                </label>
+                <input
+                  type="text"
+                  value={siegeSocialAr1}
+                  onChange={(e) => setSiegeSocialAr1(e.target.value)}
+                  placeholder="e.g. شارع الجمهورية - لمطة 5099"
+                  dir="rtl"
+                  lang="ar"
+                  className={styles['form-input']}
+                  style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
+                />
+              </div>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>المقر الرئيسي — Line 2 (AR)</span>
+                </label>
+                <input
+                  type="text"
+                  value={siegeSocialAr2}
+                  onChange={(e) => setSiegeSocialAr2(e.target.value)}
+                  placeholder="e.g. شارع الجمهورية - صيادة 5035"
+                  dir="rtl"
+                  lang="ar"
+                  className={styles['form-input']}
+                  style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
+                />
+              </div>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Secondary Phone (optional)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={phoneSecondary}
+                  onChange={(e) => setPhoneSecondary(e.target.value)}
+                  placeholder="e.g. 53 366 028"
+                  className={styles['form-input']}
+                />
+              </div>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Franchise Amount (DT)</span>
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={franchiseAmount}
+                  onChange={(e) => setFranchiseAmount(e.target.value)}
+                  placeholder="e.g. 1000"
+                  className={styles['form-input']}
+                />
+              </div>
+            </div>
+
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Late Fee per Hour (DT)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={lateFeePerHour}
+                  onChange={(e) => setLateFeePerHour(e.target.value)}
+                  placeholder="e.g. 10"
+                  className={styles['form-input']}
+                />
+              </div>
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Forfait Kilometers / Day</span>
+                </label>
+                <input
+                  type="number"
+                  step="50"
+                  value={kmPerDay}
+                  onChange={(e) => setKmPerDay(e.target.value)}
+                  placeholder="e.g. 250"
+                  className={styles['form-input']}
+                />
+              </div>
+            </div>
+
             <button type="submit" className={styles['btn-gold']} disabled={loading}>
               {loading ? (
                 <>
@@ -350,8 +651,6 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
           </div>
         </div>
       </div>
-
-      
     </div>
   )
 }

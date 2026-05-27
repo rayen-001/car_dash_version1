@@ -39,7 +39,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setOpen(false)
   }
 
-  const accentColor = options.danger ? '#ef4444' : '#d4b46a'
+  const accentColor = options.danger ? '#ef4444' : '#e5c17d'
   const accentRgba  = options.danger ? 'rgba(239,68,68,' : 'rgba(212,180,106,'
 
   return (
@@ -191,7 +191,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                   borderRadius: '10px',
                   background: options.danger
                     ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
-                    : 'linear-gradient(135deg, #f0d188 0%, #d4b46a 50%, #8a6d35 100%)',
+                    : 'linear-gradient(135deg, #f0d188 0%, #e5c17d 50%, #8a6d35 100%)',
                   border: 'none',
                   color: options.danger ? '#ffffff' : '#120e0a',
                   cursor: 'pointer',

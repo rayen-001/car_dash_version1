@@ -79,12 +79,17 @@ export default async function VehicleHistoryPage({ params }: PageProps) {
     console.error('vehicle_legal_docs query error (migrations might be missing):', err)
   }
 
-  // Fetch bookings
+  // Fetch bookings — include installments for the Financials column tranche list,
+  // handovers for the Condition Δ column, and clients for the Client Legal Docs column.
   let bookings: any[] = []
   try {
     const { data } = await supabase
       .from('bookings')
-      .select('*')
+      .select(`
+        *,
+        installments:booking_installments(*),
+        clients:clients!client_id(id, full_name, phone, cin, license_number, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le)
+      `)
       .eq('vehicle_id', vehicleId)
       .eq('owner_id', user.id)
       .order('start_date', { ascending: false })
@@ -107,6 +112,22 @@ export default async function VehicleHistoryPage({ params }: PageProps) {
     console.error('maintenance query error:', err)
   }
 
+  // Fetch expenses
+  let expenses: any[] = []
+  try {
+    const { data } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('vehicle_id', vehicleId)
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+    if (data) expenses = data
+  } catch (err) {
+    console.error('expenses query error:', err)
+  }
+
+  // Handovers removed
+
   return (
     <VehicleHistoryClient
       currentVehicle={vehicle}
@@ -114,6 +135,7 @@ export default async function VehicleHistoryPage({ params }: PageProps) {
       legalDocs={legalDocs}
       bookings={bookings}
       maintenance={maintenance}
+      expenses={expenses}
     />
   )
 }

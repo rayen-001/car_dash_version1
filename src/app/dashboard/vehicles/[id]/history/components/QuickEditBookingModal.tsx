@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { updateBookingHistoricalDetails } from '@/app/actions'
 import type { Booking as GlobalBooking } from '@/types'
 import styles from '../history.module.css'
-import { X, Save, Loader2, Award, Calendar, ArrowRight } from 'lucide-react'
+import { X, Save, Loader2, Award, Calendar, ArrowRight, MapPin, Clock } from 'lucide-react'
 
 // ModalBooking: a flexible superset that both MasterOperationsGrid (global Booking)
 // and GlobalCommandSearch (OmniBooking) can satisfy without structural conflicts.
@@ -12,6 +12,7 @@ import { X, Save, Loader2, Award, Calendar, ArrowRight } from 'lucide-react'
 type ModalBooking = Partial<Omit<GlobalBooking, 'id' | 'vehicle_id' | 'vehicles'>> & {
   id: string
   vehicle_id: string
+  installments?: any[]
   vehicles?: {
     brand?: string
     model?: string
@@ -71,8 +72,15 @@ export default function QuickEditBookingModal({
   const [damageNotes, setDamageNotes] = useState('')
   const [commentColor, setCommentColor] = useState<'red' | 'green'>('red')
   const [extensionDate, setExtensionDate] = useState('')
+
+  // Logistics Handover States
+  const [handoverLocation, setHandoverLocation] = useState('')
+  const [handoverDate, setHandoverDate] = useState('')
+  const [handoverTime, setHandoverTime] = useState('')
   
   // New States for Cash Ledger Update and Incident Penalties
+  const [baseTotalAmt, setBaseTotalAmt] = useState('')
+  const [baseAcomptePaid, setBaseAcomptePaid] = useState('')
   const [incidentPenalties, setIncidentPenalties] = useState('')
   const [amountCollectedNow, setAmountCollectedNow] = useState('')
 
@@ -107,6 +115,25 @@ export default function QuickEditBookingModal({
       setExtensionDate('')
       setIncidentPenalties('')
       setAmountCollectedNow('')
+      setBaseTotalAmt(booking.total_amount?.toString() || '0')
+      setBaseAcomptePaid(booking.acompte_paid?.toString() || '0')
+      
+      // Hydrate Logistics Handover fields
+      setHandoverLocation(booking.handover_location || '')
+      if (booking.handover_datetime) {
+        setHandoverDate(booking.handover_datetime.split('T')[0])
+        const parts = booking.handover_datetime.split('T')
+        if (parts.length > 1) {
+          const timePart = parts[1].slice(0, 5)
+          setHandoverTime(timePart === '00:00' ? '' : timePart)
+        } else {
+          setHandoverTime('')
+        }
+      } else {
+        setHandoverDate('')
+        setHandoverTime('')
+      }
+
       setError(null)
     }
   }, [booking])
@@ -145,19 +172,19 @@ export default function QuickEditBookingModal({
 
   // Calculate extension & ledger details
   const safeEndDate   = booking.end_date   ?? ''
-  const safeTotalAmt  = typeof booking.total_amount === 'number' && !isNaN(booking.total_amount)
-    ? booking.total_amount
-    : parseFloat(booking.total_amount as any) || 0
+  const safeTotalAmt  = parseFloat(baseTotalAmt) || 0
 
-  const safeAcomptePaid = typeof booking.acompte_paid === 'number' && !isNaN(booking.acompte_paid)
-    ? booking.acompte_paid
-    : parseFloat(booking.acompte_paid as any) || 0
+  const safeAcomptePaid = parseFloat(baseAcomptePaid) || 0
 
   const parsedPenalty = parseFloat(incidentPenalties)
   const penaltyVal    = !isNaN(parsedPenalty) ? parsedPenalty : 0
 
   const parsedCollect = parseFloat(amountCollectedNow)
   const collectVal    = !isNaN(parsedCollect) ? parsedCollect : 0
+
+  const paidInstallmentsSum = booking.installments
+    ? booking.installments.filter((t: any) => t.status === 'paid').reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0)
+    : 0
 
   let deltaDays = 0
   let extraCost = 0
@@ -182,12 +209,21 @@ export default function QuickEditBookingModal({
       extraCost = deltaDays * pricePerDay
     }
 
-    // Compute new adjustment text format: e.g. "4+2" or "4-1"
-    const baseDays = booking.rental_days_text || ''
+    let baseDaysNum = 0;
+    if (booking.start_date && safeEndDate) {
+      const origStartDate = new Date(booking.start_date.split('T')[0] + 'T00:00:00')
+      const origEndDate = new Date(safeEndDate.split('T')[0] + 'T00:00:00')
+      if (!isNaN(origStartDate.getTime()) && !isNaN(origEndDate.getTime())) {
+        baseDaysNum = Math.round((origEndDate.getTime() - origStartDate.getTime()) / (1000 * 60 * 60 * 24))
+      }
+    }
+    const baseDays = baseDaysNum > 0 ? baseDaysNum.toString() : (booking.rental_days_text || '')
+
+    const finalDays = baseDaysNum + deltaDays;
     if (deltaDays > 0) {
-      newRentalDaysText = baseDays ? `${baseDays}+${deltaDays}` : String(deltaDays)
+      newRentalDaysText = baseDays ? `${baseDays}+${deltaDays}=${finalDays}` : String(deltaDays)
     } else if (deltaDays < 0) {
-      newRentalDaysText = baseDays ? `${baseDays}${deltaDays}` : String(deltaDays)
+      newRentalDaysText = baseDays ? `${baseDays}${deltaDays}=${finalDays}` : String(deltaDays)
     } else {
       newRentalDaysText = baseDays
     }
@@ -195,9 +231,9 @@ export default function QuickEditBookingModal({
 
   // Real-time Dynamic Financial Ledger Recalculations
   const finalTotalAmount = Math.max(0, safeTotalAmt + extraCost + penaltyVal)
-  const finalAcomptePaid = safeAcomptePaid + collectVal
-  const finalReste = Math.max(0, finalTotalAmount - finalAcomptePaid)
-  const refundAmount = finalAcomptePaid > finalTotalAmount ? finalAcomptePaid - finalTotalAmount : 0
+  const totalPaidPreview = safeAcomptePaid + paidInstallmentsSum + collectVal
+  const finalReste = Math.max(0, finalTotalAmount - totalPaidPreview)
+  const refundAmount = totalPaidPreview > finalTotalAmount ? totalPaidPreview - finalTotalAmount : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -224,11 +260,21 @@ export default function QuickEditBookingModal({
       }
     }
     
+    // Validation: Do not allow overpayment
+    if (refundAmount > 0) {
+      setError(`Cannot collect more than the remaining balance. Overpaid by ${refundAmount.toFixed(2)} DT.`)
+      return
+    }
+    
     startTransition(async () => {
       try {
         const finalDamageNotes = damageNotes
           ? (commentColor === 'green' ? `[GREEN] ${damageNotes}` : damageNotes)
           : null;
+
+        const handoverDatetimeMerged = handoverDate
+          ? (handoverTime ? `${handoverDate}T${handoverTime}:00` : `${handoverDate}T00:00:00`)
+          : null
 
         const payload: any = {
           return_km: retKmVal,
@@ -240,9 +286,13 @@ export default function QuickEditBookingModal({
           
           // Ledger & Penalty fields passed to server action
           total_amount: finalTotalAmount,
-          acompte_paid: finalAcomptePaid,
+          acompte_paid: safeAcomptePaid,
           amount_collected_now: collectVal,
           incident_penalties: penaltyVal,
+
+          // Handover logistics fields
+          handover_location: handoverLocation || null,
+          handover_datetime: handoverDatetimeMerged,
         }
 
         // Apply extension or early return values if selected
@@ -468,6 +518,75 @@ export default function QuickEditBookingModal({
             )}
           </div>
 
+          {/* ── LOGISTICS HANDOVER SECTION ── */}
+          <div style={{
+            marginBottom: '1.25rem',
+            padding: '1rem',
+            background: 'rgba(229,193,125,0.04)',
+            border: '1px solid rgba(229,193,125,0.15)',
+            borderRadius: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <MapPin size={15} style={{ color: 'var(--accent-gold)' }} />
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--accent-gold)' }}>
+                Logistics Handover (Optional)
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div className={styles['form-group']} style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <MapPin size={11} /> Handover Location
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Tunis Carthage Airport, Hotel Laico, Sousse"
+                  className={styles['form-input']}
+                  value={handoverLocation}
+                  onChange={(e) => setHandoverLocation(e.target.value)}
+                  style={{ margin: 0 }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className={styles['form-group']} style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Calendar size={11} /> Handover Date
+                </label>
+                <input
+                  type="date"
+                  className={styles['form-input']}
+                  value={handoverDate}
+                  onChange={(e) => setHandoverDate(e.target.value)}
+                  style={{ margin: 0, colorScheme: 'dark' }}
+                  onClick={(e) => { try { e.currentTarget.showPicker() } catch {} }}
+                />
+              </div>
+
+              <div className={styles['form-group']} style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Clock size={11} /> Handover Hour (Optional)
+                </label>
+                <input
+                  type="time"
+                  className={styles['form-input']}
+                  value={handoverTime}
+                  onChange={(e) => setHandoverTime(e.target.value)}
+                  style={{ margin: 0, colorScheme: 'dark' }}
+                  onClick={(e) => { try { e.currentTarget.showPicker() } catch {} }}
+                />
+              </div>
+            </div>
+
+            {handoverLocation && (
+              <div style={{ marginTop: '0.6rem', fontSize: '0.7rem', color: 'rgba(229,193,125,0.7)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px rgba(16,185,129,0.7)' }} />
+                <span>This booking will surface a delivery badge on the Operations grid and Bookings table.</span>
+              </div>
+            )}
+          </div>
+
           {/* ── LIVE CASH LEDGER UPDATE ── */}
           <div style={{
             marginBottom: '1.25rem',
@@ -497,13 +616,36 @@ export default function QuickEditBookingModal({
               flexWrap: 'wrap'
             }}>
               <div style={{ flex: '1 1 auto', textAlign: 'center', minWidth: '100px' }}>
-                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: '0.15rem' }}>Total Contract</div>
-                <strong style={{ color: '#fff', fontSize: '0.85rem' }}>{finalTotalAmount.toFixed(2)} DT</strong>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>Total Contract</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={baseTotalAmt}
+                    onChange={(e) => setBaseTotalAmt(e.target.value)}
+                    style={{ background: 'transparent', border: '1px dashed rgba(255,255,255,0.2)', color: '#fff', fontSize: '0.85rem', width: '70px', textAlign: 'center', padding: '0.1rem', borderRadius: '4px', outline: 'none' }}
+                  />
+                  <span style={{ color: '#fff', fontSize: '0.85rem', marginLeft: '0.25rem' }}>DT</span>
+                </div>
               </div>
               <div style={{ borderLeft: '1px solid rgba(229,193,125,0.15)', height: '24px', alignSelf: 'center' }}></div>
               <div style={{ flex: '1 1 auto', textAlign: 'center', minWidth: '100px' }}>
-                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: '0.15rem' }}>Already Paid</div>
-                <strong style={{ color: 'var(--accent-gold)', fontSize: '0.85rem' }}>{finalAcomptePaid.toFixed(2)} DT</strong>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>Already Paid</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={baseAcomptePaid}
+                    onChange={(e) => setBaseAcomptePaid(e.target.value)}
+                    style={{ background: 'transparent', border: '1px dashed rgba(229,193,125,0.3)', color: 'var(--accent-gold)', fontSize: '0.85rem', width: '70px', textAlign: 'center', padding: '0.1rem', borderRadius: '4px', outline: 'none', fontWeight: 700 }}
+                  />
+                  <span style={{ color: 'var(--accent-gold)', fontSize: '0.85rem', marginLeft: '0.25rem', fontWeight: 700 }}>DT</span>
+                </div>
+                {paidInstallmentsSum > 0 && (
+                  <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.2rem' }}>
+                    + {paidInstallmentsSum.toFixed(2)} installments
+                  </div>
+                )}
               </div>
               <div style={{ borderLeft: '1px solid rgba(229,193,125,0.15)', height: '24px', alignSelf: 'center' }}></div>
               <div style={{ flex: '1 1 auto', textAlign: 'center', minWidth: '120px' }}>

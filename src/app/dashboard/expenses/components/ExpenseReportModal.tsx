@@ -61,7 +61,7 @@ export default function ExpenseReportModal({
             Expense Report ready for Printing / PDF generation.
           </span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn-primary" style={{ background: '#d4b46a', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
+            <button className="btn-primary" style={{ background: '#e5c17d', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
                <Printer size={16} />
                <span>Print / Save as PDF</span>
             </button>
@@ -138,7 +138,7 @@ export default function ExpenseReportModal({
                   {stats.overall.toFixed(2)} {currentSettings.currency}
                 </div>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '1.25rem', borderRadius: '6px', textAlign: 'center', background: 'rgba(212, 180, 106, 0.05)', borderColor: '#d4b46a' }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '1.25rem', borderRadius: '6px', textAlign: 'center', background: 'rgba(212, 180, 106, 0.05)', borderColor: '#e5c17d' }}>
                 <span style={{ fontSize: '0.75rem', color: '#8a6d35', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filtered Subset Total</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8a6d35', marginTop: '0.25rem' }}>
                   {stats.filtered.toFixed(2)} {currentSettings.currency}

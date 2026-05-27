@@ -30,10 +30,11 @@ export default async function BookingsPage() {
     .eq('owner_id', user.id)
     .order('created_at', { ascending: false })
 
-  // Fetch vehicles for the dropdown
+  // Fetch vehicles for the dropdown — include maintenance km fields so the
+  // booking form can show oil-change / brake-pads warnings.
   const { data: vehicles } = await supabase
     .from('vehicles')
-    .select('id, brand, model, price_per_day, current_km')
+    .select('id, brand, model, license_plate, price_per_day, current_km, next_vidange_km, last_vidange_km, next_pads_km')
     .eq('owner_id', user.id)
 
   // Fetch clients belonging to this owner for dropdown selection.

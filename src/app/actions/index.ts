@@ -54,3 +54,13 @@ export {
   addOwner,
   deleteOwner,
 } from './admin'
+
+export {
+  getTodos,
+  addTodo,
+  updateTodo,
+  completeTodo,
+  reopenTodo,
+  deleteTodo,
+} from './todos'
+

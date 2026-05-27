@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, User, Car, CalendarDays, Clock, Shield, DollarSign, Phone, CreditCard, MapPin, FileText, Gauge, Fuel, AlertTriangle, Plus, Trash2, Coins } from 'lucide-react'
+import { X, User, Car, CalendarDays, Clock, Shield, DollarSign, Phone, CreditCard, MapPin, FileText, Gauge, Fuel, AlertTriangle, Plus, Trash2, Coins, Wrench, ShieldAlert } from 'lucide-react'
 import { addBooking, updateBooking } from '@/app/actions'
+import { syncVehicleMaxOdometer } from '@/app/actions/vehicles'
 import { useToast } from '@/components/Toast'
 import { Booking, Vehicle, Client } from '@/types'
 import SearchableCombobox from '@/components/SearchableCombobox'
+import { useSearchParams } from 'next/navigation'
 
 interface BookingFormModalProps {
   isOpen: boolean
@@ -26,6 +28,7 @@ export default function BookingFormModal({
   onClose
 }: BookingFormModalProps) {
   const { showToast } = useToast()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -80,7 +83,8 @@ export default function BookingFormModal({
   // Phase 17a — Optional off-site Handover / Delivery (Airport, Hotel, etc.)
   // Empty string = no handover; persisted as NULL by upsertBooking.
   const [handoverLocation, setHandoverLocation] = useState('')
-  const [handoverDatetime, setHandoverDatetime] = useState('')
+  const [handoverDate, setHandoverDate] = useState('')
+  const [handoverTime, setHandoverTime] = useState('')
 
   // Conflict info state
   const [conflictInfo, setConflictInfo] = useState<{ occupiedRange: string, freeDates: string[] } | null>(null)
@@ -106,18 +110,118 @@ export default function BookingFormModal({
     return parsedTotal - parsedAcompte - installmentsSum
   }, [parsedTotal, parsedAcompte, installmentsSum])
 
-  // Predictive Legal Document Expiry Collision Detector
+  // Predictive Legal Document Expiry Collision Detector (Expiring DURING the rental window)
   const legalDocConflicts = useMemo(() => {
-    if (!vehicleId) return []
-    const vehicle = vehicles.find(v => v.id === vehicleId)
-    const current = vehicle?.current_km || 0
-    const nextPads = (vehicle as any)?.next_service_km || 0
-    const conflicts = []
-    if (nextPads && (nextPads - current <= 1000)) {
-      conflicts.push({ type: 'pads', label: 'Brake Pads', remainingKm: nextPads - current })
+    if (!vehicleId || !startDate || !endDate) return []
+    return vehicleLegalDocs.filter(doc => 
+      doc.vehicle_id === vehicleId &&
+      doc.expiry_date &&
+      doc.expiry_date >= startDate &&
+      doc.expiry_date <= endDate
+    )
+  }, [vehicleId, startDate, endDate, vehicleLegalDocs])
+
+  // Phase 18 — In-Form Orange/Amber Alerts (Mechanical limits + soon-expiring docs)
+  const inFormOrangeAlerts = useMemo(() => {
+    const alerts: Array<{ kind: 'mechanical' | 'document'; severity: 'amber' | 'red'; text: string }> = []
+    if (!vehicleId) return alerts
+    const v = vehicles.find(x => x.id === vehicleId)
+    if (!v) return alerts
+
+    const TODAY = (() => {
+      const d = new Date()
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })()
+    const fmtDate = (ymd: string) =>
+      new Date(ymd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+    // --- Vidange / Oil Change threshold (warn at ≤1000 km remaining) ---------
+    const current = Number(v.current_km) || 0
+    const targetVid = Number(v.next_vidange_km) || 0
+    if (targetVid > 0) {
+      const delta = targetVid - current
+      if (delta <= 1000) {
+        // Tiered severity: overdue or critically close (≤200 km) → red, approaching (≤1000 km) → amber
+        const severity = (delta <= 0 || delta <= 200) ? 'red' : 'amber'
+        const text = delta <= 0
+          ? `🔴 Oil Change OVERDUE: Vehicle is ${Math.abs(delta).toLocaleString()} km past the Vidange limit (current: ${current.toLocaleString()} km, limit: ${targetVid.toLocaleString()} km). Do NOT dispatch until serviced.`
+          : delta <= 200
+          ? `🔴 Oil Change CRITICAL: Only ${delta.toLocaleString()} km remaining before mandatory Vidange (current: ${current.toLocaleString()} km). Schedule immediately.`
+          : `⚠ Oil Change Approaching: ${delta.toLocaleString()} km remaining before Vidange/Service limit (current: ${current.toLocaleString()} km, limit: ${targetVid.toLocaleString()} km).`
+        alerts.push({ kind: 'mechanical', severity, text })
+      }
     }
-    return conflicts
+
+    // --- Brake-pads threshold (warn at ≤1000 km remaining) -------------------
+    const targetPads = Number(v.next_pads_km) || 0
+    if (targetPads > 0) {
+      const delta = targetPads - current
+      if (delta <= 1000) {
+        const severity = (delta <= 0 || delta <= 200) ? 'red' : 'amber'
+        const text = delta <= 0
+          ? `🔴 Brake Pads OVERDUE: Vehicle is ${Math.abs(delta).toLocaleString()} km past the pad replacement limit (current: ${current.toLocaleString()} km, limit: ${targetPads.toLocaleString()} km). Safety risk — do NOT dispatch.`
+          : delta <= 200
+          ? `🔴 Brake Pads CRITICAL: Only ${delta.toLocaleString()} km remaining before mandatory pad replacement (current: ${current.toLocaleString()} km). Replace before next rental.`
+          : `⚠ Brake Pads Approaching: ${delta.toLocaleString()} km remaining before pad replacement limit (current: ${current.toLocaleString()} km, limit: ${targetPads.toLocaleString()} km).`
+        alerts.push({ kind: 'mechanical', severity, text })
+      }
+    }
+
+    // --- Document expiry within current month (complement to the existing
+    //     amber "expires-during-rental-window" block) -------------------------
+    const monthPrefix = TODAY.slice(0, 7)
+    const rentalStart = startDate || TODAY
+    const rentalEnd   = endDate   || TODAY
+    for (const doc of vehicleLegalDocs) {
+      if (doc.vehicle_id !== vehicleId) continue
+      if (!doc.expiry_date) continue
+      const expiresInRental = doc.expiry_date >= rentalStart && doc.expiry_date <= rentalEnd
+      const expiresThisMonth = doc.expiry_date.slice(0, 7) === monthPrefix
+      if (!expiresInRental && !expiresThisMonth) continue
+      // Skip the in-rental case — the existing amber block already handles it.
+      if (expiresInRental) continue
+
+      const label =
+        doc.doc_type === 'assurance' ? 'Assurance' :
+        doc.doc_type === 'visite_technique' ? 'Visite Technique' :
+        doc.doc_type === 'laissez_passer' ? 'Laissez-Passer' :
+        doc.doc_type
+      alerts.push({
+        kind: 'document',
+        severity: doc.expiry_date < TODAY ? 'red' : 'amber',
+        text: `⚠ Statutory Document Expiration: ${label} is scheduled to expire on ${fmtDate(doc.expiry_date)}.`,
+      })
+    }
+
+    return alerts
+  }, [vehicleId, startDate, endDate, vehicles, vehicleLegalDocs])
+
+  // Mechanical maintenance items for the structured warning box in the rental period section
+  // (same data as inFormOrangeAlerts mechanical entries, but structured for the card layout)
+  const mechMaintItems = useMemo(() => {
+    if (!vehicleId) return []
+    const v = vehicles.find(x => x.id === vehicleId)
+    if (!v) return []
+    const current = Number(v.current_km) || 0
+    const items: { label: string; delta: number; limit: number; icon: string; isCritical: boolean }[] = []
+
+    const targetVid = Number(v.next_vidange_km) || 0
+    if (targetVid > 0) {
+      const delta = targetVid - current
+      if (delta <= 1000) {
+        items.push({ label: 'Oil Change (Vidange)', delta, limit: targetVid, icon: '🛢', isCritical: delta <= 200 || delta <= 0 })
+      }
+    }
+    const targetPads = Number(v.next_pads_km) || 0
+    if (targetPads > 0) {
+      const delta = targetPads - current
+      if (delta <= 1000) {
+        items.push({ label: 'Brake Pads', delta, limit: targetPads, icon: '🔧', isCritical: delta <= 200 || delta <= 0 })
+      }
+    }
+    return items
   }, [vehicleId, vehicles])
+
 
   // Blacklist Evaluation Engine
   const isPrimaryBlacklisted = useMemo(() => {
@@ -199,12 +303,19 @@ export default function BookingFormModal({
       setPickupTime(editingBooking.pickup_time || '10:00')
       setReturnTime(editingBooking.return_time || '10:00')
       setHandoverLocation(editingBooking.handover_location || '')
-      // datetime-local needs `YYYY-MM-DDTHH:MM`; Supabase returns full ISO with seconds + Z.
-      setHandoverDatetime(
-        editingBooking.handover_datetime
-          ? editingBooking.handover_datetime.slice(0, 16)
-          : ''
-      )
+      if (editingBooking.handover_datetime) {
+        setHandoverDate(editingBooking.handover_datetime.split('T')[0])
+        const parts = editingBooking.handover_datetime.split('T')
+        if (parts.length > 1) {
+          const timePart = parts[1].slice(0, 5)
+          setHandoverTime(timePart === '00:00' ? '' : timePart)
+        } else {
+          setHandoverTime('')
+        }
+      } else {
+        setHandoverDate('')
+        setHandoverTime('')
+      }
       setConflictInfo(null)
 
       // Sync installments state
@@ -222,13 +333,61 @@ export default function BookingFormModal({
       setClientName('')
       setSecondaryClientId('')
       setSecondaryClientName('')
-      setVehicleId('')
-      setStartDate('')
-      setEndDate('')
-      setTotalAmount('')
+      
+      const paramVehicleId = searchParams?.get('vehicle_id') || ''
+      const paramStartDate = searchParams?.get('start_date') || ''
+      const paramEndDate = searchParams?.get('end_date') || ''
+
+      // If we have all params, find the actual available sub-range for this vehicle
+      // within the inquiry window (e.g., if inquiry is 27-31 but car is free only 27-29,
+      // auto-select 27-29 as start/end)
+      let effectiveStart = paramStartDate
+      let effectiveEnd = paramEndDate
+
+      if (paramVehicleId && paramStartDate && paramEndDate) {
+        const vehicleBookings = initialBookings.filter(
+          b => b.vehicle_id === paramVehicleId && b.status !== 'cancelled'
+        )
+
+        // Walk the inquiry range and collect consecutive free days
+        const freeDaysInRange: string[] = []
+        const cursor = new Date(paramStartDate)
+        const rangeEnd = new Date(paramEndDate)
+        while (cursor <= rangeEnd) {
+          const dateStr = cursor.toISOString().split('T')[0]
+          const occupied = vehicleBookings.some(b => b.start_date <= dateStr && b.end_date >= dateStr)
+          if (!occupied) freeDaysInRange.push(dateStr)
+          cursor.setDate(cursor.getDate() + 1)
+        }
+
+        if (freeDaysInRange.length > 0) {
+          // Find the longest consecutive free block starting from first free day
+          let blockStart = freeDaysInRange[0]
+          let blockEnd = freeDaysInRange[0]
+          for (let i = 1; i < freeDaysInRange.length; i++) {
+            const prev = new Date(freeDaysInRange[i - 1])
+            const curr = new Date(freeDaysInRange[i])
+            const diff = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)
+            if (diff === 1) {
+              blockEnd = freeDaysInRange[i]
+            } else {
+              break // stop at first gap
+            }
+          }
+          effectiveStart = blockStart
+          effectiveEnd = blockEnd
+        }
+      }
+
+      setVehicleId(paramVehicleId)
+      setStartDate(effectiveStart)
+      setEndDate(effectiveEnd)
       setAcomptePaid('0')
       setRentalDaysText('')
-      setStartingKm('0')
+      setTotalAmount('')
+      // Pre-fill Starting KM from the vehicle's current odometer if available
+      const preSelectedVehicle = paramVehicleId ? vehicles.find(x => x.id === paramVehicleId) : null
+      setStartingKm(preSelectedVehicle?.current_km != null ? String(preSelectedVehicle.current_km) : '0')
       setFuelLevelPickup('Full')
       setLavagePickup('clean_wash')
       setClientPhone('')
@@ -250,9 +409,17 @@ export default function BookingFormModal({
       setPickupTime('10:00')
       setReturnTime('10:00')
       setHandoverLocation('')
-      setHandoverDatetime('')
+      setHandoverDate('')
+      setHandoverTime('')
       setConflictInfo(null)
       setInstallments([])
+
+      // Run price calculation and availability check AFTER all other resets,
+      // so that calculatePrice wins and is not overwritten by setTotalAmount('') above.
+      if (paramVehicleId && effectiveStart && effectiveEnd) {
+        calculatePrice(paramVehicleId, effectiveStart, effectiveEnd)
+        checkAvailability(paramVehicleId, effectiveStart, effectiveEnd)
+      }
     }
   }, [editingBooking, isOpen])
 
@@ -319,6 +486,13 @@ export default function BookingFormModal({
     setVehicleId(vId)
     calculatePrice(vId, startDate, endDate)
     checkAvailability(vId, startDate, endDate, editingBooking?.id)
+    // Auto-fill Starting KM with the vehicle's current odometer
+    if (!editingBooking) {
+      const v = vehicles.find(x => x.id === vId)
+      if (v && v.current_km != null) {
+        setStartingKm(String(v.current_km))
+      }
+    }
   }
 
   const handleStartDateChange = (start: string) => {
@@ -360,12 +534,16 @@ export default function BookingFormModal({
         await addBooking(formData)
         showToast('Booking created successfully!', 'success')
       }
+      // Bump vehicle current_km to the highest recorded KM across all bookings/handovers
+      if (vehicleId) {
+        try { await syncVehicleMaxOdometer(vehicleId) } catch { /* non-fatal */ }
+      }
       onClose()
     } catch (err: any) {
       showToast(err.message || 'Error saving booking. Please try again.', 'error')
+    } finally {
+      setLoading(false)
     }
-    setLoading(true) 
-    setLoading(false)
   }
 
   if (!isOpen || !mounted) return null
@@ -446,6 +624,7 @@ export default function BookingFormModal({
 
           {/* hidden fields for form submission */}
           <input type="hidden" name="client_id" value={clientId} />
+          <input type="hidden" name="handover_datetime" value={handoverDate ? (handoverTime ? `${handoverDate}T${handoverTime}:00` : `${handoverDate}T00:00:00`) : ''} />
           <input type="hidden" name="client_name" value={clientName} />
           <input type="hidden" name="secondary_client_id" value={secondaryClientId} />
           <input type="hidden" name="secondary_client_name" value={secondaryClientName} />
@@ -637,6 +816,36 @@ export default function BookingFormModal({
                 />
                 {vehicleId && (
                   <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#10b981' }}>✓ Vehicle selected</div>
+                )}
+                {/* PHASE 18 — In-Form Orange/Amber Alerts */}
+                {inFormOrangeAlerts.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.85rem' }}>
+                    {inFormOrangeAlerts.map((a, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: '0.7rem 0.9rem',
+                          borderRadius: '10px',
+                          background: a.severity === 'red'
+                            ? 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.04))'
+                            : 'linear-gradient(135deg, rgba(249,115,22,0.14), rgba(249,115,22,0.05))',
+                          border: `1px solid ${a.severity === 'red' ? 'rgba(239,68,68,0.3)' : 'rgba(249,115,22,0.35)'}`,
+                          boxShadow: a.severity === 'red'
+                            ? '0 0 16px rgba(239,68,68,0.15), inset 0 0 6px rgba(239,68,68,0.05)'
+                            : '0 0 16px rgba(249,115,22,0.18), inset 0 0 6px rgba(249,115,22,0.05)',
+                          color: a.severity === 'red' ? '#f87171' : '#fb923c',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        {a.kind === 'mechanical' ? <Wrench size={14} /> : <ShieldAlert size={14} />}
+                        <span>{a.text}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -833,6 +1042,71 @@ export default function BookingFormModal({
                 </div>
               </div>
             )}
+
+            {/* ── Mechanical Maintenance Warning (Oil Change & Brake Pads) ── */}
+            {mechMaintItems.length > 0 && (() => {
+              const hasCritical = mechMaintItems.some(it => it.isCritical)
+              const borderColor = hasCritical ? 'rgba(239,68,68,0.4)' : 'rgba(249,115,22,0.35)'
+              const bgColor    = hasCritical ? 'rgba(239,68,68,0.05)' : 'rgba(249,115,22,0.05)'
+              const headingColor = hasCritical ? '#ef4444' : '#fb923c'
+              const v = vehicles.find(x => x.id === vehicleId)
+              const current = Number(v?.current_km) || 0
+              return (
+                <div style={{
+                  background: bgColor,
+                  border: `1px solid ${borderColor}`,
+                  padding: '0.85rem 1rem',
+                  borderRadius: '8px',
+                  marginTop: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: headingColor, fontWeight: 600, fontSize: '0.82rem' }}>
+                    <Wrench size={15} />
+                    <span>⚠ Mechanical Maintenance Warning</span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.5' }}>
+                    The following service(s) are{' '}
+                    <strong style={{ color: hasCritical ? '#f87171' : '#fbbf24' }}>
+                      {hasCritical ? 'critically overdue or nearly due' : 'approaching their service limit'}
+                    </strong>. Schedule maintenance before dispatching this vehicle.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.15rem' }}>
+                    {mechMaintItems.map((it) => {
+                      const rowBg      = it.isCritical ? 'rgba(239,68,68,0.06)'   : 'rgba(249,115,22,0.06)'
+                      const rowBorder  = it.isCritical ? 'rgba(239,68,68,0.18)'   : 'rgba(249,115,22,0.18)'
+                      const badgeColor = it.isCritical ? '#f87171'                : '#fb923c'
+                      const badgeBg    = it.isCritical ? 'rgba(239,68,68,0.12)'   : 'rgba(249,115,22,0.12)'
+                      const statusText = it.delta <= 0
+                        ? `Overdue by ${Math.abs(it.delta).toLocaleString()} km`
+                        : `${it.delta.toLocaleString()} km remaining`
+                      return (
+                        <div key={it.label} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '0.45rem 0.7rem',
+                          background: rowBg, border: `1px solid ${rowBorder}`, borderRadius: '6px',
+                        }}>
+                          <span style={{ fontSize: '0.78rem', color: '#fff', fontWeight: 500 }}>
+                            {it.icon} {it.label}
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400, marginLeft: '0.4rem', fontSize: '0.72rem' }}>
+                              (current: {current.toLocaleString()} km · limit: {it.limit.toLocaleString()} km)
+                            </span>
+                          </span>
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: 700, color: badgeColor,
+                            background: badgeBg, padding: '0.15rem 0.45rem',
+                            borderRadius: '4px', whiteSpace: 'nowrap',
+                          }}>
+                            {statusText}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
           </div>
 
           {/* ── SECTION 2.5: LOGISTICS HANDOVER (OPTIONAL) ── */}
@@ -859,14 +1133,25 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Clock size={11} /> Handover Date &amp; Time</label>
+                <label style={labelStyle}><CalendarDays size={11} /> Handover Date</label>
                 <input
-                  type="datetime-local"
-                  name="handover_datetime"
-                  value={handoverDatetime}
-                  onChange={(e) => setHandoverDatetime(e.target.value)}
+                  type="date"
+                  value={handoverDate}
+                  onChange={(e) => setHandoverDate(e.target.value)}
                   className="form-input"
                   style={{ margin: 0, colorScheme: 'dark' }}
+                  onClick={(e) => { try { e.currentTarget.showPicker() } catch {} }}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}><Clock size={11} /> Handover Hour (Optional)</label>
+                <input
+                  type="time"
+                  value={handoverTime}
+                  onChange={(e) => setHandoverTime(e.target.value)}
+                  className="form-input"
+                  style={{ margin: 0, colorScheme: 'dark' }}
+                  onClick={(e) => { try { e.currentTarget.showPicker() } catch {} }}
                 />
               </div>
             </div>

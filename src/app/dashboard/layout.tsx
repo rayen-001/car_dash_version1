@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { CarFront, CalendarClock, CircleDollarSign, Wrench, BarChart3, User, LogOut, Menu, X, Settings, Users, Plus } from 'lucide-react'
+import { CarFront, CalendarClock, CircleDollarSign, Wrench, BarChart3, User, LogOut, Menu, X, Settings, Users, Plus, Coins, ListChecks } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
@@ -18,7 +18,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   const [userEmail, setUserEmail] = useState('')
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false)
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false)
-  
+
   const profileRef = useRef<HTMLDivElement>(null)
 
   // Fetch user identity and business name for the topbar
@@ -60,10 +60,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       }
     }
     loadUserInfo()
-    
+
     // Add real-time event listener
     window.addEventListener('business-settings-updated', loadUserInfo)
-    
+
     return () => {
       window.removeEventListener('business-settings-updated', loadUserInfo)
     }
@@ -97,13 +97,15 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         { name: 'My Fleet', href: '/dashboard/fleet', icon: CarFront },
         { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarClock },
         { name: 'Clients', href: '/dashboard/clients', icon: Users },
+        // Phase 18 — To-Do Hub
+        { name: 'To-Do Hub', href: '/dashboard/todo', icon: ListChecks },
       ]
     },
     {
       title: 'Finance & Service',
       items: [
-        { name: 'Expenses', href: '/dashboard/expenses', icon: CircleDollarSign },
-        { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench },
+        { name: 'Rental Inflows', href: '/dashboard/revenues', icon: Coins },
+        { name: 'Fleet Expenses', href: '/dashboard/expenses', icon: CircleDollarSign },
       ]
     },
     {
@@ -128,8 +130,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           <h2 className={styles['brand']}>
             <span className={styles['brand-accent']}>Owner</span>Dash
           </h2>
-          <button 
-            className={styles['mobile-close-btn']} 
+          <button
+            className={styles['mobile-close-btn']}
             onClick={() => setIsSidebarOpen(false)}
             aria-label="Close Menu"
           >
@@ -145,8 +147,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                 const Icon = item.icon
                 const isActive = pathname === item.href
                 return (
-                  <Link 
-                    key={item.name} 
+                  <Link
+                    key={item.name}
                     href={item.href}
                     className={`${styles['nav-item']} ${isActive ? styles['active'] : ''}`}
                     onClick={() => setIsSidebarOpen(false)}
@@ -172,8 +174,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
       <main className={styles['main-content']}>
         <header className={`${styles['topbar']} glass-panel no-print`}>
           <div className={styles['topbar-left']}>
-            <button 
-              className={styles['menu-toggle-btn']} 
+            <button
+              className={styles['menu-toggle-btn']}
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Open Menu"
             >
@@ -184,17 +186,17 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               <span>Live Data Sync</span>
             </div>
           </div>
-          <div 
+          <div
             ref={profileRef}
             className={`${styles['topbar-profile']} ${isProfileDropdownOpen ? styles['active'] : ''}`}
             onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
           >
             {logoUrl ? (
               <div className={styles['avatar-container']}>
-                <img 
-                  src={logoUrl} 
-                  alt={displayName} 
-                  className={styles['avatar-img']} 
+                <img
+                  src={logoUrl}
+                  alt={displayName}
+                  className={styles['avatar-img']}
                   title={displayName}
                 />
               </div>
@@ -222,7 +224,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                     <span className={styles['dropdown-email']} title={userEmail}>{userEmail}</span>
                   </div>
                 </div>
-                
+
                 <div className={styles['dropdown-divider']}></div>
 
                 <div className={styles['dropdown-menu']}>
@@ -271,12 +273,12 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               animation: 'scaleUp 0.2s ease-out'
             }}>
               <div style={{ fontSize: '0.8rem', color: '#ae9260', fontWeight: 700, paddingBottom: '0.4rem', borderBottom: '1px solid rgba(229,193,125,0.15)', marginBottom: '0.25rem', fontFamily: 'var(--font-heading)' }}>QUICK ACTIONS</div>
-              
+
               <Link href="/dashboard/bookings?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
                 <CalendarClock size={16} style={{ color: '#ae9260' }} />
                 <span>New Booking</span>
               </Link>
-              
+
               <Link href="/dashboard/fleet?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
                 <CarFront size={16} style={{ color: '#ae9260' }} />
                 <span>Add Vehicle</span>
@@ -293,8 +295,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               </Link>
             </div>
           )}
-          
-          <button 
+
+          <button
             onClick={() => setIsQuickActionsOpen(!isQuickActionsOpen)}
             style={{
               width: '56px',
@@ -316,7 +318,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           </button>
         </div>
       </main>
-      
+
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes scaleUp {
           from { transform: scale(0.95); opacity: 0; }

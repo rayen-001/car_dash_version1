@@ -1,58 +1,35 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { User, Mail, ShieldAlert, LogOut, Loader2, CheckCircle2, Lock } from 'lucide-react'
-import styles from './settings.module.css'
+import { User, Mail, ShieldAlert, CheckCircle2, Lock, Building, Phone, MapPin } from 'lucide-react'
+import styles from './profile.module.css'
 
-export default function PlatformSettingsPage() {
-  const router = useRouter()
+interface ProfileFormProps {
+  initialData: {
+    email: string
+    address: string
+    fullName: string
+    phone: string
+    companyName: string
+  }
+}
+
+export default function ProfileForm({ initialData }: ProfileFormProps) {
   const supabase = createClient()
 
   // State variables
   const [loading, setLoading] = useState(false)
-  const [profileLoading, setProfileLoading] = useState(true)
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
+  const [companyName, setCompanyName] = useState(initialData.companyName)
+  const [fullName, setFullName] = useState(initialData.fullName)
+  const [email, setEmail] = useState(initialData.email)
+  const [phone, setPhone] = useState(initialData.phone)
+  const [address, setAddress] = useState(initialData.address)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  // Fetch current user and profile
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          router.push('/login')
-          return
-        }
-
-        setEmail(user.email || '')
-
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .single()
-
-        if (error) {
-          console.error('Error fetching profile:', error.message)
-        } else if (profile) {
-          setFullName(profile.full_name || '')
-        }
-      } catch (err) {
-        console.error('Unexpected error loading profile:', err)
-      } finally {
-        setProfileLoading(false)
-      }
-    }
-
-    loadProfile()
-  }, [supabase, router])
-
-  // Update profile
+  // Update profile handler
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -62,21 +39,34 @@ export default function PlatformSettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      // Update full_name in profiles table
+      // 1. Update fields in profiles table
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ full_name: fullName })
+        .update({
+          full_name: fullName,
+          phone: phone,
+          company_name: companyName
+        })
         .eq('id', user.id)
 
       if (profileError) throw profileError
 
-      // Update email in Auth if it has changed
+      // 2. Update address in auth user metadata and email if updated
+      const authUpdates: any = {
+        data: { ...user.user_metadata, address: address }
+      }
+
       if (user.email !== email) {
-        const { error: authError } = await supabase.auth.updateUser({ email })
-        if (authError) throw authError
-        setMessage({ type: 'success', text: 'Profile updated successfully! A verification email has been sent to your new address.' })
+        authUpdates.email = email
+      }
+
+      const { error: authError } = await supabase.auth.updateUser(authUpdates)
+      if (authError) throw authError
+
+      if (user.email !== email) {
+        setMessage({ type: 'success', text: 'Business profile updated successfully! Please check your new email address to verify the changes.' })
       } else {
-        setMessage({ type: 'success', text: 'Profile updated successfully!' })
+        setMessage({ type: 'success', text: 'Business profile updated successfully!' })
       }
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to update profile' })
@@ -85,7 +75,7 @@ export default function PlatformSettingsPage() {
     }
   }
 
-  // Change password
+  // Change password handler
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -117,28 +107,8 @@ export default function PlatformSettingsPage() {
     }
   }
 
-  // Logout
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
-  if (profileLoading) {
-    return (
-      <div className={styles['loading-container']}>
-        <Loader2 className={styles['spinner']} size={40} />
-        <p>Loading Admin Profile...</p>
-      </div>
-    )
-  }
-
   return (
-    <div className={styles['dashboard-page']}>
-      <div className={styles['header-section']}>
-        <h1 className={styles['page-title']}>👑 Super Admin Profile</h1>
-        <p className={styles['subtitle']}>Manage your credentials and security settings.</p>
-      </div>
-
+    <>
       {message && (
         <div className={`${styles['status-banner']} ${styles[message.type]}`}>
           {message.type === 'success' ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
@@ -147,25 +117,40 @@ export default function PlatformSettingsPage() {
       )}
 
       <div className={styles['content-grid']}>
-        {/* Profile Info Panel */}
+        {/* Profile Info Form */}
         <div className={`${styles['glass-panel']} ${styles['form-panel']}`}>
           <div className={styles['panel-header-row']}>
-            <h3 className={styles['section-subtitle']}>Account Details</h3>
-            <span className={styles['badge-admin']}>Platform Admin</span>
+            <h3 className={styles['section-subtitle']}>Business details</h3>
+            <span className={styles['badge-owner']}>Fleet Owner</span>
           </div>
 
           <form onSubmit={handleUpdateProfile} className={styles['profile-form']}>
             <div className={styles['form-group']}>
               <label>
+                <Building size={14} className={styles['input-icon']} />
+                <span>Company Name</span>
+              </label>
+              <input 
+                type="text" 
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required 
+                placeholder="Your Company Name" 
+                className={styles['form-input']} 
+              />
+            </div>
+
+            <div className={styles['form-group']}>
+              <label>
                 <User size={14} className={styles['input-icon']} />
-                <span>Full Name</span>
+                <span>Owner Full Name</span>
               </label>
               <input 
                 type="text" 
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required 
-                placeholder="Admin Full Name" 
+                placeholder="Full Name" 
                 className={styles['form-input']} 
               />
             </div>
@@ -180,21 +165,53 @@ export default function PlatformSettingsPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required 
-                placeholder="admin@automanage.com" 
+                placeholder="owner@example.com" 
                 className={styles['form-input']} 
               />
             </div>
 
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>
+                  <Phone size={14} className={styles['input-icon']} />
+                  <span>Phone Number</span>
+                </label>
+                <input 
+                  type="tel" 
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required 
+                  placeholder="e.g. +123456789" 
+                  className={styles['form-input']} 
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <MapPin size={14} className={styles['input-icon']} />
+                  <span>Address <span className={styles['optional']}>(optional)</span></span>
+                </label>
+                <input 
+                  type="text" 
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Street, City, Country" 
+                  className={styles['form-input']} 
+                />
+              </div>
+            </div>
+
             <button type="submit" className={styles['btn-gold']} disabled={loading}>
-              {loading ? 'Saving Changes...' : 'Save Profile Details'}
+              {loading ? 'Saving details...' : 'Save Profile Changes'}
             </button>
           </form>
         </div>
 
-        {/* Security & Settings Panel */}
+        {/* Security Password Form */}
         <div className={`${styles['glass-panel']} ${styles['form-panel']}`}>
-          <h3 className={styles['section-subtitle']}>Security Settings</h3>
-          
+          <h3 className={styles['section-subtitle']}>Access Security</h3>
+          <p className={styles['form-help-text']}>Change your password below to update your login credentials.</p>
+
           <form onSubmit={handleChangePassword} className={styles['profile-form']}>
             <div className={styles['form-group']}>
               <label>
@@ -221,24 +238,17 @@ export default function PlatformSettingsPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required 
-                placeholder="Confirm password" 
+                placeholder="Confirm new password" 
                 className={styles['form-input']} 
               />
             </div>
 
             <button type="submit" className={styles['btn-gold-outline']} disabled={loading}>
-              {loading ? 'Updating Password...' : 'Change Password'}
+              {loading ? 'Updating Password...' : 'Change Access Password'}
             </button>
           </form>
-
-          <div className={styles['logout-divider']}></div>
-
-          <button onClick={handleLogout} className={styles['btn-logout-danger']}>
-            <LogOut size={16} />
-            <span>Sign Out of Platform</span>
-          </button>
         </div>
       </div>
-    </div>
+    </>
   )
 }

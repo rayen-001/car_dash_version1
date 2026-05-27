@@ -212,7 +212,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
           <ShieldAlertIcon size={12} style={{ fill: 'rgba(255, 68, 68, 0.2)' }} />
           Blacklisted / Suspended ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#ff7777', fontWeight: 600 }}>
+        <span style={{ fontSize: '0.72rem', color: '#ffb3b3', fontWeight: 600 }}>
           ⚠️ Block booking. Active contract triggers repossession flag.
         </span>
       </div>
@@ -238,7 +238,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
           <ShieldAlertIcon size={12} style={{ fill: 'rgba(244, 63, 94, 0.2)' }} />
           Restricted / High Risk ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#fb7185' }}>
+        <span style={{ fontSize: '0.72rem', color: '#ffd1d7', fontWeight: 600 }}>
           Economy Tier Only, 100% Upfront Cash, Manager Co-Sign.
         </span>
       </div>
@@ -264,7 +264,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
           <ShieldAlertIcon size={12} style={{ fill: 'rgba(245, 158, 11, 0.2)' }} />
           Cautionary ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>
+        <span style={{ fontSize: '0.72rem', color: '#fde68a', fontWeight: 600 }}>
           Economy/Standard Only, Mandatory Vehicle Condition Photos.
         </span>
       </div>
@@ -289,7 +289,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
         }}>
           Standard ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#93c5fd' }}>
+        <span style={{ fontSize: '0.72rem', color: '#bfdbfe', fontWeight: 600 }}>
           Access to All Fleets, Standard Multi-Point Checklist.
         </span>
       </div>
@@ -314,7 +314,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
         }}>
           Preferred ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#6ee7b7' }}>
+        <span style={{ fontSize: '0.72rem', color: '#a7f3d0', fontWeight: 600 }}>
           Access to All Fleets, Standard Pricing, Minimal Checklist.
         </span>
       </div>
@@ -340,7 +340,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
         <Star size={11} style={{ fill: 'var(--accent-gold)' }} />
         Elite / VIP Renter ({score.toFixed(1)} DRI)
       </span>
-      <span style={{ fontSize: '0.65rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
+      <span style={{ fontSize: '0.72rem', color: '#fdf6e2', fontWeight: 600 }}>
         Access to Luxury Fleets (SUVs), 0% Upfront Advance Approved.
       </span>
     </div>

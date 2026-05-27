@@ -264,6 +264,10 @@ export async function addBooking(formData: FormData) {
     return_time,
     handover_location,
     handover_datetime,
+    starting_km,
+    starting_mileage: starting_km,
+    fuel_level_pickup,
+    lavage_pickup,
   }).select('id').single()
 
   if (error) throw new Error(error.message)
@@ -540,6 +544,10 @@ export async function updateBooking(formData: FormData) {
       actual_return_date,
       handover_location,
       handover_datetime,
+      starting_km,
+      starting_mileage: starting_km,
+      fuel_level_pickup,
+      lavage_pickup,
     })
     .eq('id', id)
     .eq('owner_id', user.id)
@@ -688,6 +696,8 @@ export async function updateBookingHistoricalDetails(
     amount_collected_now?: number
     incident_penalties?: number
     total_amount?: number
+    handover_location?: string | null
+    handover_datetime?: string | null
   }
 ) {
   const { supabase, user } = await getAuthedUser()
@@ -920,6 +930,7 @@ export async function clearOutstandingLedgerItem(bookingId: string, lineItemId: 
       }
     }
     revalidatePath('/dashboard/expenses')
+    revalidatePath('/dashboard/revenues')
     revalidatePath('/dashboard')
     return
   }
@@ -933,6 +944,7 @@ export async function clearOutstandingLedgerItem(bookingId: string, lineItemId: 
   if (error) throw new Error(error.message)
 
   revalidatePath('/dashboard/expenses')
+  revalidatePath('/dashboard/revenues')
   revalidatePath('/dashboard')
 }
 
@@ -1004,6 +1016,7 @@ export async function toggleTrancheStatus(bookingId: string, trancheId: string, 
   }
 
   revalidatePath('/dashboard/expenses')
+  revalidatePath('/dashboard/revenues')
   revalidatePath('/dashboard')
 }
 
@@ -1049,6 +1062,7 @@ export async function settleBookingTrancheCascade(bookingId: string, amount: num
           await recalculateClientTrustScore(booking.client_id)
         }
         revalidatePath('/dashboard/expenses')
+        revalidatePath('/dashboard/revenues')
         revalidatePath('/dashboard')
         return
       }
@@ -1149,6 +1163,7 @@ export async function settleBookingTrancheCascade(bookingId: string, amount: num
   }
 
   revalidatePath('/dashboard/expenses')
+  revalidatePath('/dashboard/revenues')
   revalidatePath('/dashboard')
 }
 

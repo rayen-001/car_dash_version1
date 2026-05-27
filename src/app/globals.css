@@ -16,11 +16,11 @@
   --bg-glass-hover: linear-gradient(155deg, rgba(48, 38, 30, 0.9) 0%, rgba(22, 17, 14, 0.95) 100%);
 
   /* Refined champagne gold */
-  --accent-gold: #d4b46a;
-  --accent-gold-hover: #f0d188;
-  --accent-gold-deep: #8a6d35;
-  --accent-gold-dim: rgba(212, 180, 106, 0.10);
-  --accent-gold-glow: rgba(212, 180, 106, 0.35);
+  --accent-gold: #e5c17d;
+  --accent-gold-hover: #fce3a1;
+  --accent-gold-deep: #a58448;
+  --accent-gold-dim: rgba(229, 193, 125, 0.10);
+  --accent-gold-glow: rgba(229, 193, 125, 0.35);
 
   /* Refined neutrals */
   --text-primary: #f4ede1;
@@ -152,6 +152,43 @@ h1, h2, h3, h4, h5, h6 {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-lg);
   transform: translateY(-2px);
+}
+
+.ledger-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ledger-head,
+.ledger-row,
+.ledger-footer {
+  min-width: 860px;
+}
+
+.ledger-row > div,
+.ledger-footer > div {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .ledger-head {
+    display: none;
+  }
+
+  .ledger-row,
+  .ledger-footer {
+    min-width: auto;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 1rem;
+  }
+
+  .ledger-row > div,
+  .ledger-footer > div {
+    min-width: auto;
+  }
 }
 
 /* ============================================================
@@ -325,12 +362,12 @@ select option {
    ============================================================ */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
 
 @keyframes omni-slidein {
   from { opacity: 0; transform: translateY(-8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
 
 @keyframes pulse-urgency {

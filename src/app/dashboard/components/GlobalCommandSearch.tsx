@@ -29,6 +29,14 @@ interface OmniBooking {
   handover_datetime?: string | null
   starting_km?: number | null
   return_km?: number | null
+  vehicle_handovers?: {
+    pickup_km?: number | null
+    return_km?: number | null
+    pickup_fuel?: number | null
+    return_fuel?: number | null
+    pickup_cleanliness?: string | null
+    return_cleanliness?: string | null
+  }[]
   fuel_level_pickup?: string
   fuel_level_return?: string
   lavage_pickup?: string
@@ -973,7 +981,7 @@ function OmniResultCard({
             <ShieldIcon size={12} style={{ fill: 'rgba(255, 68, 68, 0.2)' }} />
             Blacklisted / Suspended ({score.toFixed(1)} DRI)
           </span>
-          <span style={{ fontSize: '0.65rem', color: '#ff7777', fontWeight: 600 }}>
+          <span style={{ fontSize: '0.72rem', color: '#ffb3b3', fontWeight: 600 }}>
             ⚠️ Block booking. Active contract triggers repossession flag.
           </span>
         </div>
@@ -999,7 +1007,7 @@ function OmniResultCard({
             <ShieldIcon size={12} style={{ fill: 'rgba(244, 63, 94, 0.2)' }} />
             Restricted / High Risk ({score.toFixed(1)} DRI)
           </span>
-          <span style={{ fontSize: '0.65rem', color: '#fb7185' }}>
+          <span style={{ fontSize: '0.72rem', color: '#ffd1d7', fontWeight: 600 }}>
             Economy Tier Only, 100% Upfront Cash, Manager Co-Sign.
           </span>
         </div>
@@ -1025,7 +1033,7 @@ function OmniResultCard({
             <ShieldIcon size={12} style={{ fill: 'rgba(245, 158, 11, 0.2)' }} />
             Cautionary ({score.toFixed(1)} DRI)
           </span>
-          <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>
+          <span style={{ fontSize: '0.72rem', color: '#fde68a', fontWeight: 600 }}>
             Economy/Standard Only, Mandatory Vehicle Condition Photos.
           </span>
         </div>
@@ -1050,7 +1058,7 @@ function OmniResultCard({
           }}>
             Standard ({score.toFixed(1)} DRI)
           </span>
-          <span style={{ fontSize: '0.65rem', color: '#93c5fd' }}>
+          <span style={{ fontSize: '0.72rem', color: '#bfdbfe', fontWeight: 600 }}>
             Access to All Fleets, Standard Multi-Point Checklist.
           </span>
         </div>
@@ -1075,7 +1083,7 @@ function OmniResultCard({
           }}>
             Preferred ({score.toFixed(1)} DRI)
           </span>
-          <span style={{ fontSize: '0.65rem', color: '#6ee7b7' }}>
+          <span style={{ fontSize: '0.72rem', color: '#a7f3d0', fontWeight: 600 }}>
             Access to All Fleets, Standard Pricing, Minimal Checklist.
           </span>
         </div>
@@ -1102,7 +1110,7 @@ function OmniResultCard({
           <Star size={11} style={{ fill: 'var(--accent-gold)' }} />
           Elite / VIP Renter ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
+        <span style={{ fontSize: '0.72rem', color: '#fdf6e2', fontWeight: 600 }}>
           Access to Luxury Fleets (SUVs), 0% Upfront Advance Approved.
         </span>
       </div>
@@ -1261,46 +1269,44 @@ function OmniResultCard({
                 : MapPin
             // Render the full DD/MM/YYYY HH:MM so the badge shows when the
             // delivery actually happens, not just the time-of-day.
-            const hhmm = booking.handover_datetime
-              ? new Date(booking.handover_datetime).toLocaleString('en-GB', {
+            const rawDt = booking.handover_datetime
+            const hasTime = rawDt && !rawDt.includes('T00:00:00') && !rawDt.includes(' 00:00')
+            const hhmm = rawDt
+              ? new Date(rawDt).toLocaleString('en-GB', {
                   day: '2-digit',
                   month: '2-digit',
                   year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false,
+                  ...(hasTime ? { hour: '2-digit', minute: '2-digit', hour12: false } : {})
                 })
               : ''
             return (
-              <span
+              <div
                 title={`Handover · ${loc}${hhmm ? ' @ ' + hhmm : ''}`}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.2rem',
                   marginTop: '0.35rem',
-                  padding: '0.22rem 0.55rem',
-                  background: 'linear-gradient(135deg, rgba(229,193,125,0.18) 0%, rgba(229,193,125,0.06) 100%)',
-                  border: '1px solid rgba(229,193,125,0.35)',
-                  borderRadius: '999px',
-                  boxShadow: '0 0 14px rgba(229,193,125,0.18), inset 0 0 6px rgba(229,193,125,0.06)',
+                  padding: '0.35rem 0.6rem',
+                  background: 'linear-gradient(135deg, rgba(229,193,125,0.12) 0%, rgba(229,193,125,0.04) 100%)',
+                  border: '1px solid rgba(229,193,125,0.25)',
+                  borderRadius: '6px',
                   fontSize: '0.7rem',
-                  fontWeight: 600,
                   color: '#E5C17D',
-                  letterSpacing: '0.02em',
-                  maxWidth: '100%',
-                  width: 'fit-content',
+                  width: '100%',
+                  maxWidth: '220px',
                 }}
               >
-                <Icon size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{loc}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700, color: '#fff' }}>
+                  <Icon size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                  <span style={{ wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: 1.25 }}>{loc}</span>
+                </div>
                 {hhmm && (
-                  <>
-                    <span style={{ opacity: 0.4 }}>·</span>
-                    <span style={{ color: '#fff' }}>{hhmm}</span>
-                  </>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'rgba(255,255,255,0.55)', fontSize: '0.68rem', paddingLeft: '1.1rem', marginTop: '0.05rem' }}>
+                    <span>{hhmm}</span>
+                  </div>
                 )}
-              </span>
+              </div>
             )
           })()}
         </Stack>
@@ -1351,7 +1357,7 @@ function OmniResultCard({
         <Label>Condition Δ</Label>
         <Stack>
           {(() => {
-            const h = (booking as any).vehicle_handovers || {}
+            const h = (booking.vehicle_handovers?.[0] || {}) as any
             const pKm = h.pickup_km ?? booking.starting_km
             const rKm = h.return_km ?? booking.return_km
             const pFuel = h.pickup_fuel

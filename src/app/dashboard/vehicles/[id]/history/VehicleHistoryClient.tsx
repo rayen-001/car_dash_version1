@@ -33,8 +33,8 @@ interface Vehicle {
   images?: string[]
   price_per_day: number
   current_km?: number | null
-  oil_change_due_km?: number | null
-  brake_pad_state?: 'good' | 'worn' | 'critical' | null
+  last_vidange_km?: number | null
+  last_pads_km?: number | null
 }
 
 interface LegalDoc {
@@ -77,6 +77,7 @@ interface VehicleHistoryClientProps {
   legalDocs: LegalDoc[]
   bookings: Booking[]
   maintenance: Maintenance[]
+  expenses?: any[]
 }
 
 export default function VehicleHistoryClient({
@@ -84,7 +85,8 @@ export default function VehicleHistoryClient({
   vehiclesList,
   legalDocs,
   bookings,
-  maintenance
+  maintenance,
+  expenses = []
 }: VehicleHistoryClientProps) {
   const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState<'bookings' | 'maintenance'>('bookings')
@@ -99,9 +101,9 @@ export default function VehicleHistoryClient({
   // 2. Mechanical State Modal State
   const [isMechModalOpen, setIsMechModalOpen] = useState(false)
   const [currentKm, setCurrentKm] = useState<string>(currentVehicle.current_km?.toString() || '')
-  const [oilDueKm, setOilDueKm] = useState<string>(currentVehicle.oil_change_due_km?.toString() || '')
-  const [lastOilChangeKm, setLastOilChangeKm] = useState<string>(currentVehicle.oil_change_due_km ? (currentVehicle.oil_change_due_km - 10000).toString() : '')
-  const [brakesState, setBrakesState] = useState<'good' | 'worn' | 'critical'>(currentVehicle.brake_pad_state || 'good')
+  const [oilDueKm, setOilDueKm] = useState<string>(currentVehicle.last_vidange_km?.toString() || '')
+  const [lastOilChangeKm, setLastOilChangeKm] = useState<string>(currentVehicle.last_vidange_km ? (currentVehicle.last_vidange_km - 10000).toString() : '')
+  const [brakesState, setBrakesState] = useState<number | null>(currentVehicle.last_pads_km ?? null)
 
   const handleLastOilChangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
@@ -151,9 +153,9 @@ export default function VehicleHistoryClient({
   // Open Mechanical Health Modal
   const handleOpenMechModal = () => {
     setCurrentKm(currentVehicle.current_km?.toString() || '')
-    setOilDueKm(currentVehicle.oil_change_due_km?.toString() || '')
-    setLastOilChangeKm(currentVehicle.oil_change_due_km ? (currentVehicle.oil_change_due_km - 10000).toString() : '')
-    setBrakesState(currentVehicle.brake_pad_state || 'good')
+    setOilDueKm(currentVehicle.last_vidange_km?.toString() || '')
+    setLastOilChangeKm(currentVehicle.last_vidange_km ? (currentVehicle.last_vidange_km - 10000).toString() : '')
+    setBrakesState(currentVehicle.last_pads_km ?? null)
     setIsMechModalOpen(true)
   }
 
@@ -265,8 +267,8 @@ export default function VehicleHistoryClient({
       {/* Mechanical state panel */}
       <MechanicalStatePanel 
         currentKm={currentVehicle.current_km ?? null}
-        oilChangeDueKm={currentVehicle.oil_change_due_km ?? null}
-        brakePadState={currentVehicle.brake_pad_state ?? null}
+        oilChangeDueKm={currentVehicle.last_vidange_km ?? null}
+        brakePadState={currentVehicle.last_pads_km as any}
         onEditMechanical={handleOpenMechModal}
       />
 
@@ -413,11 +415,11 @@ export default function VehicleHistoryClient({
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="brake_pad_state">Brake Pads State</label>
+                <label className="form-label" htmlFor="last_pads_km">Brake Pads State</label>
                 <select
-                  id="brake_pad_state"
+                  id="last_pads_km"
                   className="form-input"
-                  value={brakesState}
+                  value={brakesState ?? ''}
                   onChange={(e) => setBrakesState(e.target.value as any)}
                 >
                   <option value="good">🟢 Good condition</option>

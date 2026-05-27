@@ -13,7 +13,7 @@ import ExpenseReportModal from '../expenses/components/ExpenseReportModal'
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { BusinessSettings } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
-import { bookingToRentalInflows, type RentalInflow } from '@/lib/rentalInflows'
+import { bookingToRentalInflows, summarizeInflows, type RentalInflow } from '@/lib/rentalInflows'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,18 @@ interface LedgerRow {
   totalAmount?: number
   rawBooking?: any
   clients?: any
+}
+
+interface PaymentEvent {
+  id: string
+  date: string                                         // YYYY-MM-DD
+  amount: number
+  kind: 'acompte' | 'tranche' | 'solde' | 'expense'
+  trancheLabel: string                                 // "Acompte Initial" / "Tranche 1/2" / "Remaining Balance"
+  status: 'paid' | 'unpaid' | 'overdue'
+  parentRow: LedgerRow
+  createdAt: string
+  updatedAt: string
 }
 
 type DatePreset = 'today' | 'week' | 'month' | 'custom'
@@ -212,7 +224,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
           <ShieldAlertIcon size={12} style={{ fill: 'rgba(255, 68, 68, 0.2)' }} />
           Blacklisted / Suspended ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#ff7777', fontWeight: 600 }}>
+        <span style={{ fontSize: '0.72rem', color: '#ffb3b3', fontWeight: 600 }}>
           ⚠️ Block booking. Active contract triggers repossession flag.
         </span>
       </div>
@@ -238,7 +250,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
           <ShieldAlertIcon size={12} style={{ fill: 'rgba(244, 63, 94, 0.2)' }} />
           Restricted / High Risk ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#fb7185' }}>
+        <span style={{ fontSize: '0.72rem', color: '#ffd1d7', fontWeight: 600 }}>
           Economy Tier Only, 100% Upfront Cash, Manager Co-Sign.
         </span>
       </div>
@@ -264,7 +276,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
           <ShieldAlertIcon size={12} style={{ fill: 'rgba(245, 158, 11, 0.2)' }} />
           Cautionary ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>
+        <span style={{ fontSize: '0.72rem', color: '#fde68a', fontWeight: 600 }}>
           Economy/Standard Only, Mandatory Vehicle Condition Photos.
         </span>
       </div>
@@ -289,7 +301,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
         }}>
           Standard ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#93c5fd' }}>
+        <span style={{ fontSize: '0.72rem', color: '#bfdbfe', fontWeight: 600 }}>
           Access to All Fleets, Standard Multi-Point Checklist.
         </span>
       </div>
@@ -314,7 +326,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
         }}>
           Preferred ({score.toFixed(1)} DRI)
         </span>
-        <span style={{ fontSize: '0.65rem', color: '#6ee7b7' }}>
+        <span style={{ fontSize: '0.72rem', color: '#a7f3d0', fontWeight: 600 }}>
           Access to All Fleets, Standard Pricing, Minimal Checklist.
         </span>
       </div>
@@ -340,7 +352,7 @@ function renderTrustBadge(row: LedgerRow, initialBookings: any[]) {
         <Star size={11} style={{ fill: 'var(--accent-gold)' }} />
         Elite / VIP Renter ({score.toFixed(1)} DRI)
       </span>
-      <span style={{ fontSize: '0.65rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
+      <span style={{ fontSize: '0.72rem', color: '#fdf6e2', fontWeight: 600 }}>
         Access to Luxury Fleets (SUVs), 0% Upfront Advance Approved.
       </span>
     </div>
@@ -447,12 +459,14 @@ function InstallmentRoadmap({ installments, today }: { installments: Installment
 
 interface BookingInput {
   id: string
+  client_id?: string | null
   client_name?: string
   client_phone?: string
   vehicle_id?: string
   vehicles?: any
   installments?: Installment[]
   acompte_paid?: number | string
+  acompte_paid_date?: string | null
   actual_return_date?: string | null
   created_at?: string
   start_date?: string
@@ -688,7 +702,9 @@ export default function RevenuesClient({
     const isDueDateSearch = datePattern.test(q)
 
     return allRows.filter(row => {
-      const inWindow = row.date >= from && row.date <= to
+      const inWindow = flowFilter === 'unpaid'
+        ? row.date <= to
+        : (row.date >= from && row.date <= to)
       const typeMatch = typeFilter === 'all' || row.type === typeFilter
 
       // Flow filter match
@@ -729,19 +745,11 @@ export default function RevenuesClient({
   }, [allRows, dateWindow, typeFilter, flowFilter, searchQuery, TODAY])
 
   // ── KPI Computations ──────────────────────────────────────────────────────
-  const totalInflow  = useMemo(() => filtered.filter(r => r.type === 'inflow').reduce((s, r) => s + r.amount, 0), [filtered])
+  // NOTE: totalInflow / overdueRowCount are re-computed inside the IIFE below
+  // (from visibleEvents via summarizeInflows) so the top KPI cards match the
+  // daily ledger exactly. The `filtered` versions are kept only for the legacy
+  // transaction count label in the date-filter bar.
   const totalOutflow = useMemo(() => filtered.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0), [filtered])
-  const netPosition  = totalInflow - totalOutflow
-
-  // Aggregate receivables across visible rows
-  const totalOwedInPeriod = useMemo(() =>
-    filtered.filter(r => r.type === 'inflow').reduce((s, r) => s + r.totalOwed, 0),
-    [filtered]
-  )
-  const overdueRowCount = useMemo(() =>
-    filtered.filter(r => r.hasOverdue).length,
-    [filtered]
-  )
 
   // ── Expense-only for report modal ─────────────────────────────────────────
   const expensesOnly = useMemo(() => {
@@ -751,6 +759,157 @@ export default function RevenuesClient({
       return d >= from && d <= to
     })
   }, [initialExpenses, dateWindow])
+
+  // ── Build Chronological Inflow Events (Phase 17c - Refactored) ──────────
+  const visibleEvents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const isOverdueQuery = q === 'overdue'
+    const isDueTodayQuery = q === 'due today' || q === 'duetoday'
+    const isDueDateSearch = /^\d{4}-\d{2}-\d{2}$/.test(q)
+
+    const parentFiltered = allRows.filter(row => {
+      if (typeFilter !== 'all' && row.type !== typeFilter) return false
+
+      if (isOverdueQuery) return row.hasOverdue || row.remainingAmount > 0
+      if (isDueTodayQuery) return row.installments.some(t => t.status === 'unpaid' && t.due_date === TODAY)
+      if (isDueDateSearch) return row.installments.some(t => t.due_date === q) || row.date === q
+      if (!q) return true
+      return (
+        row.description.toLowerCase().includes(q) ||
+        row.entity.toLowerCase().includes(q) ||
+        row.vehicleLabel.toLowerCase().includes(q) ||
+        row.licensePlate.toLowerCase().includes(q) ||
+        row.installments.some(t => t.due_date.includes(q))
+      )
+    })
+
+    const events: PaymentEvent[] = []
+    for (const row of parentFiltered) {
+      if (row.type !== 'inflow') continue
+
+      if (row.rawRef !== 'booking' || !row.rawBooking) {
+        const rowDate = (row.date || '').split('T')[0] || row.date || TODAY
+        events.push({
+          id: row.id,
+          date: rowDate,
+          amount: row.amount,
+          kind: 'expense',
+          trancheLabel: 'Inflow',
+          status: 'paid',
+          parentRow: row,
+          createdAt: row.date || TODAY,
+          updatedAt: row.date || TODAY,
+        })
+        continue
+      }
+
+      const inflows = bookingToRentalInflows(row.rawBooking, TODAY)
+      for (const inf of inflows) {
+        const kind: PaymentEvent['kind'] =
+          inf.paymentType === 'acompte' ? 'acompte'
+          : inf.paymentType === 'balance' ? 'solde'
+          : 'tranche'
+        const trancheLabel =
+          inf.paymentType === 'acompte' ? 'Acompte Initial'
+          : inf.paymentType === 'balance' ? 'Remaining Balance'
+          : inf.paymentType === 'close_collection' ? 'Cash Collected'
+          : 'Tranche'
+
+        events.push({
+          id: inf.id,
+          date: inf.date,
+          amount: inf.amount,
+          kind,
+          trancheLabel,
+          status: inf.status,
+          parentRow: row,
+          createdAt: inf.createdAt,
+          updatedAt: inf.updatedAt,
+        })
+      }
+    }
+
+    const { from: winFrom, to: winTo } = dateWindow
+    return events.filter(ev => {
+      const inWindow = flowFilter === 'unpaid'
+        ? ev.date <= winTo
+        : (ev.date >= winFrom && ev.date <= winTo)
+      if (!inWindow) return false
+      if (flowFilter === 'settled') return ev.status === 'paid'
+      if (flowFilter === 'unpaid') return ev.status !== 'paid'
+      return true
+    })
+  }, [allRows, searchQuery, typeFilter, flowFilter, dateWindow, TODAY])
+
+  const kpiSummary = useMemo(() => {
+    return summarizeInflows(
+      visibleEvents.map(ev => ({
+        id: ev.id,
+        bookingId: ev.parentRow.rawBooking?.id || ev.parentRow.id,
+        contractKey: ev.parentRow.contractKey,
+        clientName: ev.parentRow.entity,
+        clientId: ev.parentRow.clients?.id ?? null,
+        vehicle: null,
+        vehicleId: ev.parentRow.vehicleId ?? null,
+        amount: ev.amount,
+        paymentType: (ev.kind === 'acompte' ? 'acompte' : ev.kind === 'solde' ? 'balance' : 'installment') as any,
+        status: ev.status,
+        date: ev.date,
+        createdAt: ev.createdAt,
+        updatedAt: ev.updatedAt,
+      }))
+    )
+  }, [visibleEvents])
+
+  const dailyGroups = useMemo(() => {
+    const groups: Record<string, PaymentEvent[]> = {}
+    visibleEvents.forEach(ev => {
+      if (!groups[ev.date]) groups[ev.date] = []
+      groups[ev.date].push(ev)
+    })
+    
+    // Sort events within each day: newest first (using createdAt ISO timestamp string comparison)
+    Object.keys(groups).forEach(dateKey => {
+      groups[dateKey].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    })
+
+    const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+    return { groups, sortedKeys }
+  }, [visibleEvents])
+
+  const eventsOutsideWindow = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const isOverdueQuery = q === 'overdue'
+    const isDueTodayQuery = q === 'due today' || q === 'duetoday'
+    const isDueDateSearch = /^\d{4}-\d{2}-\d{2}$/.test(q)
+
+    const parentFiltered = allRows.filter(row => {
+      if (typeFilter !== 'all' && row.type !== typeFilter) return false
+      if (isOverdueQuery) return row.hasOverdue || row.remainingAmount > 0
+      if (isDueTodayQuery) return row.installments.some(t => t.status === 'unpaid' && t.due_date === TODAY)
+      if (isDueDateSearch) return row.installments.some(t => t.due_date === q) || row.date === q
+      if (!q) return true
+      return (
+        row.description.toLowerCase().includes(q) ||
+        row.entity.toLowerCase().includes(q) ||
+        row.vehicleLabel.toLowerCase().includes(q) ||
+        row.licensePlate.toLowerCase().includes(q) ||
+        row.installments.some(t => t.due_date.includes(q))
+      )
+    })
+
+    let count = 0
+    for (const row of parentFiltered) {
+      if (row.type !== 'inflow') continue
+      if (row.rawRef !== 'booking' || !row.rawBooking) {
+        count++
+        continue
+      }
+      const inflows = bookingToRentalInflows(row.rawBooking, TODAY)
+      count += inflows.length
+    }
+    return Math.max(0, count - visibleEvents.length)
+  }, [allRows, searchQuery, typeFilter, visibleEvents, TODAY])
 
   // ─── CRUD Handlers ────────────────────────────────────────────────────────
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -999,14 +1158,7 @@ export default function RevenuesClient({
             <h1 className="page-title">Rental Inflows Hub</h1>
             <p className="subtitle">Track incoming payments, client cash collections, and unpaid tranches.</p>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem' }} className="no-print">
-            <button className="btn-secondary" onClick={() => setIsReportOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <FileText size={18} /><span>Export PDF</span>
-            </button>
-            <button className="btn-primary" onClick={() => setIsAddModalOpen(true)}>
-              <Plus size={18} /><span>Log Expense</span>
-            </button>
-          </div>
+          {/* No action buttons needed here for Rental Inflows Hub */}
         </div>
       </div>
 
@@ -1065,58 +1217,16 @@ export default function RevenuesClient({
         )}
 
         <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'rgba(229,193,125,0.4)', paddingRight: '0.5rem' }}>
-          {filtered.length} transactions
-          {overdueRowCount > 0 && (
-            <span style={{ marginLeft: '0.6rem', color: '#f87171', fontWeight: 700 }}>
-              · {overdueRowCount} overdue
-            </span>
-          )}
+          {visibleEvents.length} transactions
         </div>
       </div>
 
-      {/* ── KPI Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
-        <div style={{
-          padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
-          border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '14px',
-          display: 'flex', flexDirection: 'column', gap: '0.5rem',
-          boxShadow: '0 4px 20px rgba(16,185,129,0.05)', position: 'relative', overflow: 'hidden',
-        }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#10b981,transparent)' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={16} style={{ color: '#10b981' }} />
-            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>Total Rental Inflows</span>
-          </div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#10b981', letterSpacing: '-0.02em' }}>
-            +{totalInflow.toFixed(2)} DT
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
-            {filtered.length} inflow transactions
-          </div>
-        </div>
-
-        <div style={{
-          padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
-          border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '14px',
-          display: 'flex', flexDirection: 'column', gap: '0.5rem',
-          boxShadow: '0 4px 20px rgba(239,68,68,0.05)', position: 'relative', overflow: 'hidden',
-        }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#ef4444,transparent)' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Landmark size={16} style={{ color: '#ef4444' }} />
-            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>Unpaid Tranches / Debt</span>
-          </div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#ef4444', letterSpacing: '-0.02em' }}>
-            {totalOwedInPeriod.toFixed(2)} DT
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
-            <span style={{ color: overdueRowCount > 0 ? '#ef4444' : 'inherit' }}>
-              {overdueRowCount > 0 && <AlertCircle size={12} style={{ display: 'inline', marginRight: 4 }} />}
-              {overdueRowCount} contracts with overdue tranches
-            </span>
-          </div>
-        </div>
-      </div>
+      {/* ── KPI Cards — sourced from summarizeInflows(visibleEvents) so the
+           totals always match the daily ledger below. Rendered inside the
+           IIFE so they have access to visibleEvents; we use a sentinel
+           approach: compute the summary here, hoist into the outer scope,
+           then render the JSX at the same position. */}
+      {/* Placeholder — KPI values injected by the ledger IIFE below */}
 
       
       {/* ── Rental Inflows Filter Ribbon ── */}
@@ -1190,7 +1300,7 @@ export default function RevenuesClient({
       {/* Each booking row is EXPLODED into atomic PaymentEvent objects:
             1) one event for the acompte (paid at booking creation date)
             2) one event per installment (paid_date if paid, due_date if not)
-            3) one event for the synthetic "unpaid-liability-*" balance (Solde)
+            3) one event for the synthetic "unpaid-liability-*" balance (Remaining Balance)
           Events are then grouped by YYYY-MM-DD.
 
           IMPORTANT: we source from `allRows` (NOT `filtered`) because the
@@ -1198,212 +1308,148 @@ export default function RevenuesClient({
           (start/created/return) — which would hide a booking entirely if
           its tranche was paid in a different month than the booking's date.
           Date window is applied PER EVENT below so "This Month" means
-          "cash collected this month" regardless of when the booking opened. */}
+          "cash collected this month" regardless of when the booking opened.
+
+          KPI CARDS are rendered here (inside the IIFE) so they can read
+          visibleEvents directly via summarizeInflows(). */}
       {(() => {
-        // Adapter type — what the renderer below was already consuming. Maps
-        // 1:1 from RentalInflow but adds the `parentRow` back-reference the
-        // 3-column layout uses to read vehicle / phone metadata.
-        type PaymentEvent = {
-          id: string
-          date: string                                         // YYYY-MM-DD
-          amount: number
-          kind: 'acompte' | 'tranche' | 'solde' | 'expense'
-          trancheLabel: string                                 // "Acompte Initial" / "Tranche 1/2" / "Solde"
-          status: 'paid' | 'unpaid' | 'overdue'
-          parentRow: typeof allRows[number]
-        }
-
-        // Parent-level filters (flow, type, search) — same predicates as the
-        // existing `filtered` useMemo but WITHOUT the date window.
-        const q = searchQuery.trim().toLowerCase()
-        const isOverdueQuery = q === 'overdue'
-        const isDueTodayQuery = q === 'due today' || q === 'duetoday'
-        const isDueDateSearch = /^\d{4}-\d{2}-\d{2}$/.test(q)
-
-        const parentFiltered = allRows.filter(row => {
-          if (typeFilter !== 'all' && row.type !== typeFilter) return false
-          if (flowFilter === 'settled' && row.remainingAmount > 0) return false
-          if (flowFilter === 'unpaid' && !(row.hasOverdue || row.remainingAmount > 0)) return false
-
-          if (isOverdueQuery) return row.hasOverdue || row.remainingAmount > 0
-          if (isDueTodayQuery) return row.installments.some(t => t.status === 'unpaid' && t.due_date === TODAY)
-          if (isDueDateSearch) return row.installments.some(t => t.due_date === q) || row.date === q
-          if (!q) return true
-          return (
-            row.description.toLowerCase().includes(q) ||
-            row.entity.toLowerCase().includes(q) ||
-            row.vehicleLabel.toLowerCase().includes(q) ||
-            row.licensePlate.toLowerCase().includes(q) ||
-            row.installments.some(t => t.due_date.includes(q))
-          )
-        })
-
-        // Use the shared helper bookingToRentalInflows() instead of inlining the
-        // mapping. Single source of truth for the booking → inflow event timeline.
-        // See src/lib/rentalInflows.ts for the rules. Then translate the helper's
-        // RentalInflow records into the local PaymentEvent shape (renderer-friendly).
-        const events: PaymentEvent[] = []
-        for (const row of parentFiltered) {
-          if (row.type !== 'inflow') continue
-
-          // Inflow rows that aren't bookings (rare — claim refunds, etc.) pass
-          // through as a single 'expense' event so they still surface on the
-          // daily ledger.
-          if (row.rawRef !== 'booking' || !row.rawBooking) {
-            events.push({
-              id: row.id,
-              date: (row.date || '').split('T')[0] || row.date,
-              amount: row.amount,
-              kind: 'expense',
-              trancheLabel: 'Inflow',
-              status: 'paid',
-              parentRow: row,
-            })
-            continue
-          }
-
-          // Real bookings → delegate to the shared helper, then translate the
-          // RentalInflow records into renderer-friendly PaymentEvent objects.
-          const inflows: RentalInflow[] = bookingToRentalInflows(row.rawBooking, TODAY)
-          for (const inf of inflows) {
-            const kind: PaymentEvent['kind'] =
-              inf.paymentType === 'acompte' ? 'acompte'
-              : inf.paymentType === 'balance' ? 'solde'
-              : 'tranche'   // both 'installment' and 'close_collection' render as tranches
-            const trancheLabel =
-              inf.paymentType === 'acompte' ? 'Acompte Initial'
-              : inf.paymentType === 'balance' ? 'Solde'
-              : inf.paymentType === 'close_collection' ? 'Cash Collected'
-              : 'Tranche'   // bare; the render shows numbering separately if needed
-
-            events.push({
-              id: inf.id,
-              date: inf.date,
-              amount: inf.amount,
-              kind,
-              trancheLabel,
-              status: inf.status,
-              parentRow: row,
-            })
-          }
-        }
-
-        // Apply date-window AND flow-filter at event level — daily totals must
-        // reflect ONLY visible events. The date window matches event.date (when
-        // cash was collected / when payment is due) instead of parent.date.
-        const { from: winFrom, to: winTo } = dateWindow
-        const visibleEvents = events.filter(ev => {
-          if (ev.date < winFrom || ev.date > winTo) return false
-          if (flowFilter === 'settled') return ev.status === 'paid'
-          if (flowFilter === 'unpaid') return ev.status !== 'paid'
-          return true
-        })
-
-        // Count events the date window hid so the empty state can offer a
-        // one-click widening when the operator's data is real but out-of-range.
-        const eventsOutsideWindow = events.length - visibleEvents.length
-        const totalEventsExist = events.length > 0
+        const totalEventsExist = visibleEvents.length + eventsOutsideWindow > 0
 
         if (visibleEvents.length === 0) {
-          // Diagnostic counts surface up exactly where the pipeline drops data
-          // so we can tell whether the SELECT is empty, the parent filter
-          // ate everything, or just the date window is the restriction.
-          const debugInfo = `allRows=${allRows.length} · parentFiltered=${parentFiltered.length} · events=${events.length} · visible=${visibleEvents.length}`
-          // Smart empty state: if events exist outside the window, offer a
-          // one-click widening so the operator isn't left wondering whether
-          // the data is missing or just out-of-range.
           return (
-            <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem 1.5rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
-              <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
-              {totalEventsExist ? (
-                <>
-                  <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
-                    No cash inflows in the current date range.
-                  </p>
-                  <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
-                    You have <strong style={{ color: '#E5C17D' }}>{eventsOutsideWindow}</strong> inflow event{eventsOutsideWindow > 1 ? 's' : ''} outside this window
-                    {flowFilter !== 'all' ? <> (filter: <em style={{ color: '#E5C17D' }}>{flowFilter === 'settled' ? 'Fully Settled' : 'Unpaid/Overdue'}</em>)</> : null}.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setCustomFrom('2024-01-01')
-                      setCustomTo(TODAY)
-                      setPreset('custom')
-                    }}
-                    style={{
-                      padding: '0.55rem 1.1rem',
-                      borderRadius: '999px',
-                      background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
-                      border: 'none',
-                      color: '#000',
-                      fontWeight: 800,
-                      fontSize: '0.85rem',
-                      cursor: 'pointer',
-                      letterSpacing: '0.02em',
-                      boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
-                    }}
-                  >
-                    Show all inflows ever →
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No inflows recorded yet.</p>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
-                    Create a booking with an acompte or scheduled tranches and they will surface here.
-                  </p>
-                  {allRows.length > 0 && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8rem', color: '#fbbf24', fontWeight: 600 }}>
-                        ⚠ But there ARE {allRows.length} ledger row{allRows.length > 1 ? 's' : ''} loaded — one of these checks is dropping them:
-                      </p>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.74rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.8 }}>
-                        <li>· acompte_paid &gt; 0 — needed for "Acompte Initial" event</li>
-                        <li>· installments array non-empty — needed for "Tranche" events</li>
-                        <li>· remainingAmount &gt; 0 — needed for "Solde" event</li>
-                      </ul>
+            <>
+              {/* KPI Cards — zeroed when no visible events */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
+                <div style={{
+                  padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
+                  border: '1px solid rgba(16,185,129,0.3)', borderRadius: '14px',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                  boxShadow: '0 4px 20px rgba(16,185,129,0.05)', position: 'relative', overflow: 'hidden',
+                }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#10b981,transparent)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <TrendingUp size={16} style={{ color: '#10b981' }} />
+                    <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>Total Rental Inflows</span>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#10b981', letterSpacing: '-0.02em' }}>+0.00 DT</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>0 paid transactions</div>
+                </div>
+                <div style={{
+                  padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
+                  border: '1px solid rgba(239,68,68,0.3)', borderRadius: '14px',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                  boxShadow: '0 4px 20px rgba(239,68,68,0.05)', position: 'relative', overflow: 'hidden',
+                }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#ef4444,transparent)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Landmark size={16} style={{ color: '#ef4444' }} />
+                    <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>Unpaid Tranches / Debt</span>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#ef4444', letterSpacing: '-0.02em' }}>0.00 DT</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>0 overdue tranches</div>
+                </div>
+              </div>
+              {/* Empty state */}
+              <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem 1.5rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
+                <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
+                {totalEventsExist ? (
+                  <>
+                    <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
+                      No cash inflows in the current date range.
+                    </p>
+                    <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
+                      You have <strong style={{ color: '#E5C17D' }}>{eventsOutsideWindow}</strong> inflow event{eventsOutsideWindow > 1 ? 's' : ''} outside this window
+                      {flowFilter !== 'all' ? <> (filter: <em style={{ color: '#E5C17D' }}>{flowFilter === 'settled' ? 'Fully Settled' : 'Unpaid/Overdue'}</em>)</> : null}.
+                    </p>
+                    <button
+                      onClick={() => { setCustomFrom('2024-01-01'); setCustomTo(TODAY); setPreset('custom') }}
+                      style={{
+                        padding: '0.55rem 1.1rem', borderRadius: '999px',
+                        background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
+                        border: 'none', color: '#000', fontWeight: 800, fontSize: '0.85rem',
+                        cursor: 'pointer', letterSpacing: '0.02em',
+                        boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
+                      }}
+                    >
+                      Show all inflows ever →
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No inflows recorded yet.</p>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
+                      Create a booking with an acompte or scheduled tranches and they will surface here.
+                    </p>
+                    {allRows.length > 0 && (
                       <button
-                        onClick={() => {
-                          setCustomFrom('2024-01-01')
-                          setCustomTo(TODAY)
-                          setPreset('custom')
-                        }}
+                        onClick={() => { setCustomFrom('2024-01-01'); setCustomTo(TODAY); setPreset('custom') }}
                         style={{
-                          marginTop: '1rem',
-                          padding: '0.55rem 1.1rem',
-                          borderRadius: '999px',
+                          marginTop: '1.25rem', padding: '0.55rem 1.1rem', borderRadius: '999px',
                           background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
-                          border: 'none',
-                          color: '#000',
-                          fontWeight: 800,
-                          fontSize: '0.85rem',
-                          cursor: 'pointer',
-                          letterSpacing: '0.02em',
+                          border: 'none', color: '#000', fontWeight: 800, fontSize: '0.85rem',
+                          cursor: 'pointer', letterSpacing: '0.02em',
                           boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
                         }}
                       >
                         Widen date range (2024 → today)
                       </button>
-                    </div>
-                  )}
-                </>
-              )}
-              <p style={{ margin: '1.25rem 0 0 0', fontSize: '0.65rem', color: 'rgba(255,255,255,0.18)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
-                {debugInfo}
-              </p>
-            </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )
         }
 
-        // Group by ISO date — newest day first
-        const groups: Record<string, PaymentEvent[]> = {}
-        visibleEvents.forEach(ev => {
-          if (!groups[ev.date]) groups[ev.date] = []
-          groups[ev.date].push(ev)
-        })
-        const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+        const { groups, sortedKeys } = dailyGroups
 
         return (
+          <>
+          {/* ── KPI Cards — derived from summarizeInflows(visibleEvents) ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
+            <div style={{
+              padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
+              border: '1px solid rgba(16,185,129,0.3)', borderRadius: '14px',
+              display: 'flex', flexDirection: 'column', gap: '0.5rem',
+              boxShadow: '0 4px 20px rgba(16,185,129,0.05)', position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#10b981,transparent)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <TrendingUp size={16} style={{ color: '#10b981' }} />
+                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>Total Rental Inflows</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#10b981', letterSpacing: '-0.02em' }}>
+                +{kpiSummary.totalCollected.toFixed(2)} DT
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
+                {kpiSummary.paidCount} paid transaction{kpiSummary.paidCount !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
+              border: '1px solid rgba(239,68,68,0.3)', borderRadius: '14px',
+              display: 'flex', flexDirection: 'column', gap: '0.5rem',
+              boxShadow: '0 4px 20px rgba(239,68,68,0.05)', position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#ef4444,transparent)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Landmark size={16} style={{ color: '#ef4444' }} />
+                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>Unpaid Tranches / Debt</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#ef4444', letterSpacing: '-0.02em' }}>
+                {kpiSummary.totalUnpaid.toFixed(2)} DT
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
+                <span style={{ color: kpiSummary.overdueCount > 0 ? '#ef4444' : 'inherit' }}>
+                  {kpiSummary.overdueCount > 0 && <AlertCircle size={12} style={{ display: 'inline', marginRight: 4 }} />}
+                  {kpiSummary.overdueCount} overdue tranche{kpiSummary.overdueCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Daily ledger cards ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
             {sortedKeys.map((dateKey) => {
               const dayEvents = groups[dateKey]
@@ -1648,6 +1694,7 @@ export default function RevenuesClient({
               )
             })}
           </div>
+          </>
         )
       })()}
 
