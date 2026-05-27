@@ -20,7 +20,7 @@ import {
   addDays,
   startOfISOWeek, endOfISOWeek,
   firstDayOfMonth, lastDayOfMonth,
-  type AgendaItem, type AgendaWindow, type AgendaIcon,
+  type AgendaItem, type AgendaWindow, type AgendaIcon, type AgendaKind,
 } from '@/lib/agendaBuilder'
 import { completeTodo, deleteTodo, reopenTodo } from '@/app/actions/todos'
 import AddTaskModal from './components/AddTaskModal'
@@ -56,6 +56,7 @@ export default function TodoClient({ bookings, vehicles, legalDocs, initialTodos
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [showCompleted, setShowCompleted] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [selectedKind, setSelectedKind] = useState<AgendaKind | null>(null)
 
   const windowRange: AgendaWindow = useMemo(() => {
     if (tab === 'today') return { from: TODAY, to: TODAY }
@@ -74,9 +75,14 @@ export default function TodoClient({ bookings, vehicles, legalDocs, initialTodos
     () => buildAgenda({ bookings, vehicles, legalDocs, todos, window: windowRange, today: TODAY }),
     [bookings, vehicles, legalDocs, todos, windowRange, TODAY],
   )
-  const visible = useMemo(() => agenda.filter(a => !optimisticHidden.has(a.id)), [agenda, optimisticHidden])
+  const totalVisible = useMemo(() => agenda.filter(a => !optimisticHidden.has(a.id)), [agenda, optimisticHidden])
+  
+  const summary = summarizeAgenda(totalVisible)
 
-  const summary = summarizeAgenda(visible)
+  const visible = useMemo(() => {
+    if (!selectedKind) return totalVisible
+    return totalVisible.filter(a => a.kind === selectedKind)
+  }, [totalVisible, selectedKind])
 
   const critical = visible.filter(i => i.priority === 'critical')
   const high     = visible.filter(i => i.priority === 'high')
@@ -240,10 +246,38 @@ export default function TodoClient({ bookings, vehicles, legalDocs, initialTodos
 
       {/* KPI strip --------------------------------------------------------- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-        <KpiCard icon={<Plane size={18} color="#fb923c" />} value={summary.handovers} label="Deliveries" tone="orange" />
-        <KpiCard icon={<Wrench size={18} color="#fbbf24" />} value={summary.maintenance} label="Maintenance due" tone="amber" />
-        <KpiCard icon={<ShieldAlert size={18} color="#f87171" />} value={summary.documents} label="Expiring docs" tone="red" />
-        <KpiCard icon={<CheckSquare size={18} color="#ae9260" />} value={summary.manual} label="Tasks" tone="gold" />
+        <KpiCard
+          icon={<Plane size={18} color="#fb923c" />}
+          value={summary.handovers}
+          label="Deliveries"
+          tone="orange"
+          active={selectedKind === 'handover'}
+          onClick={() => setSelectedKind(prev => prev === 'handover' ? null : 'handover')}
+        />
+        <KpiCard
+          icon={<Wrench size={18} color="#fbbf24" />}
+          value={summary.maintenance}
+          label="Maintenance due"
+          tone="amber"
+          active={selectedKind === 'maintenance'}
+          onClick={() => setSelectedKind(prev => prev === 'maintenance' ? null : 'maintenance')}
+        />
+        <KpiCard
+          icon={<ShieldAlert size={18} color="#f87171" />}
+          value={summary.documents}
+          label="Expiring docs"
+          tone="red"
+          active={selectedKind === 'document'}
+          onClick={() => setSelectedKind(prev => prev === 'document' ? null : 'document')}
+        />
+        <KpiCard
+          icon={<CheckSquare size={18} color="#ae9260" />}
+          value={summary.manual}
+          label="Tasks"
+          tone="gold"
+          active={selectedKind === 'manual'}
+          onClick={() => setSelectedKind(prev => prev === 'manual' ? null : 'manual')}
+        />
       </div>
 
       {/* Critical band ----------------------------------------------------- */}
@@ -318,23 +352,46 @@ export default function TodoClient({ bookings, vehicles, legalDocs, initialTodos
 // Small presentational helpers
 // ---------------------------------------------------------------------------
 
-function KpiCard({ icon, value, label, tone }: { icon: React.ReactNode; value: number; label: string; tone: 'orange' | 'amber' | 'red' | 'gold' }) {
+function KpiCard({
+  icon, value, label, tone, active, onClick
+}: {
+  icon: React.ReactNode
+  value: number
+  label: string
+  tone: 'orange' | 'amber' | 'red' | 'gold'
+  active?: boolean
+  onClick?: () => void
+}) {
   const tint =
-    tone === 'red'    ? 'rgba(239,68,68,0.08)'   :
-    tone === 'amber'  ? 'rgba(245,158,11,0.08)'  :
-    tone === 'orange' ? 'rgba(249,115,22,0.08)'  :
-                        'rgba(229,193,125,0.07)'
+    tone === 'red'    ? (active ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.08)')   :
+    tone === 'amber'  ? (active ? 'rgba(245,158,11,0.2)' : 'rgba(245,158,11,0.08)')  :
+    tone === 'orange' ? (active ? 'rgba(249,115,22,0.2)' : 'rgba(249,115,22,0.08)')  :
+                        (active ? 'rgba(229,193,125,0.18)' : 'rgba(229,193,125,0.07)')
   const border =
-    tone === 'red'    ? 'rgba(239,68,68,0.25)'   :
-    tone === 'amber'  ? 'rgba(245,158,11,0.28)'  :
-    tone === 'orange' ? 'rgba(249,115,22,0.3)'   :
-                        'rgba(229,193,125,0.3)'
+    tone === 'red'    ? (active ? 'rgba(239,68,68,0.85)' : 'rgba(239,68,68,0.25)')   :
+    tone === 'amber'  ? (active ? 'rgba(245,158,11,0.85)' : 'rgba(245,158,11,0.28)')  :
+    tone === 'orange' ? (active ? 'rgba(249,115,22,0.85)' : 'rgba(249,115,22,0.3)')   :
+                        (active ? 'rgba(229,193,125,0.85)' : 'rgba(229,193,125,0.3)')
+  const shadow =
+    tone === 'red'    ? 'rgba(239,68,68,0.35)' :
+    tone === 'amber'  ? 'rgba(245,158,11,0.35)' :
+    tone === 'orange' ? 'rgba(249,115,22,0.35)' :
+                        'rgba(229,193,125,0.35)'
+
   return (
-    <div className="glass-panel" style={{
-      padding: '0.85rem 1rem', borderRadius: '12px',
-      background: tint, border: `1px solid ${border}`,
-      display: 'flex', alignItems: 'center', gap: '0.7rem',
-    }}>
+    <div
+      className="glass-panel"
+      onClick={onClick}
+      style={{
+        padding: '0.85rem 1rem', borderRadius: '12px',
+        background: tint, border: `1px solid ${border}`,
+        display: 'flex', alignItems: 'center', gap: '0.7rem',
+        cursor: 'pointer',
+        boxShadow: active ? `0 0 16px ${shadow}` : 'none',
+        transform: active ? 'translateY(-2px)' : 'none',
+        transition: 'all 0.2s ease',
+      }}
+    >
       {icon}
       <div>
         <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff', lineHeight: 1 }}>{value}</div>

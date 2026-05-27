@@ -164,7 +164,7 @@ export function buildAgenda(input: BuildAgendaInput): AgendaItem[] {
       id: `handover__${b.id}__${dateYMD}`,
       kind: 'handover',
       priority: 'critical',
-      title: `Delivery: ${b.vehicles?.brand ?? ''} ${b.vehicles?.model ?? ''} to ${initials(b.client_name)}`.trim(),
+      title: `Delivery: ${b.vehicles?.brand ?? ''} ${b.vehicles?.model ?? ''} to ${b.client_name || 'Client'}`.trim(),
       subtitle: `${b.vehicles?.license_plate || ''} → ${loc}`.trim(),
       icon: locationIcon(loc),
       date: dateYMD,
