@@ -94,6 +94,25 @@
   padding: 1rem;
   position: relative;
   z-index: 1;
+  overflow-y: auto;
+}
+
+/* Custom premium scrollbar for sidebar nav */
+.sidebar-nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(229, 193, 125, 0.15);
+  border-radius: 10px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(229, 193, 125, 0.45);
 }
 
 .nav-item {
