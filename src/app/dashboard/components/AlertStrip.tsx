@@ -21,8 +21,12 @@ export default function AlertStrip({
 }: AlertStripProps) {
   const alerts = useMemo(() => {
     const activeAlerts = []
-    const todayStr = new Date().toISOString().split('T')[0]
-    const todayObj = new Date()
+    const localToday = new Date()
+    const yStr = localToday.getFullYear()
+    const mStr = String(localToday.getMonth() + 1).padStart(2, '0')
+    const dStr = String(localToday.getDate()).padStart(2, '0')
+    const todayStr = `${yStr}-${mStr}-${dStr}`
+    const todayObj = localToday
 
     // 1. Overdue Returns (Past end_date, not completed/cancelled)
     const overdueBookings = allBookings.filter(b => {
