@@ -1333,3 +1333,103 @@ select option {
 .scb-option__check {
   color: #10b981;
 }
+
+/* ============================================================
+   RESPONSIVE DESIGN SYSTEM (Phase 18c — Mobile Optimization)
+   ============================================================ */
+:root {
+  --grid-cols-2: 1fr 1fr;
+  --grid-cols-3: 1fr 1fr 1fr;
+  --grid-cols-4: 1fr 1fr 1fr 1fr;
+}
+
+@media (max-width: 992px) {
+  :root {
+    --grid-cols-2: 1fr;
+    --grid-cols-3: 1fr;
+    --grid-cols-4: 1fr;
+  }
+
+  /* Responsive modal overrides */
+  .modal-overlay {
+    padding: 0.5rem !important;
+  }
+  
+  .modal-content {
+    padding: 1.25rem 1rem !important;
+    width: 96vw !important;
+    max-height: 96vh !important;
+    border-radius: 12px !important;
+  }
+
+  /* Responsive table rows to high-density cards for Command Center results */
+  .omni-result-card {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    gap: 0 !important;
+    padding: 0.5rem 0 !important;
+  }
+
+  .omni-cell {
+    border-right: none !important;
+    border-bottom: 1px solid rgba(229, 193, 125, 0.08) !important;
+    padding: 0.75rem 1rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .omni-cell:last-child {
+    border-bottom: none !important;
+  }
+
+  /* Command Center search filter bar responsive wrapping */
+  .omni-search-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 1rem !important;
+    padding: 1.25rem !important;
+  }
+
+  .omni-search-bar input[type="text"] {
+    width: 100% !important;
+  }
+
+  .omni-divider {
+    display: none !important;
+  }
+
+  .omni-date-container {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.25rem !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .omni-date-container input[type="date"] {
+    width: 100% !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(229, 193, 125, 0.2) !important;
+    border-radius: 8px !important;
+    padding: 0.5rem !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Standard accessibility screen-reader-only utility class */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+

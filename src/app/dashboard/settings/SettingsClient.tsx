@@ -148,509 +148,473 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
         </div>
       )}
 
-      <div className={styles['content-grid']}>
-        {/* Form panel */}
-        <div className={`glass-panel ${styles['form-panel']}`}>
-          <div className={styles['panel-header-row']}>
-            <h3 className={styles['section-subtitle']}>Brand Settings & Customization</h3>
-            <span className={styles['badge-branding']}>Branding Profile</span>
-          </div>
+      <form onSubmit={handleSave} className={styles['settings-form']}>
+        <div className={styles['content-grid']}>
+          {/* Column 1: Brand Identity & Legal Compliance */}
+          <div className={styles['settings-column']}>
+            
+            {/* Card 1: Brand Settings & Customization */}
+            <div className={`glass-panel ${styles['settings-card']}`}>
+              <div className={styles['panel-header-row']}>
+                <h3 className={styles['section-subtitle']}>
+                  <Building size={18} className={styles['input-icon']} style={{ marginRight: '0.5rem', display: 'inline', verticalAlign: 'middle' }} />
+                  Brand Settings & Customization
+                </h3>
+                <span className={styles['badge-branding']}>Branding Profile</span>
+              </div>
 
-          <form onSubmit={handleSave} className={styles['settings-form']}>
-            <div className={styles['form-group']}>
-              <label>
-                <Building size={14} className={styles['input-icon']} />
-                <span>Business Name</span>
-              </label>
-              <input
-                type="text"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                required
-                placeholder="e.g. Royal Luxury Car Rental"
-                className={styles['form-input']}
-              />
+              <div className={styles['form-group']}>
+                <label>
+                  <Building size={14} className={styles['input-icon']} />
+                  <span>Business Name</span>
+                </label>
+                <input
+                  type="text"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  required
+                  placeholder="e.g. Royal Luxury Car Rental"
+                  className={styles['form-input']}
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <Image size={14} className={styles['input-icon']} />
+                  <span>Business Logo Brand Image</span>
+                </label>
+                
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={handleLogoChange}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                />
+
+                <div 
+                  className={`${styles['upload-dropzone']} ${isDragOver ? styles['drag-over'] : ''}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: '2px dashed rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    padding: '1.5rem',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    background: isDragOver ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.01)',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {logoPreview ? (
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <img 
+                        src={logoPreview} 
+                        alt="Brand Logo Preview" 
+                        style={{ height: '80px', objectFit: 'contain', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.15)' }} 
+                      />
+                      <button
+                        type="button"
+                        className="delete-btn-overlay"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveLogo();
+                        }}
+                        title="Remove Logo"
+                        style={{
+                          position: 'absolute',
+                          top: '-8px',
+                          right: '-8px',
+                          background: 'rgba(239, 68, 68, 0.9)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '24px',
+                          height: '24px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+                        }}
+                      >
+                        <Trash size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload size={24} style={{ color: 'var(--accent-gold)' }} />
+                      <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500 }}>
+                        Drag and drop your logo here, or <span style={{ color: 'var(--accent-gold)' }}>browse</span>
+                      </p>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Supports JPEG, PNG, SVG, WEBP (Max 2MB)
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <Phone size={14} className={styles['input-icon']} />
+                    <span>Business Phone</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. +1 (555) 019-2834"
+                    className={styles['form-input']}
+                  />
+                </div>
+
+                <div className={styles['form-group']}>
+                  <label>
+                    <Coins size={14} className={styles['input-icon']} />
+                    <span>Currency Sign</span>
+                  </label>
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className={`${styles['form-input']} ${styles['select-input']}`}
+                    disabled
+                  >
+                    <option value="DT">DT (Tunisian Dinar)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <MapPin size={14} className={styles['input-icon']} />
+                  <span>Business Office Address</span>
+                </label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. 1024 Prestige Boulevard, Suite 500, NY"
+                  className={styles['form-input']}
+                />
+              </div>
             </div>
 
-            <div className={styles['form-group']}>
-              <label>
-                <Image size={14} className={styles['input-icon']} />
-                <span>Business Logo Brand Image</span>
-              </label>
-              
-              <input 
-                type="file" 
-                ref={fileInputRef}
-                onChange={handleLogoChange}
-                accept="image/*"
-                style={{ display: 'none' }}
-              />
+            {/* Card 2: Legal & Tax Information */}
+            <div className={`glass-panel ${styles['settings-card']}`}>
+              <div className={styles['panel-header-row']}>
+                <h3 className={styles['section-subtitle']}>
+                  <Coins size={18} className={styles['input-icon']} style={{ marginRight: '0.5rem', display: 'inline', verticalAlign: 'middle' }} />
+                  ⚖️ Legal & Tax Information (Tunisian Compliance)
+                </h3>
+                <span className={styles['badge-branding']}>Legal Compliance</span>
+              </div>
 
-              <div 
-                className={`${styles['upload-dropzone']} ${isDragOver ? styles['drag-over'] : ''}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: '2px dashed rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  padding: '1.5rem',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  background: isDragOver ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.01)',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem'
-                }}
-              >
-                {logoPreview ? (
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <img 
-                      src={logoPreview} 
-                      alt="Brand Logo Preview" 
-                      style={{ height: '80px', objectFit: 'contain', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.15)' }} 
-                    />
-                    <button
-                      type="button"
-                      className="delete-btn-overlay"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveLogo();
-                      }}
-                      title="Remove Logo"
-                      style={{
-                        position: 'absolute',
-                        top: '-8px',
-                        right: '-8px',
-                        background: 'rgba(239, 68, 68, 0.9)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '50%',
-                        width: '24px',
-                        height: '24px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
-                      }}
-                    >
-                      <Trash size={12} />
-                    </button>
-                  </div>
-                ) : (
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Matricule Fiscal (Tax ID)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={matriculeFiscal}
+                    onChange={(e) => setMatriculeFiscal(e.target.value)}
+                    placeholder="e.g. 1234567/A/M/000"
+                    className={styles['form-input']}
+                  />
+                </div>
+
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>RNE Number (Enterprise Register)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={rneNumber}
+                    onChange={(e) => setRneNumber(e.target.value)}
+                    placeholder="e.g. 1234567B"
+                    className={styles['form-input']}
+                  />
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Owner / Signatory Name</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={ownerFullName}
+                    onChange={(e) => setOwnerFullName(e.target.value)}
+                    placeholder="e.g. Rayen Belhadj"
+                    className={styles['form-input']}
+                  />
+                </div>
+
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Legal Contact Email</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. agency@cardash.tn"
+                    className={styles['form-input']}
+                  />
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>City / Jurisdiction (Tunisia)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="e.g. Tunis"
+                    className={styles['form-input']}
+                  />
+                </div>
+
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Contract Language Preference</span>
+                  </label>
+                  <select
+                    value={contractLanguage}
+                    onChange={(e) => setContractLanguage(e.target.value)}
+                    className={`${styles['form-input']} ${styles['select-input']}`}
+                  >
+                    <option value="fr">French (fr)</option>
+                    <option value="ar">Arabic (ar)</option>
+                    <option value="fr_ar">Bilingual (fr + ar)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>TVA Tax Code</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={tvaNumber}
+                    onChange={(e) => setTvaNumber(e.target.value)}
+                    placeholder="e.g. 1234567/A/N/000"
+                    className={styles['form-input']}
+                  />
+                </div>
+
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>TVA Rate (%)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={tvaRate}
+                    onChange={(e) => setTvaRate(e.target.value)}
+                    placeholder="e.g. 19.00"
+                    className={styles['form-input']}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Column 2: Bilingual Contract & Fine Print */}
+          <div className={styles['settings-column']}>
+            
+            {/* Card 3: Bilingual Contract Identity */}
+            <div className={`glass-panel ${styles['settings-card']}`}>
+              <div className={styles['panel-header-row']}>
+                <h3 className={styles['section-subtitle']}>
+                  <Sparkles size={18} className={styles['input-icon']} style={{ marginRight: '0.5rem', display: 'inline', verticalAlign: 'middle' }} />
+                  🇹🇳 Bilingual Contract Identity (French / Arabic)
+                </h3>
+                <span className={styles['badge-branding']}>Print Engine</span>
+              </div>
+
+              <div className={styles['form-group']}>
+                <label>
+                  <span>Business Name (Arabic)</span>
+                </label>
+                <input
+                  type="text"
+                  value={businessNameAr}
+                  onChange={(e) => setBusinessNameAr(e.target.value)}
+                  placeholder="e.g. شركة إلين لكراء السيارات"
+                  dir="rtl"
+                  lang="ar"
+                  className={styles['form-input']}
+                  style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
+                />
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Siège Social — Line 1 (FR)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={siegeSocialFr1}
+                    onChange={(e) => setSiegeSocialFr1(e.target.value)}
+                    placeholder="e.g. Blvd de la république - Lamta 5099"
+                    className={styles['form-input']}
+                  />
+                </div>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Siège Social — Line 2 (FR)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={siegeSocialFr2}
+                    onChange={(e) => setSiegeSocialFr2(e.target.value)}
+                    placeholder="e.g. Blvd de la république - Sayada 5035"
+                    className={styles['form-input']}
+                  />
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>المقر الرئيسي — Line 1 (AR)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={siegeSocialAr1}
+                    onChange={(e) => setSiegeSocialAr1(e.target.value)}
+                    placeholder="e.g. شارع الجمهورية - لمطة 5099"
+                    dir="rtl"
+                    lang="ar"
+                    className={styles['form-input']}
+                    style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
+                  />
+                </div>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>المقر الرئيسي — Line 2 (AR)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={siegeSocialAr2}
+                    onChange={(e) => setSiegeSocialAr2(e.target.value)}
+                    placeholder="e.g. شارع الجمهورية - صيادة 5035"
+                    dir="rtl"
+                    lang="ar"
+                    className={styles['form-input']}
+                    style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
+                  />
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Secondary Phone (optional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={phoneSecondary}
+                    onChange={(e) => setPhoneSecondary(e.target.value)}
+                    placeholder="e.g. 53 366 028"
+                    className={styles['form-input']}
+                  />
+                </div>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Franchise Amount (DT)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={franchiseAmount}
+                    onChange={(e) => setFranchiseAmount(e.target.value)}
+                    placeholder="e.g. 1000"
+                    className={styles['form-input']}
+                  />
+                </div>
+              </div>
+
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Late Fee per Hour (DT)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={lateFeePerHour}
+                    onChange={(e) => setLateFeePerHour(e.target.value)}
+                    placeholder="e.g. 10"
+                    className={styles['form-input']}
+                  />
+                </div>
+                <div className={styles['form-group']}>
+                  <label>
+                    <span>Forfait Kilometers / Day</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="50"
+                    value={kmPerDay}
+                    onChange={(e) => setKmPerDay(e.target.value)}
+                    placeholder="e.g. 250"
+                    className={styles['form-input']}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Fine Print Terms */}
+            <div className={`glass-panel ${styles['settings-card']}`}>
+              <div className={styles['panel-header-row']}>
+                <h3 className={styles['section-subtitle']}>
+                  <FileText size={18} className={styles['input-icon']} style={{ marginRight: '0.5rem', display: 'inline', verticalAlign: 'middle' }} />
+                  Custom Rental Terms & Conditions (Fine Print)
+                </h3>
+              </div>
+
+              <div className={styles['form-group']}>
+                <textarea
+                  value={rentalTerms}
+                  onChange={(e) => setRentalTerms(e.target.value)}
+                  rows={5}
+                  placeholder="Specify the standard fine print, insurance policies, late return guidelines, and penalties. This text will be printed at the bottom of all generated customer contracts."
+                  className={`${styles['form-input']} ${styles['textarea-input']}`}
+                />
+              </div>
+
+              <button type="submit" className={styles['btn-gold']} disabled={loading} style={{ alignSelf: 'stretch', marginTop: '0.5rem' }}>
+                {loading ? (
                   <>
-                    <Upload size={24} style={{ color: 'var(--accent-gold)' }} />
-                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500 }}>
-                      Drag and drop your logo here, or <span style={{ color: 'var(--accent-gold)' }}>browse</span>
-                    </p>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Supports JPEG, PNG, SVG, WEBP (Max 2MB)
-                    </span>
+                    <Loader2 className={styles['spinner']} size={18} />
+                    <span>Saving Custom Branding...</span>
                   </>
+                ) : (
+                  'Save Business Settings'
                 )}
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <Phone size={14} className={styles['input-icon']} />
-                  <span>Business Phone</span>
-                </label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. +1 (555) 019-2834"
-                  className={styles['form-input']}
-                />
-              </div>
-
-              <div className={styles['form-group']}>
-                <label>
-                  <Coins size={14} className={styles['input-icon']} />
-                  <span>Currency Sign</span>
-                </label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className={`${styles['form-input']} ${styles['select-input']}`}
-                  disabled
-                >
-                  <option value="DT">DT (Tunisian Dinar)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className={styles['form-group']}>
-              <label>
-                <MapPin size={14} className={styles['input-icon']} />
-                <span>Business Office Address</span>
-              </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="e.g. 1024 Prestige Boulevard, Suite 500, New York, NY"
-                className={styles['form-input']}
-              />
-            </div>
-
-            <div className={styles['form-group']}>
-              <label>
-                <FileText size={14} className={styles['input-icon']} />
-                <span>Custom Rental Terms & Conditions (Fine Print)</span>
-              </label>
-              <textarea
-                value={rentalTerms}
-                onChange={(e) => setRentalTerms(e.target.value)}
-                rows={5}
-                placeholder="Specify the standard fine print, insurance policies, late return guidelines, and penalties. This text will be printed at the bottom of all generated customer contracts."
-                className={`${styles['form-input']} ${styles['textarea-input']}`}
-              />
-            </div>
-
-            <div className={styles['panel-header-row']} style={{ marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem', marginBottom: '1.25rem' }}>
-              <h3 className={styles['section-subtitle']}>⚖️ Legal & Tax Information (Tunisia Compliance)</h3>
-              <span className={styles['badge-branding']}>Legal Compliance</span>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Matricule Fiscal (Tax ID)</span>
-                </label>
-                <input
-                  type="text"
-                  value={matriculeFiscal}
-                  onChange={(e) => setMatriculeFiscal(e.target.value)}
-                  placeholder="e.g. 1234567/A/M/000"
-                  className={styles['form-input']}
-                />
-              </div>
-
-              <div className={styles['form-group']}>
-                <label>
-                  <span>RNE Number (Enterprise Register)</span>
-                </label>
-                <input
-                  type="text"
-                  value={rneNumber}
-                  onChange={(e) => setRneNumber(e.target.value)}
-                  placeholder="e.g. 1234567B"
-                  className={styles['form-input']}
-                />
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Owner / Signatory Name</span>
-                </label>
-                <input
-                  type="text"
-                  value={ownerFullName}
-                  onChange={(e) => setOwnerFullName(e.target.value)}
-                  placeholder="e.g. Rayen Belhadj"
-                  className={styles['form-input']}
-                />
-              </div>
-
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Legal Contact Email</span>
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. agency@cardash.tn"
-                  className={styles['form-input']}
-                />
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>City / Jurisdiction (Tunisia)</span>
-                </label>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="e.g. Tunis"
-                  className={styles['form-input']}
-                />
-              </div>
-
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Contract Language Preference</span>
-                </label>
-                <select
-                  value={contractLanguage}
-                  onChange={(e) => setContractLanguage(e.target.value)}
-                  className={`${styles['form-input']} ${styles['select-input']}`}
-                >
-                  <option value="fr">French (fr)</option>
-                  <option value="ar">Arabic (ar)</option>
-                  <option value="fr_ar">Bilingual (fr + ar)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>TVA Tax Code</span>
-                </label>
-                <input
-                  type="text"
-                  value={tvaNumber}
-                  onChange={(e) => setTvaNumber(e.target.value)}
-                  placeholder="e.g. 1234567/A/N/000"
-                  className={styles['form-input']}
-                />
-              </div>
-
-              <div className={styles['form-group']}>
-                <label>
-                  <span>TVA Rate (%)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={tvaRate}
-                  onChange={(e) => setTvaRate(e.target.value)}
-                  placeholder="e.g. 19.00"
-                  className={styles['form-input']}
-                />
-              </div>
-            </div>
-
-            {/* ── Phase 16.4 — Bilingual Contract Identity ── */}
-            <div className={styles['panel-header-row']} style={{ marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem', marginBottom: '1.25rem' }}>
-              <h3 className={styles['section-subtitle']}>🇹🇳 Bilingual Contract Identity (French / Arabic)</h3>
-              <span className={styles['badge-branding']}>Print Engine</span>
-            </div>
-
-            <div className={styles['form-group']}>
-              <label>
-                <span>Business Name (Arabic)</span>
-              </label>
-              <input
-                type="text"
-                value={businessNameAr}
-                onChange={(e) => setBusinessNameAr(e.target.value)}
-                placeholder="e.g. شركة إلين لكراء السيارات"
-                dir="rtl"
-                lang="ar"
-                className={styles['form-input']}
-                style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
-              />
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Siège Social — Line 1 (FR)</span>
-                </label>
-                <input
-                  type="text"
-                  value={siegeSocialFr1}
-                  onChange={(e) => setSiegeSocialFr1(e.target.value)}
-                  placeholder="e.g. Blvd de la république - Lamta 5099"
-                  className={styles['form-input']}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Siège Social — Line 2 (FR)</span>
-                </label>
-                <input
-                  type="text"
-                  value={siegeSocialFr2}
-                  onChange={(e) => setSiegeSocialFr2(e.target.value)}
-                  placeholder="e.g. Blvd de la république - Sayada 5035"
-                  className={styles['form-input']}
-                />
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>المقر الرئيسي — Line 1 (AR)</span>
-                </label>
-                <input
-                  type="text"
-                  value={siegeSocialAr1}
-                  onChange={(e) => setSiegeSocialAr1(e.target.value)}
-                  placeholder="e.g. شارع الجمهورية - لمطة 5099"
-                  dir="rtl"
-                  lang="ar"
-                  className={styles['form-input']}
-                  style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>المقر الرئيسي — Line 2 (AR)</span>
-                </label>
-                <input
-                  type="text"
-                  value={siegeSocialAr2}
-                  onChange={(e) => setSiegeSocialAr2(e.target.value)}
-                  placeholder="e.g. شارع الجمهورية - صيادة 5035"
-                  dir="rtl"
-                  lang="ar"
-                  className={styles['form-input']}
-                  style={{ fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Tahoma', 'Arial', sans-serif" }}
-                />
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Secondary Phone (optional)</span>
-                </label>
-                <input
-                  type="tel"
-                  value={phoneSecondary}
-                  onChange={(e) => setPhoneSecondary(e.target.value)}
-                  placeholder="e.g. 53 366 028"
-                  className={styles['form-input']}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Franchise Amount (DT)</span>
-                </label>
-                <input
-                  type="number"
-                  step="1"
-                  value={franchiseAmount}
-                  onChange={(e) => setFranchiseAmount(e.target.value)}
-                  placeholder="e.g. 1000"
-                  className={styles['form-input']}
-                />
-              </div>
-            </div>
-
-            <div className={styles['form-row']}>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Late Fee per Hour (DT)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={lateFeePerHour}
-                  onChange={(e) => setLateFeePerHour(e.target.value)}
-                  placeholder="e.g. 10"
-                  className={styles['form-input']}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>
-                  <span>Forfait Kilometers / Day</span>
-                </label>
-                <input
-                  type="number"
-                  step="50"
-                  value={kmPerDay}
-                  onChange={(e) => setKmPerDay(e.target.value)}
-                  placeholder="e.g. 250"
-                  className={styles['form-input']}
-                />
-              </div>
-            </div>
-
-            <button type="submit" className={styles['btn-gold']} disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className={styles['spinner']} size={18} />
-                  <span>Saving Custom Branding...</span>
-                </>
-              ) : (
-                'Save Business Settings'
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Live Preview Panel */}
-        <div className={`glass-panel ${styles['preview-panel']}`}>
-          <h3 className={styles['section-subtitle']}>Real-time Brand Preview</h3>
-          <p className={styles['preview-help']}>Here is how your business card, print agreements, and invoice receipt headers will display to your clients:</p>
-          
-          <div className={`${styles['preview-receipt']} glass-panel`}>
-            <div className={styles['receipt-header']}>
-              {logoPreview ? (
-                <img src={logoPreview} alt="Logo" className={styles['preview-logo-img']} onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }} />
-              ) : (
-                <div className={styles['receipt-avatar']}>{businessName ? businessName.charAt(0) : 'R'}</div>
-              )}
-              <div>
-                <h4 className={styles['receipt-title']}>{businessName || 'Your Business Name'}</h4>
-                <p className={styles['receipt-subtext']}>{phone || 'Phone Number'}</p>
-                <p className={styles['receipt-subtext']}>{address || 'Business Address'}</p>
-              </div>
-            </div>
-
-            <div className={styles['receipt-divider']}></div>
-
-            <div className={styles['receipt-body']}>
-              <div className={styles['receipt-row']}>
-                <span>Vehicle Model:</span>
-                <span className={`${styles['white-text']} ${styles['font-medium']}`}>Porsche 911 Carrera S</span>
-              </div>
-              <div className={styles['receipt-row']}>
-                <span>Rental Period:</span>
-                <span className={`${styles['white-text']} ${styles['font-medium']}`}>3 Days</span>
-              </div>
-              <div className={styles['receipt-row']}>
-                <span>Rate:</span>
-                <span className={`${styles['white-text']} ${styles['font-medium']}`}>250 {currency} / Day</span>
-              </div>
-              <div className={`${styles['receipt-divider']} ${styles['dotted']}`}></div>
-              <div className={`${styles['receipt-row']} ${styles['total']}`}>
-                <span>Total Amount:</span>
-                <span className={`${styles['gold-text']} ${styles['font-bold']}`}>750 {currency}</span>
-              </div>
-            </div>
-
-            <div className={styles['receipt-status-stamp']}>
-              <span>PAID RECEIPT</span>
-            </div>
-          </div>
-
-          <div className={styles['branding-notes']}>
-            <div className={styles['note-item']}>
-              <Sparkles size={14} className={styles['gold-text']} />
-              <span><strong>Logo Integration:</strong> Provided logo URL flows dynamically into printable documents.</span>
-            </div>
-            <div className={styles['note-item']}>
-              <Sparkles size={14} className={styles['gold-text']} />
-              <span><strong>Currency Adaptability:</strong> All rates, security deposits, and calculations render instantly using <strong>{currency}</strong>.</span>
-            </div>
-            <div className={styles['note-item']}>
-              <Sparkles size={14} className={styles['gold-text']} />
-              <span><strong>Odometer Configuration:</strong> Start/Return mileage logs dynamically generate mileage charts.</span>
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

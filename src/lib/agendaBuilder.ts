@@ -28,7 +28,7 @@ export interface AgendaItem {
   time?: string                           // HH:MM if applicable
   deltaKm?: number
   vehicle?: { brand?: string; model?: string; license_plate?: string }
-  client?: { initials?: string; name?: string }
+  client?: { initials?: string; name?: string; phone?: string }
   actionType: 'complete' | 'open-handover' | 'open-vehicle' | 'open-doc' | null
   actionPayload?: {
     bookingId?: string
@@ -145,6 +145,9 @@ export function buildAgenda(input: BuildAgendaInput): AgendaItem[] {
     const dateYMD = b.handover_datetime ? b.handover_datetime.split('T')[0] : b.start_date
     if (!dateYMD) continue
     if (dateYMD < window.from || dateYMD > window.to) continue
+    
+    // Handovers strictly in the past (before TODAY/sysdate) should not appear in the active to-do list
+    if (dateYMD < TODAY) continue
 
     const loc = b.handover_location.trim()
     let time: string | undefined = undefined
@@ -172,7 +175,11 @@ export function buildAgenda(input: BuildAgendaInput): AgendaItem[] {
       vehicle: b.vehicles
         ? { brand: b.vehicles.brand, model: b.vehicles.model, license_plate: b.vehicles.license_plate }
         : undefined,
-      client: { initials: initials(b.client_name), name: b.client_name },
+      client: {
+        initials: initials(b.client_name),
+        name: b.client_name,
+        phone: b.client_phone || b.primary_client?.phone || undefined,
+      },
       actionType: 'open-handover',
       actionPayload: { bookingId: b.id },
     })

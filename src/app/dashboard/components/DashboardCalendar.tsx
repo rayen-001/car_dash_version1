@@ -193,11 +193,10 @@ export default function DashboardCalendar({
       })
     }
 
-    // Sort hierarchically: A (Green), B (Orange), C (Red)
+    // Sort hierarchically: more available days first, then alphabetically by vehicle name
     return states.sort((a, b) => {
-      const order = { A: 1, B: 2, C: 3 }
-      if (order[a.category] !== order[b.category]) {
-        return order[a.category] - order[b.category]
+      if (b.availableDays !== a.availableDays) {
+        return b.availableDays - a.availableDays
       }
       const nameA = `${a.vehicle.brand} ${a.vehicle.model}`.toLowerCase()
       const nameB = `${b.vehicle.brand} ${b.vehicle.model}`.toLowerCase()
@@ -245,14 +244,16 @@ export default function DashboardCalendar({
 
           {/* Phase 19: Date Range Picker Control Strip */}
           <div style={{ 
-            display: 'flex', 
+            display: 'inline-flex', 
             gap: '0.75rem', 
             alignItems: 'center', 
             background: 'rgba(10,8,7,0.5)', 
-            padding: '0.5rem 1.1rem', 
+            padding: '0 1.1rem', 
+            height: '44px',
             borderRadius: '30px', 
             border: '1px solid rgba(229,193,125,0.25)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.2), inset 0 0 1px rgba(229,193,125,0.1)'
+            boxShadow: '0 4px 20px rgba(0,0,0,0.2), inset 0 0 1px rgba(229,193,125,0.1)',
+            boxSizing: 'border-box'
           }}>
             <span style={{ fontSize: '0.82rem', color: '#E5C17D', fontWeight: 800, letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <Calendar size={14} style={{ color: '#E5C17D' }} /> Inquiry Range:
@@ -266,8 +267,9 @@ export default function DashboardCalendar({
               }} 
               style={{
                 background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '20px',
-                color: '#fff', padding: '0.45rem 0.85rem', fontSize: '0.85rem', colorScheme: 'dark', outline: 'none',
-                fontWeight: 700, fontFamily: 'inherit', transition: 'all 0.2s', cursor: 'pointer'
+                color: '#fff', padding: '0 0.85rem', fontSize: '0.85rem', colorScheme: 'dark', outline: 'none',
+                fontWeight: 700, fontFamily: 'inherit', transition: 'all 0.2s', cursor: 'pointer',
+                height: '30px', boxSizing: 'border-box'
               }}
             />
             <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.4)', fontWeight: 700 }}>to</span>
@@ -280,8 +282,9 @@ export default function DashboardCalendar({
               }} 
               style={{
                 background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '20px',
-                color: '#fff', padding: '0.45rem 0.85rem', fontSize: '0.85rem', colorScheme: 'dark', outline: 'none',
-                fontWeight: 700, fontFamily: 'inherit', transition: 'all 0.2s', cursor: 'pointer'
+                color: '#fff', padding: '0 0.85rem', fontSize: '0.85rem', colorScheme: 'dark', outline: 'none',
+                fontWeight: 700, fontFamily: 'inherit', transition: 'all 0.2s', cursor: 'pointer',
+                height: '30px', boxSizing: 'border-box'
               }}
             />
             {(inquiryStartDate || inquiryEndDate) && (

@@ -48,8 +48,14 @@ export async function addVehicle(formData: FormData) {
   }
 
   const current_km = formData.get('current_km') ? parseInt(formData.get('current_km') as string) : null
-  const oil_change_due_km = formData.get('oil_change_due_km') ? parseInt(formData.get('oil_change_due_km') as string) : null
-  const brake_pad_state = (formData.get('brake_pad_state') as string) || null
+  const last_vidange_km = formData.get('last_vidange_km') ? parseInt(formData.get('last_vidange_km') as string) : null
+  const next_vidange_km = formData.get('next_vidange_km') ? parseInt(formData.get('next_vidange_km') as string) : null
+  const last_pads_km = formData.get('last_pads_km') ? parseInt(formData.get('last_pads_km') as string) : null
+  const next_pads_km = formData.get('next_pads_km') ? parseInt(formData.get('next_pads_km') as string) : null
+
+  // Legacy fallback compatibility
+  const oil_change_due_km = next_vidange_km
+  const brake_pad_state = next_pads_km && current_km && current_km >= next_pads_km ? 'critical' : 'good'
 
   const { data, error } = await supabase
     .from('vehicles')
@@ -64,6 +70,10 @@ export async function addVehicle(formData: FormData) {
       license_plate: (formData.get('license_plate') as string) || null,
       color: (formData.get('color') as string) || null,
       current_km,
+      last_vidange_km,
+      next_vidange_km,
+      last_pads_km,
+      next_pads_km,
       oil_change_due_km,
       brake_pad_state,
     })
@@ -236,7 +246,8 @@ export async function updateVehicleMechanicalState(
   vehicleId: string,
   currentKm: number | null,
   lastVidangeKm: number | null,
-  lastPadsKm: number | null
+  lastPadsKm: number | null,
+  nextPadsKm?: number | null
 ) {
   const { supabase, user } = await getAuthedUser()
 
@@ -246,6 +257,7 @@ export async function updateVehicleMechanicalState(
       current_km: currentKm,
       last_vidange_km: lastVidangeKm,
       last_pads_km: lastPadsKm,
+      next_pads_km: nextPadsKm,
     })
     .eq('id', vehicleId)
     .eq('owner_id', user.id)

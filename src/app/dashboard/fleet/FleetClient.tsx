@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Car, Plus, Edit2, Trash2, X, Upload, Trash, Image as ImageIcon, ChevronLeft, ChevronRight, History } from 'lucide-react'
 import { addVehicle, updateVehicle, deleteVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget } from '@/app/actions'
@@ -27,6 +28,11 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   }, [])
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Centralized operations states
   const [searchQuery, setSearchQuery] = useState('')
@@ -82,6 +88,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   
   const [loading, setLoading] = useState(false)
   const [addOilDueKm, setAddOilDueKm] = useState<string>('')
+  const [addPadsDueKm, setAddPadsDueKm] = useState<string>('')
 
   const handleLastOilChangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
@@ -92,6 +99,18 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       }
     } else {
       setAddOilDueKm('')
+    }
+  }
+
+  const handleLastPadsChangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    if (val) {
+      const num = parseInt(val)
+      if (!isNaN(num)) {
+        setAddPadsDueKm((num + 30000).toString())
+      }
+    } else {
+      setAddPadsDueKm('')
     }
   }
 
@@ -160,6 +179,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       setIsAddModalOpen(false)
       setAddFiles([])
       setAddOilDueKm('')
+      setAddPadsDueKm('')
       showToast('Vehicle added successfully!', 'success')
     } catch (error: any) {
       showToast('Error adding vehicle: ' + error.message, 'error')
@@ -926,6 +946,81 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
           height: 10px;
           animation: spin 0.8s linear infinite;
         }
+
+        .fleet-table {
+          table-layout: fixed;
+          width: 100%;
+        }
+
+        @media (max-width: 1024px) {
+          .fleet-table, 
+          .fleet-table thead, 
+          .fleet-table tbody, 
+          .fleet-table th, 
+          .fleet-table td, 
+          .fleet-table tr { 
+            display: block !important; 
+            width: 100% !important;
+            table-layout: auto !important;
+          }
+          
+          .fleet-table thead {
+            display: none !important;
+          }
+          
+          .fleet-table tr {
+            margin-bottom: 1.5rem;
+            background: rgba(20, 16, 14, 0.6);
+            border: 1px solid rgba(229, 193, 125, 0.15) !important;
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            transition: all 0.25s ease;
+          }
+
+          .fleet-table tr:hover {
+            border-color: rgba(229, 193, 125, 0.3) !important;
+            background: rgba(25, 20, 18, 0.8) !important;
+          }
+          
+          .fleet-table td { 
+            border: none !important;
+            border-bottom: 1px solid rgba(229, 193, 125, 0.05) !important; 
+            position: relative;
+            padding: 0.85rem 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.35rem !important;
+          }
+          
+          .fleet-table td:last-child {
+            border-bottom: none !important;
+            padding-bottom: 0 !important;
+          }
+
+          .fleet-table td::before { 
+            content: attr(data-label);
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(229, 193, 125, 0.55);
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+            display: block;
+          }
+          
+          .fleet-table td .tn-plate {
+            margin-bottom: 0.25rem;
+          }
+
+          .fleet-table .action-buttons {
+            width: 100%;
+            justify-content: flex-start;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+          }
+        }
       `}</style>
 
       <div className='header-section'>
@@ -1012,7 +1107,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
       <div className='content-grid'>
         <div className='glass-panel table-container'>
-          <table className="data-table" style={{ tableLayout: 'fixed', width: '100%' }}>
+          <table className="data-table fleet-table">
             <thead>
               <tr>
                 <th style={{ width: '20%' }}>Vehicle Details</th>
@@ -1059,7 +1154,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                   return (
                     <tr key={car.id}>
                       {/* COLUMN 1: Vehicle Details */}
-                      <td>
+                      <td data-label="Vehicle Details">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           {car.images && car.images.length > 0 ? (
                             <img 
@@ -1094,7 +1189,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                       </td>
 
                       {/* COLUMN 2: Odometer & Mechanical Stack */}
-                      <td>
+                      <td data-label="Odometer & Mechanical">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
                           {/* Line 1: Odometer Input */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1373,22 +1468,22 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                       </td>
 
                       {/* COLUMN 3: Assurance (Statutory) */}
-                      <td>
+                      <td data-label="Assurance (Statutory)">
                         {renderLegalDocCell(car, 'assurance')}
                       </td>
 
                       {/* COLUMN 4: Visite Technique */}
-                      <td>
+                      <td data-label="Visite Technique">
                         {renderLegalDocCell(car, 'visite_technique')}
                       </td>
 
-                      {/* COLUMN 5: Laissez-Passer */}
-                      <td>
+                      {/* COLUMN 5: Transport Authorization (Laissez-Passer) */}
+                      <td data-label="Transport Authorization">
                         {renderLegalDocCell(car, 'laissez_passer')}
                       </td>
 
                       {/* COLUMN 6: Availability & Yield */}
-                      <td>
+                      <td data-label="Availability & Yield">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
                           <div 
                             title={isRented && activeBooking ? `Renter: ${getInitograms(activeBooking.client_name || activeBooking.clients?.full_name || 'N/A')}` : undefined}
@@ -1404,8 +1499,8 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                         </div>
                       </td>
 
-                      {/* COLUMN 6: Actions */}
-                      <td>
+                      {/* COLUMN 7: Actions */}
+                      <td data-label="Actions">
                         <div className="action-buttons">
                           <button className="icon-btn" title="View History" onClick={() => router.push(`/dashboard/vehicles/${car.id}/history`)}>
                             <History size={16} />
@@ -1438,7 +1533,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       </div>
 
       {/* ADD VEHICLE MODAL */}
-      {isAddModalOpen && (
+      {mounted && isAddModalOpen && createPortal(
         <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
@@ -1543,19 +1638,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 Mechanical & Maintenance
               </h4>
               
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Current Odometer (KM)</label>
-                  <input type="number" name="current_km" placeholder="e.g. 15000" className="form-input" min="0" />
-                </div>
-                <div className="form-group">
-                  <label>Brake Pads Status</label>
-                  <select name="brake_pad_state" className="form-input" defaultValue="good">
-                    <option value="good">🟢 Good condition</option>
-                    <option value="worn">🟡 Worn - Inspect soon</option>
-                    <option value="critical">🔴 CRITICAL - Replace now</option>
-                  </select>
-                </div>
+              <div className="form-group">
+                <label>Current Odometer (KM)</label>
+                <input type="number" name="current_km" placeholder="e.g. 15000" className="form-input" min="0" />
               </div>
 
               <div className="form-row">
@@ -1563,6 +1648,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                   <label>Last Oil Change (KM)</label>
                   <input 
                     type="number" 
+                    name="last_vidange_km"
                     placeholder="e.g. 9800" 
                     className="form-input" 
                     min="0"
@@ -1573,12 +1659,38 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                   <label>Next Oil Change Due (KM)</label>
                   <input 
                     type="number" 
-                    name="oil_change_due_km" 
+                    name="next_vidange_km" 
                     placeholder="e.g. 19800" 
                     className="form-input" 
                     min="0"
                     value={addOilDueKm}
                     onChange={(e) => setAddOilDueKm(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Last Pads Change (KM)</label>
+                  <input 
+                    type="number" 
+                    name="last_pads_km"
+                    placeholder="e.g. 12000" 
+                    className="form-input" 
+                    min="0"
+                    onChange={handleLastPadsChangeChange}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Next Pads Change Due (KM)</label>
+                  <input 
+                    type="number" 
+                    name="next_pads_km" 
+                    placeholder="e.g. 42000" 
+                    className="form-input" 
+                    min="0"
+                    value={addPadsDueKm}
+                    onChange={(e) => setAddPadsDueKm(e.target.value)}
                   />
                 </div>
               </div>
@@ -1632,11 +1744,12 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* EDIT VEHICLE MODAL */}
-      {isEditModalOpen && editingVehicle && (
+      {mounted && isEditModalOpen && editingVehicle && createPortal(
         <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
@@ -1814,11 +1927,12 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* IMAGE LIGHTBOX MODAL */}
-      {lightboxImages && lightboxImages.length > 0 && (
+      {mounted && lightboxImages && lightboxImages.length > 0 && createPortal(
         <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000 }} onClick={() => setLightboxImages(null)}>
           <div 
             className="glass-panel" 
@@ -1872,7 +1986,8 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

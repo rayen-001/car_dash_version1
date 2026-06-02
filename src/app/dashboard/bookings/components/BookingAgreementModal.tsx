@@ -157,7 +157,7 @@ export default function BookingAgreementModal({
 
         {/* ── Contract root — print-target ── */}
         <div
-          className={`contract-root ${mono ? 'mono' : ''}`}
+          className={`contract-root contract-print-envelope ${mono ? 'mono' : ''}`}
           style={{
             color: '#000',
             background: '#fff',
@@ -169,7 +169,7 @@ export default function BookingAgreementModal({
         >
           {/* ── HEADER (3 floating zones) ── */}
           <div
-            className="page-break-avoid"
+            className="contract-header page-break-avoid"
             style={{
               display: 'grid',
               gridTemplateColumns: '1.05fr 0.9fr 1.05fr',
@@ -252,6 +252,7 @@ export default function BookingAgreementModal({
 
           {/* ── BODY GRID: 7 left / 5 right ── */}
           <div
+            className="body-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: '7fr 5fr',
@@ -262,7 +263,7 @@ export default function BookingAgreementModal({
             {/* ─────────── LEFT COLUMN ─────────── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
               {/* LOCATAIRE / RENTER */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000' }}>
+              <section className="contract-section page-break-avoid" style={{ border: '1px solid #000' }}>
                 <SectionHeader fr="LOCATAIRE / RENTER" ar="المستأجر" />
                 <div style={{ padding: '0.4rem 0.6rem' }}>
                   <BiLabel fr="Nom complet / Full name" ar="الإسم الكامل" value={b.client_name || primary?.full_name} />
@@ -271,7 +272,7 @@ export default function BookingAgreementModal({
               </section>
 
               {/* 1er Conducteur */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000' }}>
+              <section className="contract-section page-break-avoid" style={{ border: '1px solid #000' }}>
                 <SectionHeader fr="1er Conducteur / Primary Driver" ar="السائق الأول" />
                 <div style={{ padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.32rem' }}>
                   <BiLabel fr="Nom et prénom" ar="إسم ولقب الكاري" value={b.client_name || primary?.full_name} />
@@ -294,7 +295,7 @@ export default function BookingAgreementModal({
               </section>
 
               {/* 2ème Conducteur — always rendered; blank rows for handwriting if absent */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000' }}>
+              <section className={`contract-section page-break-avoid ${!secondary || !secondary.full_name ? 'co-driver-empty' : ''}`} style={{ border: '1px solid #000' }}>
                 <SectionHeader fr="2ème Conducteur / Co-Driver" ar="السائق الثاني" />
                 <div style={{ padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.32rem' }}>
                   <BiLabel fr="Nom et prénom" ar="إسم ولقب الكاري" value={secondary?.full_name} />
@@ -320,11 +321,11 @@ export default function BookingAgreementModal({
             {/* ─────────── RIGHT COLUMN ─────────── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
               {/* Vehicle capsule */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000', padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.32rem' }}>
+              <section className="contract-section page-break-avoid" style={{ border: '1px solid #000', padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.32rem' }}>
                 <BiLabel fr="Marque et type" ar="النوع" value={v ? `${v.brand} ${v.model}` : null} />
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, auto) 1fr minmax(0, auto)', alignItems: 'center', gap: '0.4rem' }}>
                   <span style={{ fontSize: '9pt', fontWeight: 600 }}>Immatriculation</span>
-                  <span style={{ display: 'flex', justifyContent: 'center' }}>
+                  <span className="tunisian-plate" style={{ display: 'flex', justifyContent: 'center' }}>
                     <TunisianPlate plate={v?.license_plate} variant="paper" size="md" />
                   </span>
                   <span dir="rtl" lang="ar" style={{ fontFamily: ARABIC_FONT_STACK, fontSize: '10pt', fontWeight: 700 }}>الرقم</span>
@@ -332,15 +333,101 @@ export default function BookingAgreementModal({
               </section>
 
               {/* Departure + return time-tracking */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000', padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.32rem' }}>
-                <BiLabel fr="Date et heure de départ" ar="تاريخ و ساعة الخروج" value={`${fmtDate(b.start_date)} @ ${b.pickup_time || '10:00'}`} />
-                <BiLabel fr="Date et heure de retour" ar="تاريخ و ساعة الدخول" value={`${fmtDate(b.end_date)} @ ${b.return_time || '10:00'}`} />
-                <BiLabel fr="Kilomètre de départ" ar="رقم العداد عند الخروج" value={pickupKm != null ? `${pickupKm} km` : null} />
-                <BiLabel fr="Kilomètre de retour" ar="رقم العداد عند العودة" value={returnKm != null ? `${returnKm} km` : null} />
+              <section className="contract-section page-break-avoid" style={{ border: '1px solid #000', padding: '0.5rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.32rem' }}>
+                {/* Departure Row */}
+                <div
+                  className="logistical-date-row"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto',
+                    alignItems: 'baseline',
+                    gap: '0.25rem',
+                    width: '100%',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  <span style={{ fontSize: '7.5pt', fontWeight: 600, whiteSpace: 'nowrap', color: '#000' }}>Date & heure départ</span>
+                  <span
+                    style={{
+                      borderBottom: '1px dotted #555',
+                      minHeight: '1em',
+                      paddingLeft: '0.15rem',
+                      paddingRight: '0.15rem',
+                      overflow: 'visible',
+                      whiteSpace: 'nowrap',
+                      fontWeight: 600,
+                      fontSize: '8.5pt',
+                      textAlign: 'center',
+                      color: '#000',
+                    }}
+                  >
+                    {`${fmtDate(b.start_date)} - ${b.pickup_time || '10:00'}`}
+                  </span>
+                  <span
+                    dir="rtl"
+                    lang="ar"
+                    style={{
+                      fontFamily: ARABIC_FONT_STACK,
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      fontSize: '8pt',
+                      color: '#000',
+                    }}
+                  >
+                    تاريخ و ساعة الخروج
+                  </span>
+                </div>
+
+                {/* Return Row */}
+                <div
+                  className="logistical-date-row"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto',
+                    alignItems: 'baseline',
+                    gap: '0.25rem',
+                    width: '100%',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  <span style={{ fontSize: '7.5pt', fontWeight: 600, whiteSpace: 'nowrap', color: '#000' }}>Date & heure retour</span>
+                  <span
+                    style={{
+                      borderBottom: '1px dotted #555',
+                      minHeight: '1em',
+                      paddingLeft: '0.15rem',
+                      paddingRight: '0.15rem',
+                      overflow: 'visible',
+                      whiteSpace: 'nowrap',
+                      fontWeight: 600,
+                      fontSize: '8.5pt',
+                      textAlign: 'center',
+                      color: '#000',
+                    }}
+                  >
+                    {`${fmtDate(b.end_date)} - ${b.return_time || '10:00'}`}
+                  </span>
+                  <span
+                    dir="rtl"
+                    lang="ar"
+                    style={{
+                      fontFamily: ARABIC_FONT_STACK,
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      fontSize: '8pt',
+                      color: '#000',
+                    }}
+                  >
+                    تاريخ و ساعة الدخول
+                  </span>
+                </div>
+
+                <BiLabel fr="Kilomètre de départ" ar="رقم العداد عند الخروج" value={null} />
+                <BiLabel fr="Kilomètre de retour" ar="رقم العداد عند العودة" value={null} />
               </section>
 
               {/* Cleaning checks */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000', padding: '0.4rem 0.6rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '8.5pt' }}>
+              <section className="contract-section page-break-avoid" style={{ border: '1px solid #000', padding: '0.4rem 0.6rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '8.5pt' }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span style={{ display: 'inline-block', width: '11px', height: '11px', border: '1.2px solid #000', background: b.lavage_pickup === 'clean_wash' ? '#000' : 'transparent' }} />
                   <span>Lavage Intérieur</span>
@@ -352,7 +439,7 @@ export default function BookingAgreementModal({
               </section>
 
               {/* 9-row Financial ledger */}
-              <section className="page-break-avoid" style={{ border: '1px solid #000', padding: '0.45rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.22rem' }}>
+              <section className="contract-section page-break-avoid" style={{ border: '1px solid #000', padding: '0.45rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.22rem' }}>
                 <BiLabel dense fr="Cautionnement et franchise" ar="الضمان" value={`${franchise.toFixed(3)} DT`} />
                 <BiLabel dense fr="Payable par" ar="يدفع من قبل" value={null} />
                 <BiLabel dense fr="Total des jours" ar="مجموع الأيام" value={`${days}`} />
@@ -375,7 +462,7 @@ export default function BookingAgreementModal({
               </section>
 
               {/* 3-tier fuel telemetry */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <div className="fuel-gauge-array" style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                 <FuelGauge mode="pickup" scale={handover?.pickup_fuel} />
                 <FuelGauge mode="return" scale={handover?.return_fuel} />
                 <FuelGauge mode="damage" />
@@ -384,11 +471,11 @@ export default function BookingAgreementModal({
           </div>
 
           {/* ── PROLONGATION ROWS ── */}
-          <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <div className="prolongation-section" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             {[1, 2].map((n) => (
-              <div key={n} className="page-break-avoid" style={{ border: '1px solid #000' }}>
+              <div key={n} className="prolongation-row page-break-avoid" style={{ border: '1px solid #000' }}>
                 <SectionHeader fr={`Prolongation ${n} (${n})`} ar="التمديد" />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: '0.5rem', padding: '0.4rem 0.6rem', alignItems: 'center', fontSize: '8.5pt' }}>
+                <div className="prolongation-grid-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: '0.5rem', padding: '0.4rem 0.6rem', alignItems: 'center', fontSize: '8.5pt' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem' }}>
                     <strong>Du / من يوم :</strong>
                     <span style={{ flex: 1, borderBottom: '1px dotted #555' }}>&nbsp;</span>
@@ -406,29 +493,54 @@ export default function BookingAgreementModal({
           </div>
 
           {/* ── DISCLAIMER / FINE PRINT ── */}
-          <div className="page-break-avoid" style={{ marginTop: '0.6rem', border: '1.5px solid #000', padding: '0.55rem 0.7rem', fontSize: '8pt', lineHeight: 1.5 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.6rem', alignItems: 'flex-start' }}>
-              <div>
-                <strong>Remarque :</strong> En cas de vol et dérapage, le locataire est seul responsable.
-                La suppression de franchise de <strong>{franchise.toFixed(3)} DT</strong> à la charge du
-                locataire moyen d&apos;un supplément de <strong>{lateFee.toFixed(3)} DT</strong> par heure
-                de location. Ces tarifs sont pour un forfait de <strong>{kmPerDay} Km par jour</strong>.
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: 'center', fontWeight: 800 }}>
-                <span>→ OUI</span>
-                <span>→ OUI</span>
-              </div>
+          <div className="disclaimer-box page-break-avoid" style={{ marginTop: '0.6rem', border: '1.5px solid #000', padding: '0.55rem 0.7rem', fontSize: '8pt', lineHeight: 1.3 }}>
+            {/* Top section: Text (Dynamic or Default) + OUI Checkbox Targets */}
+            <div style={{ display: 'grid', gridTemplateColumns: s.rental_terms && s.rental_terms.trim() ? '1fr' : '1fr auto', gap: '0.6rem', alignItems: 'flex-start' }}>
+              {s.rental_terms && s.rental_terms.trim() ? (
+                <div 
+                  dir="auto" 
+                  style={{ 
+                    whiteSpace: 'pre-wrap', 
+                    fontSize: '7.5pt', 
+                    lineHeight: '1.15', 
+                    letterSpacing: '-0.01em', 
+                    maxHeight: '90px', 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis' 
+                  }}
+                >
+                  {s.rental_terms.trim()}
+                </div>
+              ) : (
+                <div style={{ fontSize: '7.5pt', lineHeight: '1.2' }}>
+                  <strong>Remarque :</strong> En cas de vol et dérapage, le locataire est seul responsable.
+                  La suppression de franchise de <strong>{franchise.toFixed(3)} DT</strong> à la charge du
+                  locataire moyen d&apos;un supplément de <strong>{lateFee.toFixed(3)} DT</strong> par heure
+                  de location. Ces tarifs sont pour un forfait de <strong>{kmPerDay} Km par jour</strong>.
+                </div>
+              )}
+              
+              {!(s.rental_terms && s.rental_terms.trim()) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: 'center', fontWeight: 800, fontSize: '8pt', flexShrink: 0 }}>
+                  <span>→ OUI</span>
+                  <span>→ OUI</span>
+                </div>
+              )}
             </div>
-            <div style={{ marginTop: '0.4rem', fontStyle: 'italic' }}>
-              Je reconnais et accepte les conditions générales de location figurant ci-contre et au verso de ce contrat.
-            </div>
-            <div dir="rtl" lang="ar" style={{ fontFamily: ARABIC_FONT_STACK, marginTop: '0.3rem', fontSize: '9pt', fontStyle: 'italic' }}>
-              أصرح بشرفي أني قد اطلعت على الشروط العامة المكتوبة لكراء السيارات على ظهر هذا العقد وأتعهد بإرجاع السيارة في الآجال والمكان المحددين أعلاه
+
+            {/* Bottom section: Permanent Bilingual Acceptance Sign-offs */}
+            <div style={{ marginTop: '0.4rem', borderTop: '1px dashed #000', paddingTop: '0.4rem' }}>
+              <div style={{ fontSize: '7.5pt', fontStyle: 'italic', lineHeight: '1.2' }}>
+                Je reconnais et accepte les conditions générales de location figurant ci-contre et au verso de ce contrat.
+              </div>
+              <div dir="rtl" lang="ar" style={{ fontFamily: ARABIC_FONT_STACK, marginTop: '0.2rem', fontSize: '8.5pt', fontStyle: 'italic', lineHeight: '1.2' }}>
+                أصرح بشرفي أني قد اطلعت على الشروط العامة المكتوبة لكراء السيارات على ظهر هذا العقد وأتعهد بإرجاع السيارة في الآجال والمكان المحددين أعلاه
+              </div>
             </div>
           </div>
 
           {/* ── SIGNATURES ── */}
-          <div className="signatures-row" style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', fontSize: '9pt' }}>
+          <div className="signatures-section signatures-row" style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', fontSize: '9pt' }}>
             <div>
               <div style={{ borderTop: '1px solid #000', paddingTop: '0.4rem', textAlign: 'center' }}>
                 <strong>Signature Gérant</strong>
@@ -473,20 +585,190 @@ export default function BookingAgreementModal({
         dangerouslySetInnerHTML={{
           __html: `
             @media print {
-              @page { size: A4 portrait; margin: 8mm; }
-              body { background: #FFFFFF !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .no-print, .no-print * { display: none !important; }
-              .modal-overlay { background: #fff !important; padding: 0 !important; }
-              .modal-content { box-shadow: none !important; border: none !important; max-height: none !important; max-width: 210mm !important; width: 210mm !important; }
-              .page-break-avoid { page-break-inside: avoid; break-inside: avoid; }
-              .contract-root { width: 194mm; min-height: 281mm; font-family: 'Inter', 'Arial', sans-serif; font-size: 9pt; color: #000; background: #fff; padding: 0 !important; }
-              .contract-root .section-banner { background: #1e40af !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .contract-root .serial-red { color: #dc2626 !important; }
-              .contract-root .footer-banner { background: #000 !important; color: #fff !important; }
-              .contract-root.mono * { color: #000 !important; background: #fff !important; border-color: #000 !important; }
-              .contract-root.mono .section-banner { background: #000 !important; color: #fff !important; }
-              .contract-root.mono .footer-banner { background: #000 !important; color: #fff !important; }
-              .contract-root.mono .serial-red { color: #000 !important; }
+              html, body {
+                height: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+
+              .no-print, .no-print * {
+                display: none !important;
+              }
+
+              @page {
+                size: A4 portrait;
+                margin: 0 !important; /* Disables browser header/footer text pollution */
+              }
+
+              .modal-overlay { 
+                background: #fff !important; 
+                padding: 0 !important; 
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+              }
+              
+              .modal-content { 
+                box-shadow: none !important; 
+                border: none !important; 
+                max-height: none !important; 
+                max-width: 100% !important; 
+                width: 100% !important; 
+                height: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+              }
+
+              .contract-print-envelope {
+                width: 210mm !important;
+                height: 297mm !important;
+                max-height: 297mm !important;
+                min-height: 297mm !important;
+                padding: 5mm 8mm !important;
+                margin: 0 auto !important;
+                box-sizing: border-box !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                overflow: hidden !important;
+                background: #FFFFFF !important;
+                color: #000000 !important;
+                font-family: 'Inter', 'Arial', sans-serif;
+                font-size: 8.5pt !important;
+                transform: scale(0.92) !important;
+                transform-origin: top center !important;
+              }
+
+              .contract-print-envelope .section-banner { 
+                background: #1e40af !important; 
+                color: #fff !important; 
+                -webkit-print-color-adjust: exact !important; 
+                print-color-adjust: exact !important; 
+              }
+              
+              .contract-print-envelope .serial-red { 
+                color: #dc2626 !important;
+                font-size: 11pt !important;
+              }
+              
+              .contract-print-envelope .footer-banner { 
+                background: #000 !important; 
+                color: #fff !important; 
+              }
+              
+              .contract-print-envelope.mono * { 
+                color: #000 !important; 
+                background: #fff !important; 
+                border-color: #000 !important; 
+              }
+              
+              .contract-print-envelope.mono .section-banner { 
+                background: #000 !important; 
+                color: #fff !important; 
+              }
+              
+              .contract-print-envelope.mono .footer-banner { 
+                background: #000 !important; 
+                color: #fff !important; 
+              }
+              
+              .contract-print-envelope.mono .serial-red { 
+                color: #000 !important; 
+              }
+
+              /* In-Form Structural Micro-Compacts */
+              
+              /* 1. Empty Co-Driver Box Height-Shaving */
+              .contract-print-envelope .co-driver-empty {
+                margin-bottom: 0px !important;
+              }
+              .contract-print-envelope .co-driver-empty .section-banner {
+                padding: 0.1rem 0.4rem !important;
+              }
+              .contract-print-envelope .co-driver-empty .section-banner span {
+                font-size: 7.5pt !important;
+              }
+              .contract-print-envelope .co-driver-empty div,
+              .contract-print-envelope .co-driver-empty span,
+              .contract-print-envelope .co-driver-empty label {
+                font-size: 7pt !important;
+                line-height: 1.0 !important;
+                padding-top: 0px !important;
+                padding-bottom: 0px !important;
+                margin-top: 0px !important;
+                margin-bottom: 0px !important;
+              }
+
+              /* 2. Fuel Gauge Array Compression */
+              .contract-print-envelope .fuel-gauge-array {
+                gap: 0.1rem !important;
+              }
+              .contract-print-envelope .fuel-gauge-array > div {
+                padding: 0.15rem 0.35rem !important;
+                gap: 0.05rem !important;
+                margin-bottom: 0px !important;
+              }
+              .contract-print-envelope .fuel-gauge-array > div > div:first-child {
+                font-size: 7pt !important;
+              }
+              .contract-print-envelope .fuel-gauge-array > div > div:first-child span {
+                font-size: 7pt !important;
+              }
+              .contract-print-envelope .fuel-gauge-array > div > div:nth-child(2) {
+                font-size: 7.5pt !important;
+              }
+              .contract-print-envelope .fuel-gauge-array div div span span {
+                width: 8px !important;
+                height: 8px !important;
+              }
+
+              /* 3. Global Text Scaling Override */
+              .contract-print-envelope label,
+              .contract-print-envelope span,
+              .contract-print-envelope strong {
+                font-size: 8pt !important;
+                line-height: 1.1 !important;
+              }
+              .contract-print-envelope .section-banner span {
+                font-size: 8.5pt !important;
+                line-height: 1.2 !important;
+              }
+
+              /* 4. Defensive Header and Component Preservation */
+              .contract-print-envelope .contract-header div,
+              .contract-print-envelope .contract-header span,
+              .contract-print-envelope .contract-header strong {
+                font-size: unset !important;
+                line-height: unset !important;
+              }
+              .contract-print-envelope .footer-banner,
+              .contract-print-envelope .footer-banner div {
+                font-size: 8.5pt !important;
+                line-height: 1.2 !important;
+              }
+              .contract-print-envelope .tunisian-plate * {
+                font-size: inherit !important;
+                line-height: inherit !important;
+              }
+
+              /* 5. Logistical Date Row Override to prevent truncation */
+              .contract-print-envelope .logistical-date-row {
+                letter-spacing: -0.03em !important;
+              }
+              .contract-print-envelope .logistical-date-row span:first-child {
+                font-size: 7.5pt !important;
+              }
+              .contract-print-envelope .logistical-date-row span:nth-child(2) {
+                font-size: 8.5pt !important;
+                font-weight: 700 !important;
+              }
+              .contract-print-envelope .logistical-date-row span:last-child {
+                font-size: 8pt !important;
+              }
             }
           `,
         }}

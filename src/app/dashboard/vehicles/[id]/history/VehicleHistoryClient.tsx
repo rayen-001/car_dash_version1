@@ -35,6 +35,7 @@ interface Vehicle {
   current_km?: number | null
   last_vidange_km?: number | null
   last_pads_km?: number | null
+  next_pads_km?: number | null
 }
 
 interface LegalDoc {
@@ -103,7 +104,8 @@ export default function VehicleHistoryClient({
   const [currentKm, setCurrentKm] = useState<string>(currentVehicle.current_km?.toString() || '')
   const [oilDueKm, setOilDueKm] = useState<string>(currentVehicle.last_vidange_km?.toString() || '')
   const [lastOilChangeKm, setLastOilChangeKm] = useState<string>(currentVehicle.last_vidange_km ? (currentVehicle.last_vidange_km - 10000).toString() : '')
-  const [brakesState, setBrakesState] = useState<number | null>(currentVehicle.last_pads_km ?? null)
+  const [lastPadsKmState, setLastPadsKmState] = useState<string>(currentVehicle.last_pads_km?.toString() || '')
+  const [nextPadsKmState, setNextPadsKmState] = useState<string>(currentVehicle.next_pads_km?.toString() || '')
 
   const handleLastOilChangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
@@ -115,6 +117,19 @@ export default function VehicleHistoryClient({
       }
     } else {
       setOilDueKm('')
+    }
+  }
+
+  const handleLastPadsChangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setLastPadsKmState(val)
+    if (val) {
+      const num = parseInt(val)
+      if (!isNaN(num)) {
+        setNextPadsKmState((num + 30000).toString())
+      }
+    } else {
+      setNextPadsKmState('')
     }
   }
 
@@ -155,7 +170,8 @@ export default function VehicleHistoryClient({
     setCurrentKm(currentVehicle.current_km?.toString() || '')
     setOilDueKm(currentVehicle.last_vidange_km?.toString() || '')
     setLastOilChangeKm(currentVehicle.last_vidange_km ? (currentVehicle.last_vidange_km - 10000).toString() : '')
-    setBrakesState(currentVehicle.last_pads_km ?? null)
+    setLastPadsKmState(currentVehicle.last_pads_km?.toString() || '')
+    setNextPadsKmState(currentVehicle.next_pads_km?.toString() || '')
     setIsMechModalOpen(true)
   }
 
@@ -165,10 +181,12 @@ export default function VehicleHistoryClient({
 
     const parsedKm = currentKm ? parseInt(currentKm) : null
     const parsedOil = oilDueKm ? parseInt(oilDueKm) : null
+    const parsedLastPads = lastPadsKmState ? parseInt(lastPadsKmState) : null
+    const parsedNextPads = nextPadsKmState ? parseInt(nextPadsKmState) : null
 
     startTransition(async () => {
       try {
-        await updateVehicleMechanicalState(currentVehicle.id, parsedKm, parsedOil, brakesState)
+        await updateVehicleMechanicalState(currentVehicle.id, parsedKm, parsedOil, parsedLastPads, parsedNextPads)
         showToast('Mechanical state updated successfully!', 'success')
         setIsMechModalOpen(false)
       } catch (err: any) {
@@ -268,7 +286,7 @@ export default function VehicleHistoryClient({
       <MechanicalStatePanel 
         currentKm={currentVehicle.current_km ?? null}
         oilChangeDueKm={currentVehicle.last_vidange_km ?? null}
-        brakePadState={currentVehicle.last_pads_km as any}
+        nextPadsKm={currentVehicle.next_pads_km ?? null}
         onEditMechanical={handleOpenMechModal}
       />
 
@@ -415,17 +433,27 @@ export default function VehicleHistoryClient({
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="last_pads_km">Brake Pads State</label>
-                <select
+                <label className="form-label" htmlFor="last_pads_km">Last Pads Change (KM)</label>
+                <input
+                  type="number"
                   id="last_pads_km"
                   className="form-input"
-                  value={brakesState ?? ''}
-                  onChange={(e) => setBrakesState(e.target.value as any)}
-                >
-                  <option value="good">🟢 Good condition</option>
-                  <option value="worn">🟡 Worn - Inspect soon</option>
-                  <option value="critical">🔴 CRITICAL - Replace now</option>
-                </select>
+                  placeholder="e.g. 12000"
+                  value={lastPadsKmState}
+                  onChange={handleLastPadsChangeChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="next_pads_km">Pads Change Target (KM)</label>
+                <input
+                  type="number"
+                  id="next_pads_km"
+                  className="form-input"
+                  placeholder="e.g. 42000"
+                  value={nextPadsKmState}
+                  onChange={(e) => setNextPadsKmState(e.target.value)}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>

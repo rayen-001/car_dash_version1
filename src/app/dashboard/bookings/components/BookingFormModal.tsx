@@ -575,19 +575,19 @@ export default function BookingFormModal({
 
   const grid2Style: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'var(--grid-cols-2, 1fr 1fr)',
     gap: '0.85rem',
   }
 
   const grid3Style: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr',
+    gridTemplateColumns: 'var(--grid-cols-3, 1fr 1fr 1fr)',
     gap: '0.85rem',
   }
 
   const grid4Style: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr 1fr',
+    gridTemplateColumns: 'var(--grid-cols-4, 1fr 1fr 1fr 1fr)',
     gap: '0.85rem',
   }
 

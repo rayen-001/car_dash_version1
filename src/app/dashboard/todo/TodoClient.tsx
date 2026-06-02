@@ -521,6 +521,39 @@ function Row({
             {item.subtitle}
           </div>
         )}
+        {item.client?.phone && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            marginTop: '0.25rem',
+            padding: '0.15rem 0.45rem',
+            borderRadius: '6px',
+            background: 'rgba(229,193,125,0.06)',
+            border: '1px solid rgba(229,193,125,0.18)',
+            width: 'fit-content'
+          }}>
+            <span style={{ fontSize: '0.68rem', color: '#ae9260' }}>📞</span>
+            <a
+              href={`tel:${item.client.phone}`}
+              onClick={(e) => {
+                // Prevent clicking the tel link from expanding the list row modal or navigation
+                e.stopPropagation()
+              }}
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                color: '#ae9260',
+                textDecoration: 'none',
+                transition: 'opacity 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.75')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+            >
+              {item.client.phone}
+            </a>
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
         {item.time && (

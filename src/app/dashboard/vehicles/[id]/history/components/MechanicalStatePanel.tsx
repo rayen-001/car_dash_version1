@@ -6,14 +6,14 @@ import styles from '../history.module.css'
 interface MechanicalStateProps {
   currentKm: number | null
   oilChangeDueKm: number | null
-  brakePadState: 'good' | 'worn' | 'critical' | null
+  nextPadsKm: number | null
   onEditMechanical: () => void
 }
 
 export default function MechanicalStatePanel({
   currentKm,
   oilChangeDueKm,
-  brakePadState,
+  nextPadsKm,
   onEditMechanical
 }: MechanicalStateProps) {
   // Oil change progress calculations
@@ -26,7 +26,6 @@ export default function MechanicalStatePanel({
     oilRemaining = oilChangeDueKm! - currentKm!
     // Assume an oil change lasts 10,000 km for percentage bar
     const totalOilInterval = 10000
-    const drivenSinceChange = Math.max(0, totalOilInterval - oilRemaining)
     oilPercentage = Math.min(100, Math.max(0, (oilRemaining / totalOilInterval) * 100))
 
     if (oilRemaining < 200) {
@@ -38,20 +37,26 @@ export default function MechanicalStatePanel({
     }
   }
 
-  // Brakes formatting
-  const getBrakesConfig = (state: typeof brakePadState) => {
-    switch (state) {
-      case 'good':
-        return { label: 'Good condition', class: 'good' }
-      case 'worn':
-        return { label: 'Worn - Inspect soon', class: 'worn' }
-      case 'critical':
-        return { label: 'CRITICAL - Replace now', class: 'critical' }
-      default:
-        return { label: 'Not Logged', class: 'unknown' }
+  // Pads progress calculations
+  const hasPadsData = currentKm !== null && nextPadsKm !== null
+  let padsRemaining = 0
+  let padsPercentage = 0
+  let padsColorClass = 'safe'
+
+  if (hasPadsData) {
+    padsRemaining = nextPadsKm! - currentKm!
+    // Assume a brake pads replacement lasts 30,000 km for percentage bar
+    const totalPadsInterval = 30000
+    padsPercentage = Math.min(100, Math.max(0, (padsRemaining / totalPadsInterval) * 100))
+
+    if (padsRemaining < 500) {
+      padsColorClass = 'critical'
+    } else if (padsRemaining < 3000) {
+      padsColorClass = 'warning'
+    } else {
+      padsColorClass = 'safe'
     }
   }
-  const brakes = getBrakesConfig(brakePadState)
 
   return (
     <div className={`${styles['mech-panel']} glass-panel`}>
@@ -107,15 +112,34 @@ export default function MechanicalStatePanel({
           )}
         </div>
 
-        {/* Brake Pad Status */}
+        {/* Brake Pads Tracker */}
         <div className={styles['mech-item']}>
           <div className={styles['mech-item-header']}>
-            <span className={styles['mech-item-label']}>Brake Pads Status</span>
-            <span className={`${styles['brake-badge']} ${styles[brakes.class]}`}>
-              <Wrench size={12} />
-              {brakes.label}
+            <span className={styles['mech-item-label']}>Brake Pads (Plaquettes)</span>
+            <span className={styles['mech-item-value']}>
+              {hasPadsData ? `Due at ${nextPadsKm!.toLocaleString()} KM` : 'Not Logged'}
             </span>
           </div>
+          
+          {hasPadsData ? (
+            <>
+              <div className={styles['km-bar-track']}>
+                <div 
+                  className={`${styles['km-bar-fill']} ${styles[padsColorClass]}`}
+                  style={{ width: `${padsPercentage}%` }}
+                />
+              </div>
+              <div className={styles['mech-item-header']}>
+                <span className={styles['mech-item-sub']}>
+                  {padsRemaining > 0 
+                    ? `${padsRemaining.toLocaleString()} KM remaining` 
+                    : `OVERDUE BY ${Math.abs(padsRemaining).toLocaleString()} KM 🚨`}
+                </span>
+              </div>
+            </>
+          ) : (
+            <span className={styles['mech-item-sub']}>Set odometer & target interval to monitor brake pads health</span>
+          )}
         </div>
       </div>
     </div>

@@ -457,7 +457,7 @@ export default function GlobalCommandSearch({
       `}</style>
 
       {/* ── Search Bar ── */}
-      <div style={{
+      <div className="omni-search-bar" style={{
         display: 'flex',
         alignItems: 'center',
         gap: '0.75rem',
@@ -488,10 +488,10 @@ export default function GlobalCommandSearch({
           }}
         />
 
-        <div style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0 }} />
+        <div className="omni-divider" style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0 }} />
 
         <Calendar size={18} style={{ color: interceptDate ? '#f59e0b' : 'rgba(229,193,125,0.5)', flexShrink: 0 }} />
-        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
             Incident Date
           </span>
@@ -513,9 +513,9 @@ export default function GlobalCommandSearch({
           />
         </div>
 
-        <div style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0, marginLeft: '0.5rem', marginRight: '0.5rem' }} />
+        <div className="omni-divider" style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0, marginLeft: '0.5rem', marginRight: '0.5rem' }} />
 
-        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
             Return From
           </span>
@@ -537,7 +537,7 @@ export default function GlobalCommandSearch({
           />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, marginLeft: '0.5rem' }}>
+        <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, marginLeft: '0.5rem' }}>
           <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
             Return To
           </span>
@@ -1118,7 +1118,7 @@ function OmniResultCard({
   }
 
   return (
-    <div style={{
+    <div className="omni-result-card" style={{
       display: 'grid',
       gridTemplateColumns: '90px 1.2fr 1fr 120px 1.2fr 130px 190px 140px 48px',
       gap: '0',
@@ -1525,8 +1525,8 @@ function OmniResultCard({
 }
 
 /* ─── Micro helpers ─────────────────────────────────────────────── */
-const Cell = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
-  <div style={{
+const Cell = ({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) => (
+  <div className={`omni-cell ${className || ''}`} style={{
     padding: '0.85rem 0.9rem',
     display: 'flex',
     flexDirection: 'column',

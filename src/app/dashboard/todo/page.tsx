@@ -23,9 +23,12 @@ export default async function TodoPage() {
     supabase
       .from('bookings')
       .select(`
-        id, owner_id, client_id, client_name,
+        id, owner_id, client_id, client_name, client_phone,
         vehicle_id, start_date, end_date, status,
         handover_location, handover_datetime,
+        primary_client:clients!client_id (
+          phone
+        ),
         vehicles:vehicles!vehicle_id (
           brand, model, license_plate, year, price_per_day
         )
