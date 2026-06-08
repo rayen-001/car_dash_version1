@@ -6,6 +6,8 @@ export {
   addVehicle,
   updateVehicle,
   deleteVehicle,
+  withdrawVehicle,
+  restoreVehicle,
   updateVehicleMechanicalState,
   executeMechanicalService,
   updateManualMechanicalTarget,

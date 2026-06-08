@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Car, Plus, Edit2, Trash2, X, Upload, Trash, Image as ImageIcon, ChevronLeft, ChevronRight, History } from 'lucide-react'
-import { addVehicle, updateVehicle, deleteVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget } from '@/app/actions'
+import { Car, Plus, Edit2, X, Upload, Trash, ChevronLeft, ChevronRight, History, Archive, RotateCcw } from 'lucide-react'
+import { addVehicle, updateVehicle, withdrawVehicle, restoreVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { Badge } from '@/components/Badge'
@@ -36,7 +36,16 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
   // Centralized operations states
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'rented' | 'vidange' | 'expiring'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'rented' | 'vidange' | 'expiring' | 'withdrawn'>('all')
+
+  // Soft-withdrawal modal state
+  const [withdrawModalVehicle, setWithdrawModalVehicle] = useState<any | null>(null)
+  const [withdrawDate, setWithdrawDate] = useState('')
+  const [isWithdrawing, setIsWithdrawing] = useState(false)
+
+  // Restore modal state
+  const [restoreModalVehicle, setRestoreModalVehicle] = useState<any | null>(null)
+  const [isRestoring, setIsRestoring] = useState(false)
   const [renewDurations, setRenewDurations] = useState<Record<string, '6_months' | '1_year'>>({})
   const [renewingDocs, setRenewingDocs] = useState<Record<string, boolean>>({})
   const [odometers, setOdometers] = useState<Record<string, string>>({})
@@ -132,22 +141,33 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
     return () => { editPreviewUrls.forEach(url => URL.revokeObjectURL(url)) }
   }, [editPreviewUrls])
 
-  const handleDelete = async (id: string) => {
-    const confirmed = await confirm({
-      title: 'Delete Vehicle',
-      message: 'Are you sure you want to delete this vehicle? All its images will also be permanently deleted from storage.',
-      confirmLabel: 'Yes, Delete',
-      danger: true,
-    })
-    if (!confirmed) return
-    setLoading(true)
+  // Soft-withdraw a vehicle
+  const handleWithdrawConfirm = async () => {
+    if (!withdrawModalVehicle || !withdrawDate) return
+    setIsWithdrawing(true)
     try {
-      await deleteVehicle(id)
-      showToast('Vehicle deleted successfully.', 'success')
+      await withdrawVehicle(withdrawModalVehicle.id, withdrawDate)
+      showToast(`${withdrawModalVehicle.brand} ${withdrawModalVehicle.model} has been withdrawn from the fleet.`, 'success')
+      setWithdrawModalVehicle(null)
+      setWithdrawDate('')
     } catch (error: any) {
-      showToast('Error deleting vehicle: ' + error.message, 'error')
+      showToast('Error withdrawing vehicle: ' + error.message, 'error')
     }
-    setLoading(false)
+    setIsWithdrawing(false)
+  }
+
+  // Restore a withdrawn vehicle
+  const handleRestoreConfirm = async () => {
+    if (!restoreModalVehicle) return
+    setIsRestoring(true)
+    try {
+      await restoreVehicle(restoreModalVehicle.id)
+      showToast(`${restoreModalVehicle.brand} ${restoreModalVehicle.model} has been restored to the active fleet.`, 'success')
+      setRestoreModalVehicle(null)
+    } catch (error: any) {
+      showToast('Error restoring vehicle: ' + error.message, 'error')
+    }
+    setIsRestoring(false)
   }
 
   // Add modal handlers
@@ -557,11 +577,19 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   // Memoized advanced querying & mechanical filters
   const filteredVehicles = useMemo(() => {
     return initialVehicles.filter(car => {
+      const isWithdrawn = !!car.withdrawn_at
+
+      // Retired filter: show ONLY withdrawn vehicles
+      if (statusFilter === 'withdrawn') return isWithdrawn
+
+      // All active filters: always exclude withdrawn vehicles
+      if (isWithdrawn) return false
+
       // 1. Status Filter isolates
-      const isRented = bookings.some(b => 
-        b.vehicle_id === car.id && 
-        (b.status === 'confirmed' || b.status === 'completed') && 
-        b.start_date <= todayStr && 
+      const isRented = bookings.some(b =>
+        b.vehicle_id === car.id &&
+        (b.status === 'confirmed' || b.status === 'completed') &&
+        b.start_date <= todayStr &&
         b.end_date >= todayStr
       )
 
@@ -593,10 +621,10 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       // 2. Query string search (plate, brand, model, active renter name)
       const q = searchQuery.toLowerCase().trim()
       if (q) {
-        const activeBooking = bookings.find(b => 
-          b.vehicle_id === car.id && 
-          (b.status === 'confirmed' || b.status === 'completed') && 
-          b.start_date <= todayStr && 
+        const activeBooking = bookings.find(b =>
+          b.vehicle_id === car.id &&
+          (b.status === 'confirmed' || b.status === 'completed') &&
+          b.start_date <= todayStr &&
           b.end_date >= todayStr
         )
         const activeRenter = activeBooking ? (activeBooking.client_name || activeBooking.clients?.full_name || '').toLowerCase() : ''
@@ -1101,6 +1129,14 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
             >
               ⚠️ Expiring Docs
             </button>
+            <button
+              type="button"
+              className={`capsule-btn ${statusFilter === 'withdrawn' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('withdrawn')}
+              style={statusFilter === 'withdrawn' ? { borderColor: 'rgba(148,163,184,0.6)', color: '#94A3B8', background: 'rgba(148,163,184,0.08)' } : {}}
+            >
+              🗃️ Retired
+            </button>
           </div>
         </div>
       </div>
@@ -1469,6 +1505,11 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
                       {/* COLUMN 3: Assurance (Statutory) */}
                       <td data-label="Assurance (Statutory)">
+                        {car.insurance_start_date && (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontFamily: 'monospace' }}>
+                            <span style={{ opacity: 0.6 }}>Start: </span>{car.insurance_start_date}
+                          </div>
+                        )}
                         {renderLegalDocCell(car, 'assurance')}
                       </td>
 
@@ -1505,12 +1546,30 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                           <button className="icon-btn" title="View History" onClick={() => router.push(`/dashboard/vehicles/${car.id}/history`)}>
                             <History size={16} />
                           </button>
-                          <button className="icon-btn" title="Edit Vehicle" onClick={() => openEditModal(car)}>
-                            <Edit2 size={16} />
-                          </button>
-                          <button className="icon-btn text-danger" title="Delete" onClick={() => handleDelete(car.id)}>
-                            <Trash2 size={16} />
-                          </button>
+                          {!car.withdrawn_at ? (
+                            <>
+                              <button className="icon-btn" title="Edit Vehicle" onClick={() => openEditModal(car)}>
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                className="icon-btn"
+                                title="Withdraw Vehicle"
+                                style={{ color: '#94A3B8' }}
+                                onClick={() => { setWithdrawModalVehicle(car); setWithdrawDate('') }}
+                              >
+                                <Archive size={16} />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="icon-btn"
+                              title="Restore Vehicle"
+                              style={{ color: '#34D399' }}
+                              onClick={() => setRestoreModalVehicle(car)}
+                            >
+                              <RotateCcw size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1712,18 +1771,24 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Assurance Expiry</label>
+                  <label>Insurance Start</label>
+                  <input type="date" name="insurance_start_date" className="form-input" />
+                </div>
+                <div className="form-group">
+                  <label>Insurance Expiry (Assurance)</label>
                   <input type="date" name="assurance_expiry" className="form-input" />
                 </div>
+              </div>
+
+              <div className="form-row">
                 <div className="form-group">
                   <label>Visite Technique Expiry</label>
                   <input type="date" name="visite_technique_expiry" className="form-input" />
                 </div>
-              </div>
-              
-              <div className="form-group">
-                <label>Laissez-Passer Expiry</label>
-                <input type="date" name="laissez_passer_expiry" className="form-input" />
+                <div className="form-group">
+                  <label>Laissez-Passer Expiry</label>
+                  <input type="date" name="laissez_passer_expiry" className="form-input" />
+                </div>
               </div>
 
               <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -1904,16 +1969,51 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 )}
               </div>
 
+              {/* Insurance dates in Edit form */}
+              <h4 style={{
+                color: 'var(--accent-gold)',
+                borderBottom: '1px solid rgba(255, 215, 0, 0.15)',
+                paddingBottom: '0.4rem',
+                marginTop: '1.25rem',
+                marginBottom: '1rem',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em'
+              }}>
+                Insurance Dates
+              </h4>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Insurance Start</label>
+                  <input
+                    type="date"
+                    name="insurance_start_date"
+                    defaultValue={editingVehicle.insurance_start_date || ''}
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Insurance Expiry (Assurance)</label>
+                  <input
+                    type="date"
+                    name="assurance_expiry_edit"
+                    defaultValue={editingVehicle.vehicle_legal_docs?.find((d: any) => d.doc_type === 'assurance')?.expiry_date || ''}
+                    className="form-input"
+                  />
+                </div>
+              </div>
+
               <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
-                <input 
-                  type="checkbox" 
-                  name="availability" 
-                  defaultChecked={editingVehicle.availability} 
-                  id="edit-avail" 
+                <input
+                  type="checkbox"
+                  name="availability"
+                  defaultChecked={editingVehicle.availability}
+                  id="edit-avail"
                 />
                 <label htmlFor="edit-avail" style={{ margin: 0 }}>Available for rent immediately</label>
               </div>
-              
+
               <div className="modal-footer">
                 <button type="button" className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setEditingVehicle(null); setEditNewFiles([]); }}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={loading}>
@@ -1926,6 +2026,132 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* WITHDRAW VEHICLE MODAL */}
+      {mounted && withdrawModalVehicle && createPortal(
+        <div className="modal-overlay">
+          <div className="modal-content glass-panel" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h2>Withdraw Vehicle</h2>
+              <button className="icon-btn" onClick={() => { setWithdrawModalVehicle(null); setWithdrawDate('') }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ padding: '0 1.5rem 0.5rem' }}>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                You are withdrawing{' '}
+                <strong style={{ color: '#E2E8F0' }}>
+                  {withdrawModalVehicle.brand} {withdrawModalVehicle.model}{withdrawModalVehicle.license_plate ? ` (${withdrawModalVehicle.license_plate})` : ''}
+                </strong>{' '}
+                from the active fleet. All historical data, bookings, and records will be preserved.
+              </p>
+              <div className="form-group">
+                <label>Withdrawal Date <span style={{ color: '#EF4444' }}>*</span></label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={withdrawDate}
+                  onChange={(e) => setWithdrawDate(e.target.value)}
+                  max={todayStr}
+                />
+                {!withdrawDate && (
+                  <span style={{ fontSize: '0.75rem', color: 'rgba(239,68,68,0.8)', marginTop: '0.25rem', display: 'block' }}>
+                    Please select the exact date this vehicle was withdrawn.
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setWithdrawModalVehicle(null); setWithdrawDate('') }}
+                disabled={isWithdrawing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleWithdrawConfirm}
+                disabled={!withdrawDate || isWithdrawing}
+                style={{
+                  background: withdrawDate ? 'rgba(148,163,184,0.15)' : 'rgba(148,163,184,0.05)',
+                  border: `1px solid ${withdrawDate ? 'rgba(148,163,184,0.5)' : 'rgba(148,163,184,0.15)'}`,
+                  color: withdrawDate ? '#94A3B8' : 'rgba(148,163,184,0.3)',
+                  padding: '0.55rem 1.25rem',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  cursor: withdrawDate && !isWithdrawing ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {isWithdrawing ? (
+                  <><span className="loading-spinner-xs"></span><span>Withdrawing...</span></>
+                ) : (
+                  <><Archive size={15} /><span>Confirm Withdrawal</span></>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* RESTORE VEHICLE MODAL */}
+      {mounted && restoreModalVehicle && createPortal(
+        <div className="modal-overlay">
+          <div className="modal-content glass-panel" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <h2>Restore Vehicle</h2>
+              <button className="icon-btn" onClick={() => setRestoreModalVehicle(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ padding: '0 1.5rem 0.5rem' }}>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                Restore{' '}
+                <strong style={{ color: '#E2E8F0' }}>
+                  {restoreModalVehicle.brand} {restoreModalVehicle.model}{restoreModalVehicle.license_plate ? ` (${restoreModalVehicle.license_plate})` : ''}
+                </strong>{' '}
+                back to the active fleet? It will reappear in all active filters and become available for new bookings.
+              </p>
+              {restoreModalVehicle.withdrawn_at && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', opacity: 0.7 }}>
+                  Withdrawn on: <span style={{ fontFamily: 'monospace' }}>{restoreModalVehicle.withdrawn_at}</span>
+                </p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setRestoreModalVehicle(null)}
+                disabled={isRestoring}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleRestoreConfirm}
+                disabled={isRestoring}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                {isRestoring ? (
+                  <><span className="loading-spinner-xs"></span><span>Restoring...</span></>
+                ) : (
+                  <><RotateCcw size={15} /><span>Confirm Restore</span></>
+                )}
+              </button>
+            </div>
           </div>
         </div>,
         document.body

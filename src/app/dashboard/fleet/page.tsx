@@ -9,7 +9,8 @@ export default async function FleetPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Fetch vehicles belonging to this owner with legal documents joined
+  // Fetch ALL vehicles (active + withdrawn) belonging to this owner.
+  // The FleetClient separates them via the withdrawn_at IS NULL / IS NOT NULL distinction.
   const { data: vehicles } = await supabase
     .from('vehicles')
     .select('*, vehicle_legal_docs(*)')

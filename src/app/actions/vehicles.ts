@@ -57,6 +57,8 @@ export async function addVehicle(formData: FormData) {
   const oil_change_due_km = next_vidange_km
   const brake_pad_state = next_pads_km && current_km && current_km >= next_pads_km ? 'critical' : 'good'
 
+  const insurance_start_date = (formData.get('insurance_start_date') as string) || null
+
   const { data, error } = await supabase
     .from('vehicles')
     .insert({
@@ -76,6 +78,7 @@ export async function addVehicle(formData: FormData) {
       next_pads_km,
       oil_change_due_km,
       brake_pad_state,
+      insurance_start_date,
     })
     .select('id')
     .single()
@@ -197,6 +200,8 @@ export async function updateVehicle(formData: FormData) {
 
   const finalImageUrls = [...keptImages, ...newImageUrls]
 
+  const insurance_start_date = (formData.get('insurance_start_date') as string) || null
+
   const { error } = await supabase
     .from('vehicles')
     .update({
@@ -208,12 +213,63 @@ export async function updateVehicle(formData: FormData) {
       images: finalImageUrls,
       license_plate: (formData.get('license_plate') as string) || null,
       color: (formData.get('color') as string) || null,
+      insurance_start_date,
     })
     .eq('id', id)
     .eq('owner_id', user.id)
 
   if (error) throw new Error(error.message)
+
+  // If the edit form provided an updated assurance (insurance) expiry date, sync it into vehicle_legal_docs
+  const assurance_expiry_edit = (formData.get('assurance_expiry_edit') as string) || null
+  if (assurance_expiry_edit) {
+    await supabase.from('vehicle_legal_docs').upsert({
+      owner_id: user.id,
+      vehicle_id: id,
+      doc_type: 'assurance',
+      expiry_date: assurance_expiry_edit,
+      notes: null,
+    }, { onConflict: 'vehicle_id,doc_type' })
+  }
+
   revalidatePath('/dashboard/fleet')
+}
+
+/**
+ * Soft-withdraw a vehicle: sets withdrawn_at to the provided date.
+ * The vehicle is hidden from the active fleet but ALL historical data
+ * (bookings, clients, expenses, maintenance, etc.) is preserved.
+ */
+export async function withdrawVehicle(vehicleId: string, withdrawnAt: string) {
+  const { supabase, user } = await getAuthedUser()
+
+  const { error } = await supabase
+    .from('vehicles')
+    .update({ withdrawn_at: withdrawnAt })
+    .eq('id', vehicleId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/fleet')
+  revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
+}
+
+/**
+ * Restore a withdrawn vehicle: clears withdrawn_at.
+ * The vehicle re-appears in the active fleet.
+ */
+export async function restoreVehicle(vehicleId: string) {
+  const { supabase, user } = await getAuthedUser()
+
+  const { error } = await supabase
+    .from('vehicles')
+    .update({ withdrawn_at: null })
+    .eq('id', vehicleId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/fleet')
+  revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
 }
 
 export async function deleteVehicle(id: string) {
