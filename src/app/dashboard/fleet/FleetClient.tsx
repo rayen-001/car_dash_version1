@@ -1220,6 +1220,25 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                                 {car.color}
                               </div>
                             )}
+                            {car.withdrawn_at && (
+                              <div style={{ 
+                                fontSize: '0.72rem', 
+                                color: '#f87171', 
+                                background: 'rgba(239, 68, 68, 0.08)', 
+                                border: '1px solid rgba(239, 68, 68, 0.25)', 
+                                padding: '2px 6px', 
+                                borderRadius: '4px', 
+                                width: 'fit-content', 
+                                marginTop: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontWeight: 500,
+                                textShadow: '0 0 6px rgba(239, 68, 68, 0.25)'
+                              }}>
+                                <span>🗃️ Retired: {car.withdrawn_at}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1506,8 +1525,8 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                       {/* COLUMN 3: Assurance (Statutory) */}
                       <td data-label="Assurance (Statutory)">
                         {car.insurance_start_date && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontFamily: 'monospace' }}>
-                            <span style={{ opacity: 0.6 }}>Start: </span>{car.insurance_start_date}
+                          <div style={{ fontSize: '0.78rem', color: 'rgba(255, 255, 255, 0.75)', marginBottom: '0.35rem', fontWeight: 500 }}>
+                            <span style={{ color: '#E5C17D', fontWeight: 600 }}>Start: </span>{car.insurance_start_date}
                           </div>
                         )}
                         {renderLegalDocCell(car, 'assurance')}

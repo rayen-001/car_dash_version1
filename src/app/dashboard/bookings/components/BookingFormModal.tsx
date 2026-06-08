@@ -803,12 +803,14 @@ export default function BookingFormModal({
                   <Car size={12} /> Vehicle
                 </label>
                 <SearchableCombobox
-                  options={vehicles.map(v => ({
-                    value: v.id,
-                    label: `${v.brand} ${v.model}`,
-                    sublabel: v.license_plate ? `🚘 ${v.license_plate} ${v.color ? `· ${v.color}` : ''}` : '',
-                    badge: `${v.price_per_day} DT/day`
-                  }))}
+                  options={vehicles
+                    .filter(v => !v.withdrawn_at || (editingBooking && editingBooking.vehicle_id === v.id))
+                    .map(v => ({
+                      value: v.id,
+                      label: `${v.brand} ${v.model}`,
+                      sublabel: v.license_plate ? `🚘 ${v.license_plate} ${v.color ? `· ${v.color}` : ''}` : '',
+                      badge: `${v.price_per_day} DT/day`
+                    }))}
                   value={vehicleId}
                   onChange={(val) => handleVehicleChange(val)}
                   placeholder="Select a vehicle..."

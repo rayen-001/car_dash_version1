@@ -16,6 +16,8 @@ export interface Vehicle {
   next_pads_km?: number
   current_km?: number
   created_at?: string
+  withdrawn_at?: string | null
+  insurance_start_date?: string | null
 }
 
 export interface Client {

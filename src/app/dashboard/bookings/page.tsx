@@ -34,7 +34,7 @@ export default async function BookingsPage() {
   // booking form can show oil-change / brake-pads warnings.
   const { data: vehicles } = await supabase
     .from('vehicles')
-    .select('id, brand, model, license_plate, price_per_day, current_km, next_vidange_km, last_vidange_km, next_pads_km')
+    .select('id, brand, model, license_plate, price_per_day, current_km, next_vidange_km, last_vidange_km, next_pads_km, withdrawn_at, color')
     .eq('owner_id', user.id)
 
   // Fetch clients belonging to this owner for dropdown selection.
