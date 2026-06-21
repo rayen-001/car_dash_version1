@@ -9,6 +9,7 @@ interface FleetPerformanceMatrixProps {
   expenses: any[]
   maintenance: any[]
   vehicleLegalDocs: any[]
+  selectedYear: number
 }
 
 export default function FleetPerformanceMatrix({
@@ -16,11 +17,12 @@ export default function FleetPerformanceMatrix({
   allBookings = [],
   expenses = [],
   maintenance = [],
-  vehicleLegalDocs = []
+  vehicleLegalDocs = [],
+  selectedYear
 }: FleetPerformanceMatrixProps) {
   const { t, lang } = useLanguage()
 
-  const currentYear = useMemo(() => new Date().getFullYear(), [])
+  const currentYear = selectedYear
   const currentYearPrefix = `${currentYear}-`
 
   const topAssets = useMemo(() => {

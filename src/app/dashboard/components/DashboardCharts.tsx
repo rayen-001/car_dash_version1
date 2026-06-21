@@ -17,12 +17,14 @@ import styles from '../dashboard.module.css'
 export default function DashboardCharts({
   allBookings = [],
   expenses = [],
-  maintenance = []
+  maintenance = [],
+  selectedYear
 }: {
   recentBookings?: any[],
   allBookings?: any[],
   expenses?: any[],
-  maintenance?: any[]
+  maintenance?: any[],
+  selectedYear: number
 }) {
   const [mounted, setMounted] = useState(false)
 
@@ -30,9 +32,8 @@ export default function DashboardCharts({
     setMounted(true)
   }, [])
 
-  // Resolve current calendar year dynamically so the chart never silently
-  // stops filtering after the year rolls over.
-  const currentYear = useMemo(() => new Date().getFullYear(), [])
+  // Resolve current calendar year dynamically based on user selection
+  const currentYear = selectedYear
   const currentYearPrefix = `${currentYear}-`
 
   // YTD P&L Data Aggregation
