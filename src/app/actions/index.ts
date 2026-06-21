@@ -16,6 +16,7 @@ export {
   renewVehicleDocument,
   archiveVehicle,
   unarchiveVehicle,
+  renewBulkInsurance,
 } from './vehicles'
 
 export {

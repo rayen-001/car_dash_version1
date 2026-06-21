@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Car, Plus, Edit2, X, Upload, Trash, ChevronLeft, ChevronRight, History, Archive, RotateCcw, Check } from 'lucide-react'
-import { addVehicle, updateVehicle, withdrawVehicle, restoreVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget, archiveVehicle, unarchiveVehicle } from '@/app/actions'
+import { addVehicle, updateVehicle, withdrawVehicle, restoreVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget, archiveVehicle, unarchiveVehicle, renewBulkInsurance } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { Badge } from '@/components/Badge'
@@ -92,6 +92,25 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   const [lightboxImages, setLightboxImages] = useState<string[] | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState(0)
 
+  // Bulk Insurance Modal States
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
+  const [bulkExpiryDate, setBulkExpiryDate] = useState('')
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkExpenseAmount, setBulkExpenseAmount] = useState('')
+  const [bulkSearchQuery, setBulkSearchQuery] = useState('')
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false)
+
+  const handleOpenBulkModal = () => {
+    const activeVehicles = initialVehicles.filter(car => !car.withdrawn_at && !car.archived_at)
+    setBulkSelectedIds(new Set(activeVehicles.map(car => car.id)))
+    const nextYearDate = new Date()
+    nextYearDate.setFullYear(nextYearDate.getFullYear() + 1)
+    setBulkExpiryDate(nextYearDate.toISOString().split('T')[0])
+    setBulkExpenseAmount('')
+    setBulkSearchQuery('')
+    setIsBulkModalOpen(true)
+  }
+
 
 
   // Add modal state
@@ -148,6 +167,43 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   useEffect(() => {
     return () => { editPreviewUrls.forEach(url => URL.revokeObjectURL(url)) }
   }, [editPreviewUrls])
+
+  const handleBulkSubmit = async () => {
+    if (bulkSelectedIds.size === 0) {
+      showToast(lang === 'fr' ? 'Veuillez sélectionner au moins un véhicule.' : 'Please select at least one vehicle.', 'error')
+      return
+    }
+    if (!bulkExpiryDate) {
+      showToast(lang === 'fr' ? 'Veuillez entrer une date d\'expiration valide.' : 'Please enter a valid expiry date.', 'error')
+      return
+    }
+
+    setIsBulkSubmitting(true)
+    try {
+      const expenseAmount = bulkExpenseAmount ? parseFloat(bulkExpenseAmount) : null
+      await renewBulkInsurance(
+        Array.from(bulkSelectedIds),
+        bulkExpiryDate,
+        expenseAmount
+      )
+      showToast(
+        lang === 'fr' 
+          ? `Assurance renouvelée pour ${bulkSelectedIds.size} véhicules avec succès !`
+          : `Insurance successfully renewed for ${bulkSelectedIds.size} vehicles!`, 
+        'success'
+      )
+      setIsBulkModalOpen(false)
+    } catch (error: any) {
+      showToast(
+        lang === 'fr' 
+          ? 'Erreur lors du renouvellement en masse : ' + error.message 
+          : 'Error performing bulk renewal: ' + error.message, 
+        'error'
+      )
+    } finally {
+      setIsBulkSubmitting(false)
+    }
+  }
 
   // Soft-withdraw a vehicle
   const handleWithdrawConfirm = async () => {
@@ -1094,10 +1150,16 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
             <h1 className='page-title'>My Fleet</h1>
             <p className='subtitle'>High-density Operations & Compliance Spreadsheet.</p>
           </div>
-          <button className="btn-primary" onClick={() => setIsAddModalOpen(true)}>
-            <Plus size={18} />
-            <span>Add Vehicle</span>
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }} className="no-print">
+            <button className="btn-secondary" onClick={handleOpenBulkModal} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(229,193,125,0.3)', color: 'var(--accent-gold)', background: 'rgba(229, 193, 125, 0.05)', fontSize: '0.85rem', padding: '0.5rem 1rem', borderRadius: '8px' }}>
+              <History size={16} />
+              <span>{lang === 'fr' ? "Renouvellement d'assurance en bloc" : "Bulk Insurance Renewal"}</span>
+            </button>
+            <button className="btn-primary" onClick={() => setIsAddModalOpen(true)}>
+              <Plus size={18} />
+              <span>Add Vehicle</span>
+            </button>
+          </div>
         </div>
 
         {/* Master Apex Operations Command Bar */}
@@ -2318,6 +2380,203 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                   <><span className="loading-spinner-xs"></span><span>{t('fleet.restoring')}</span></>
                 ) : (
                   <><RotateCcw size={15} /><span>{t('fleet.confirmRestore')}</span></>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* BULK INSURANCE RENEWAL MODAL */}
+      {mounted && isBulkModalOpen && createPortal(
+        <div className="modal-overlay" style={{ zIndex: 999 }}>
+          <div className="modal-content glass-panel" style={{ maxWidth: '580px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h2>{lang === 'fr' ? "Renouvellement d'assurance en bloc" : "Bulk Fleet Insurance Renewal"}</h2>
+              <button className="icon-btn" onClick={() => setIsBulkModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ padding: '0 1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Expiry Date Input */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {lang === 'fr' ? "Nouvelle date d'expiration" : "New Expiry Date"}
+                </label>
+                <input
+                  type="date"
+                  value={bulkExpiryDate}
+                  onChange={(e) => setBulkExpiryDate(e.target.value)}
+                  className="form-input"
+                  style={{ colorScheme: 'dark' }}
+                  required
+                />
+              </div>
+
+              {/* Expense Amount Input */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {lang === 'fr' ? "Coût total de l'assurance (DT) - Optionnel" : "Total Insurance Cost (TND) - Optional"}
+                </label>
+                <input
+                  type="number"
+                  placeholder={lang === 'fr' ? "Ex. 2500 (Laisser vide pour ne pas enregistrer de dépense)" : "e.g. 2500 (Leave blank for no expense logging)"}
+                  value={bulkExpenseAmount}
+                  onChange={(e) => setBulkExpenseAmount(e.target.value)}
+                  className="form-input"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              {/* Search Filter for Checklist */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {lang === 'fr' ? "Filtrer les véhicules" : "Filter Vehicles"}
+                </label>
+                <input
+                  type="text"
+                  placeholder={lang === 'fr' ? "Rechercher par plaque, marque ou modèle..." : "Search by plate, brand, or model..."}
+                  value={bulkSearchQuery}
+                  onChange={(e) => setBulkSearchQuery(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+
+              {/* Vehicle Checklist */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(229,193,125,0.15)', paddingBottom: '0.5rem', marginBottom: '0.25rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        initialVehicles.filter(car => !car.withdrawn_at && !car.archived_at).length > 0 &&
+                        initialVehicles.filter(car => !car.withdrawn_at && !car.archived_at).every(car => bulkSelectedIds.has(car.id))
+                      }
+                      onChange={(e) => {
+                        const activeCars = initialVehicles.filter(car => !car.withdrawn_at && !car.archived_at)
+                        if (e.target.checked) {
+                          setBulkSelectedIds(new Set(activeCars.map(car => car.id)))
+                        } else {
+                          setBulkSelectedIds(new Set())
+                        }
+                      }}
+                      style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-gold)' }}
+                    />
+                    <span>{lang === 'fr' ? "Tout sélectionner" : "Select All"}</span>
+                  </label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {bulkSelectedIds.size} / {initialVehicles.filter(car => !car.withdrawn_at && !car.archived_at).length} {lang === 'fr' ? "Sélectionné(s)" : "Selected"}
+                  </span>
+                </div>
+
+                {/* Scrollable List container */}
+                <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', padding: '0.5rem' }}>
+                  {(() => {
+                    const activeVehicles = initialVehicles.filter(car => !car.withdrawn_at && !car.archived_at)
+                    const q = bulkSearchQuery.toLowerCase().trim()
+                    
+                    const filteredList = activeVehicles.filter(car => {
+                      if (!q) return true
+                      return (
+                        (car.brand || '').toLowerCase().includes(q) ||
+                        (car.model || '').toLowerCase().includes(q) ||
+                        (car.license_plate || '').toLowerCase().includes(q)
+                      )
+                    })
+
+                    if (filteredList.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                          {lang === 'fr' ? "Aucun véhicule actif ne correspond." : "No matching active vehicles."}
+                        </div>
+                      )
+                    }
+
+                    return filteredList.map(car => {
+                      const isChecked = bulkSelectedIds.has(car.id)
+                      const currentAssurance = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'assurance')
+                      const expiryStr = currentAssurance?.expiry_date 
+                        ? new Date(currentAssurance.expiry_date).toLocaleDateString('fr-FR')
+                        : (lang === 'fr' ? 'Aucune' : 'None')
+
+                      return (
+                        <label
+                          key={car.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '0.4rem 0.5rem',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            transition: 'background 0.2s',
+                          }}
+                          className="hover-bg-glass"
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                const newIds = new Set(bulkSelectedIds)
+                                if (isChecked) {
+                                  newIds.delete(car.id)
+                                } else {
+                                  newIds.add(car.id)
+                                }
+                                setBulkSelectedIds(newIds)
+                              }}
+                              style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: 'var(--accent-gold)' }}
+                            />
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
+                                {car.brand} {car.model}
+                              </span>
+                              {car.license_plate && (
+                                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontFamily: 'monospace' }}>
+                                  {car.license_plate}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: 'rgba(229,193,125,0.7)', background: 'rgba(229,193,125,0.06)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+                            {lang === 'fr' ? `Exp : ${expiryStr}` : `Exp: ${expiryStr}`}
+                          </span>
+                        </label>
+                      )
+                    })
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid rgba(229,193,125,0.1)' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setIsBulkModalOpen(false)}
+                disabled={isBulkSubmitting}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkSubmit}
+                disabled={isBulkSubmitting || bulkSelectedIds.size === 0 || !bulkExpiryDate}
+                className="btn-primary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                {isBulkSubmitting ? (
+                  <><span className="loading-spinner-xs"></span><span>{lang === 'fr' ? 'Enregistrement...' : 'Saving...'}</span></>
+                ) : (
+                  <><Check size={16} /><span>{lang === 'fr' ? `Renouveler (${bulkSelectedIds.size})` : `Renew (${bulkSelectedIds.size})`}</span></>
                 )}
               </button>
             </div>

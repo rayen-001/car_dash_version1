@@ -649,3 +649,54 @@ export async function unarchiveVehicle(vehicleId: string) {
   revalidatePath('/dashboard/fleet')
 }
 
+export async function renewBulkInsurance(
+  vehicleIds: string[],
+  expiryDate: string,
+  totalExpenseAmount: number | null
+) {
+  const { supabase, user } = await getAuthedUser()
+  if (vehicleIds.length === 0) return
+
+  // 1. Bulk upsert insurance legal documents
+  const docsToUpsert = vehicleIds.map(vid => ({
+    owner_id: user.id,
+    vehicle_id: vid,
+    doc_type: 'assurance',
+    expiry_date: expiryDate,
+    notes: `Bulk renewed on ${new Date().toLocaleDateString()}`
+  }))
+
+  const { error: upsertError } = await supabase
+    .from('vehicle_legal_docs')
+    .upsert(docsToUpsert, { onConflict: 'vehicle_id,doc_type' })
+
+  if (upsertError) throw new Error(upsertError.message)
+
+  // 2. Log single aggregate expense if amount is provided
+  if (totalExpenseAmount !== null && totalExpenseAmount > 0) {
+    const { data: vehicles } = await supabase
+      .from('vehicles')
+      .select('license_plate')
+      .in('id', vehicleIds)
+      .eq('owner_id', user.id)
+
+    const platesStr = vehicles?.map(v => v.license_plate).filter(Boolean).join(', ') || ''
+    const description = `Bulk Insurance Renewal for ${vehicleIds.length} vehicles (${platesStr})`
+
+    const { error: expError } = await supabase
+      .from('expenses')
+      .insert({
+        owner_id: user.id,
+        amount: totalExpenseAmount,
+        category: 'insurance',
+        description,
+      })
+
+    if (expError) console.error('Error logging bulk insurance expense:', expError.message)
+  }
+
+  revalidatePath('/dashboard/fleet')
+  revalidatePath('/dashboard/expenses')
+  revalidatePath('/dashboard')
+}
+
