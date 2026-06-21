@@ -173,7 +173,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
                   required
-                  placeholder="e.g. Royal Luxury Car Rental"
+                  placeholder="e.g. Yasmin Car Rental"
                   className={styles['form-input']}
                 />
               </div>
@@ -272,7 +272,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="e.g. +1 (555) 019-2834"
+                    placeholder="e.g. +216 71 123 456"
                     className={styles['form-input']}
                   />
                 </div>
@@ -302,7 +302,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. 1024 Prestige Boulevard, Suite 500, NY"
+                  placeholder="e.g. Avenue Habib Bourguiba, Tunis 1000"
                   className={styles['form-input']}
                 />
               </div>
@@ -473,7 +473,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="text"
                     value={siegeSocialFr1}
                     onChange={(e) => setSiegeSocialFr1(e.target.value)}
-                    placeholder="e.g. Blvd de la république - Lamta 5099"
+                    placeholder="e.g. Avenue Habib Bourguiba - Tunis 1000"
                     className={styles['form-input']}
                   />
                 </div>
@@ -485,7 +485,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="text"
                     value={siegeSocialFr2}
                     onChange={(e) => setSiegeSocialFr2(e.target.value)}
-                    placeholder="e.g. Blvd de la république - Sayada 5035"
+                    placeholder="e.g. Route de la plage - Sousse 4000"
                     className={styles['form-input']}
                   />
                 </div>
@@ -500,7 +500,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="text"
                     value={siegeSocialAr1}
                     onChange={(e) => setSiegeSocialAr1(e.target.value)}
-                    placeholder="e.g. شارع الجمهورية - لمطة 5099"
+                    placeholder="e.g. شارع الحبيب بورقيبة - تونس 1000"
                     dir="rtl"
                     lang="ar"
                     className={styles['form-input']}
@@ -515,7 +515,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="text"
                     value={siegeSocialAr2}
                     onChange={(e) => setSiegeSocialAr2(e.target.value)}
-                    placeholder="e.g. شارع الجمهورية - صيادة 5035"
+                    placeholder="e.g. طريق الشاطئ - سوسة 4000"
                     dir="rtl"
                     lang="ar"
                     className={styles['form-input']}
@@ -533,7 +533,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="tel"
                     value={phoneSecondary}
                     onChange={(e) => setPhoneSecondary(e.target.value)}
-                    placeholder="e.g. 53 366 028"
+                    placeholder="e.g. 98 765 432"
                     className={styles['form-input']}
                   />
                 </div>
