@@ -355,7 +355,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                     type="text"
                     value={ownerFullName}
                     onChange={(e) => setOwnerFullName(e.target.value)}
-                    placeholder="e.g. Rayen Belhadj"
+                    placeholder="e.g. Foulen Ben Foulen"
                     className={styles['form-input']}
                   />
                 </div>
@@ -456,7 +456,7 @@ export default function SettingsClient({ initialSettings }: SettingsClientProps)
                   type="text"
                   value={businessNameAr}
                   onChange={(e) => setBusinessNameAr(e.target.value)}
-                  placeholder="e.g. شركة إلين لكراء السيارات"
+                  placeholder="e.g. شركة الياسمين لكراء السيارات"
                   dir="rtl"
                   lang="ar"
                   className={styles['form-input']}
