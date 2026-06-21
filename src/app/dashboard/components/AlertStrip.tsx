@@ -9,8 +9,8 @@ interface AlertStripProps {
   allBookings: any[]
   vehicleLegalDocs?: any[]
   vehicles?: any[]
-  activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null
-  setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null) => void
+  activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null
+  setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null) => void
 }
 
 export default function AlertStrip({
@@ -165,16 +165,28 @@ export default function AlertStrip({
       })
     }
 
+    // 6. Latest 250 Bookings
+    activeAlerts.push({
+      id: 'latest-250',
+      type: 'latest-info',
+      icon: <Clock size={18} />,
+      title: lang === 'fr' ? 'Dernières 250 Réservations' : 'Latest 250 Bookings',
+      message: lang === 'fr'
+        ? 'Affiche les 250 réservations les plus récemment ajoutées.'
+        : 'Shows the 250 most recently added bookings.'
+    })
+
     return activeAlerts
   }, [allBookings, vehicleLegalDocs, vehicles, lang])
 
-  const filterMap: Record<string, 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches'> = {
+  const filterMap: Record<string, 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250'> = {
     'overdue': 'overdue',
     'returns-today': 'returns-today',
     'pickups-today': 'pickups-today',
     'pending-payments': 'balances',
     'expiring-docs': 'expiring',
-    'tranches': 'tranches'
+    'tranches': 'tranches',
+    'latest-250': 'latest-250'
   }
 
   if (alerts.length === 0) return null
@@ -206,6 +218,10 @@ export default function AlertStrip({
           bgColor = 'rgba(16, 185, 129, 0.1)'
           borderColor = 'rgba(16, 185, 129, 0.3)'
           iconColor = '#10b981'
+        } else if (alert.type === 'latest-info') {
+          bgColor = 'rgba(229, 193, 125, 0.08)'
+          borderColor = 'rgba(229, 193, 125, 0.25)'
+          iconColor = 'var(--accent-gold)'
         }
 
         const filterKey = filterMap[alert.id]

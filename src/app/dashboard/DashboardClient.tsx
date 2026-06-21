@@ -43,7 +43,7 @@ export default function DashboardClient({
 }: DashboardClientProps) {
   const { t, lang } = useLanguage()
   // 1. Shared state for interactive operational alert drilling
-  const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null>(null)
+  const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null>(null)
 
   // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
   const localToday = new Date()

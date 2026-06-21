@@ -37,6 +37,7 @@ interface OmniBooking {
   vehicle_id: string
   start_date: string
   end_date: string
+  created_at?: string
   status?: string
   client_name?: string
   total_amount?: number
@@ -110,8 +111,8 @@ interface OmniBooking {
 
 interface GlobalCommandSearchProps {
   allBookings: OmniBooking[]
-  activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null
-  setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null) => void
+  activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null
+  setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null) => void
   vehicleLegalDocs?: any[]
   vehicles?: any[]
 }
@@ -425,6 +426,13 @@ export default function GlobalCommandSearch({
         filtered = filtered.filter(b => b.vehicle_id && expiringVehicleIds.has(b.vehicle_id))
       } else if (activeAlertFilter === 'tranches') {
         filtered = filtered.filter(b => b.installments && b.installments.length > 0)
+      } else if (activeAlertFilter === 'latest-250') {
+        const sortedAll = [...allBookings].sort((a, b) => {
+          const ca = a.created_at || ''
+          const cb = b.created_at || ''
+          return cb.localeCompare(ca)
+        })
+        filtered = sortedAll.slice(0, 250)
       }
     }
 
@@ -554,6 +562,17 @@ export default function GlobalCommandSearch({
       })
     }
 
+    if (activeAlertFilter === 'latest-250') {
+      return [...matched].sort((a, b) => {
+        const ca = a.created_at || ''
+        const cb = b.created_at || ''
+        if (ca !== cb) return cb.localeCompare(ca)
+        const da = a.start_date || ''
+        const db = b.start_date || ''
+        return db.localeCompare(da)
+      })
+    }
+
     return [...matched].sort((a, b) => {
       const da = a.start_date || ''
       const db = b.start_date || ''
@@ -599,7 +618,14 @@ export default function GlobalCommandSearch({
     }
     if (results.length > 0) return null
     if (activeAlertFilter) {
-      const name = activeAlertFilter === 'overdue' ? 'Overdue Returns' : activeAlertFilter === 'balances' ? 'Pending Balances' : activeAlertFilter === 'returns-today' ? 'Returns Today' : activeAlertFilter === 'pickups-today' ? 'Pickups Today' : activeAlertFilter === 'tranches' ? 'Scheduled Tranches' : 'Expiring Vehicle Documents'
+      const name =
+        activeAlertFilter === 'overdue' ? 'Overdue Returns' :
+        activeAlertFilter === 'balances' ? 'Pending Balances' :
+        activeAlertFilter === 'returns-today' ? 'Returns Today' :
+        activeAlertFilter === 'pickups-today' ? 'Pickups Today' :
+        activeAlertFilter === 'tranches' ? 'Scheduled Tranches' :
+        activeAlertFilter === 'latest-250' ? (lang === 'fr' ? 'Dernières 250 Réservations' : 'Latest 250 Bookings') :
+        'Expiring Vehicle Documents'
       if (textQuery.trim()) {
         return `No bookings matching "${textQuery}" under the "${name}" alert filter.`
       }
@@ -837,6 +863,7 @@ export default function GlobalCommandSearch({
                 {activeAlertFilter === 'pickups-today' && 'Pickups Today'}
                 {activeAlertFilter === 'expiring' && 'Expiring Vehicle Documents'}
                 {activeAlertFilter === 'tranches' && 'Scheduled Tranches'}
+                {activeAlertFilter === 'latest-250' && (lang === 'fr' ? 'Dernières 250 Réservations' : 'Latest 250 Bookings')}
               </strong>
             </span>
           </div>
