@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { fetchAllBookings } from '@/app/actions/_shared'
 import FleetClient from './FleetClient'
 
 export default async function FleetPage() {
@@ -18,10 +19,7 @@ export default async function FleetPage() {
     .order('created_at', { ascending: false })
 
   // Fetch bookings for owner to calculate per-vehicle revenue and metrics
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('owner_id', user.id)
+  const bookings = await fetchAllBookings(supabase, user.id, '*')
 
   const { data: expenses } = await supabase
     .from('expenses')

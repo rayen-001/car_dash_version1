@@ -18,6 +18,7 @@ export interface Vehicle {
   created_at?: string
   withdrawn_at?: string | null
   insurance_start_date?: string | null
+  archived_at?: string | null
 }
 
 export interface Client {

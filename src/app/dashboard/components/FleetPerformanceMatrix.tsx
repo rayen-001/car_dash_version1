@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import styles from '../dashboard.module.css'
 import { AlertCircle, AlertTriangle, ArrowRight, ShieldAlert } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n'
 
 interface FleetPerformanceMatrixProps {
   vehicles: any[]
@@ -17,6 +18,7 @@ export default function FleetPerformanceMatrix({
   maintenance = [],
   vehicleLegalDocs = []
 }: FleetPerformanceMatrixProps) {
+  const { t, lang } = useLanguage()
 
   const currentYear = useMemo(() => new Date().getFullYear(), [])
   const currentYearPrefix = `${currentYear}-`
@@ -96,8 +98,12 @@ export default function FleetPerformanceMatrix({
         alerts.push({
           id: `overdue-${b.id}`,
           type: 'overdue',
-          title: `Overdue Return: ${b.vehicles?.brand} ${b.vehicles?.model}`,
-          subtitle: `Client ${clientInitials} - Expected ${b.end_date}`,
+          title: lang === 'fr' 
+            ? `Retour en Retard : ${b.vehicles?.brand} ${b.vehicles?.model}`
+            : `Overdue Return: ${b.vehicles?.brand} ${b.vehicles?.model}`,
+          subtitle: lang === 'fr'
+            ? `Client ${clientInitials} - Prévu le ${b.end_date}`
+            : `Client ${clientInitials} - Expected ${b.end_date}`,
           urgency: 3
         })
       }
@@ -116,24 +122,26 @@ export default function FleetPerformanceMatrix({
           alerts.push({
             id: `doc-crit-${doc.id}`,
             type: 'doc_critical',
-            title: `Critical: ${doc.doc_type} Expiring`,
-            subtitle: `${vName} - In ${diffDays} day(s)`,
+            title: lang === 'fr' ? `Critique : Expiration ${doc.doc_type}` : `Critical: ${doc.doc_type} Expiring`,
+            subtitle: lang === 'fr' ? `${vName} - Dans ${diffDays} jour(s)` : `${vName} - In ${diffDays} day(s)`,
             urgency: 2
           })
         } else if (diffDays <= 30 && diffDays > 7) {
           alerts.push({
             id: `doc-warn-${doc.id}`,
             type: 'doc_warning',
-            title: `Warning: ${doc.doc_type} Expiring`,
-            subtitle: `${vName} - In ${diffDays} days`,
+            title: lang === 'fr' ? `Attention : Expiration ${doc.doc_type}` : `Warning: ${doc.doc_type} Expiring`,
+            subtitle: lang === 'fr' ? `${vName} - Dans ${diffDays} jours` : `${vName} - In ${diffDays} days`,
             urgency: 1
           })
         } else if (diffDays < 0) {
            alerts.push({
             id: `doc-exp-${doc.id}`,
             type: 'doc_critical',
-            title: `EXPIRED: ${doc.doc_type}`,
-            subtitle: `${vName} - Expired ${Math.abs(diffDays)} days ago`,
+            title: lang === 'fr' ? `EXPIRÉ : ${doc.doc_type}` : `EXPIRED: ${doc.doc_type}`,
+            subtitle: lang === 'fr'
+              ? `${vName} - Expiré il y a ${Math.abs(diffDays)} jours`
+              : `${vName} - Expired ${Math.abs(diffDays)} days ago`,
             urgency: 3
           })
         }
@@ -141,7 +149,7 @@ export default function FleetPerformanceMatrix({
     })
 
     return alerts.sort((a, b) => b.urgency - a.urgency).slice(0, 5)
-  }, [allBookings, vehicleLegalDocs, vehicles])
+  }, [allBookings, vehicleLegalDocs, vehicles, lang])
 
   return (
     <div className={styles['main-grid']}>
@@ -149,9 +157,9 @@ export default function FleetPerformanceMatrix({
       <div className={`${styles['recent-activity']} glass-panel`} style={{ padding: '1.5rem' }}>
         <div className={styles['section-header']} style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <h3>Top 3 High-Yield Assets</h3>
+            <h3>{t('dashboard.topAssets')}</h3>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              {currentYear} Net Profit Performers
+              {currentYear} {t('dashboard.netProfitPerformers')}
             </span>
           </div>
         </div>
@@ -201,7 +209,12 @@ export default function FleetPerformanceMatrix({
             )
           })}
           {topAssets.length === 0 && (
-            <div className="text-center py-4 text-muted">No {currentYear} performance data available yet.</div>
+            <div className="text-center py-4 text-muted">
+              {lang === 'fr' 
+                ? `Aucune donnée de performance disponible pour ${currentYear}.`
+                : `No ${currentYear} performance data available yet.`
+              }
+            </div>
           )}
         </div>
       </div>
@@ -211,10 +224,10 @@ export default function FleetPerformanceMatrix({
         <div className={styles['section-header']} style={{ marginBottom: '1.5rem' }}>
            <div style={{ display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ShieldAlert size={18} style={{ color: '#EF4444' }} /> Immediate Interventions
+              <ShieldAlert size={18} style={{ color: '#EF4444' }} /> {t('dashboard.immediateInterventions')}
             </h3>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              Prioritized Emergency Row
+              {t('dashboard.prioritizedEmergency')}
             </span>
           </div>
         </div>
@@ -255,7 +268,7 @@ export default function FleetPerformanceMatrix({
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ShieldAlert size={16} style={{ color: '#10B981' }} />
               </div>
-              <span>No pending emergencies.</span>
+              <span>{t('dashboard.noPendingEmergencies')}</span>
             </div>
           )}
         </div>

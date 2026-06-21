@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, X, Wrench, Calendar, User, DollarSign } from 'lucide-react'
+import { Search, X, Wrench, Calendar, User } from 'lucide-react'
 import styles from '../history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface MaintenanceLog {
   id: string
@@ -21,6 +22,7 @@ interface MaintenanceLogsTabProps {
 
 export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const { lang } = useLanguage()
 
   // In-memory search filtering
   const filteredLogs = useMemo(() => {
@@ -39,7 +41,7 @@ export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabPr
 
   // Formatting date
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', {
       day: 'numeric',
       month: 'short',
       year: 'numeric'
@@ -48,7 +50,16 @@ export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabPr
 
   // Format type labels
   const formatType = (type?: string) => {
-    if (!type) return 'General Service'
+    if (!type) return lang === 'fr' ? 'Service Général' : 'General Service'
+    
+    // Check for common tags and localize them if in French
+    if (lang === 'fr') {
+      const lower = type.toLowerCase()
+      if (lower === 'oil_change' || lower === 'vidange') return 'Vidange Huile'
+      if (lower === 'brake_pads' || lower === 'plaquettes') return 'Plaquettes de Frein'
+      if (lower === 'tire_change' || lower === 'pneus') return 'Changement Pneus'
+    }
+
     return type
       .split('_')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -63,7 +74,7 @@ export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabPr
         <input
           type="text"
           className={styles['nested-search-input']}
-          placeholder="Filter logs by service details, mechanic name, notes, or category..."
+          placeholder={lang === 'fr' ? "Filtrer les journaux par détails de service, nom du mécanicien, catégorie..." : "Filter logs by service details, mechanic name, notes, or category..."}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -89,7 +100,7 @@ export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabPr
                     {formatType(log.service_type)}
                   </span>
                   <h4 className={styles['maint-description']} style={{ marginTop: '0.4rem' }}>
-                    {log.description || 'Routine Maintenance'}
+                    {log.description || (lang === 'fr' ? 'Entretien de Routine' : 'Routine Maintenance')}
                   </h4>
                 </div>
                 <div className={styles['maint-cost']}>
@@ -100,27 +111,27 @@ export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabPr
               <div className={styles['maint-meta-row']}>
                 <div className={styles['maint-meta-item']}>
                   <Calendar size={12} />
-                  <span>Service Date: <strong>{formatDate(log.service_date)}</strong></span>
+                  <span>{lang === 'fr' ? 'Date du service :' : 'Service Date:'} <strong>{formatDate(log.service_date)}</strong></span>
                 </div>
                 
                 {log.km_at_service && (
                   <div className={styles['maint-meta-item']}>
                     <Wrench size={12} />
-                    <span>Odometer: <strong>{log.km_at_service.toLocaleString()} KM</strong></span>
+                    <span>{lang === 'fr' ? 'Kilométrage :' : 'Odometer:'} <strong>{log.km_at_service.toLocaleString()} KM</strong></span>
                   </div>
                 )}
 
                 {log.mechanic_name && (
                   <div className={styles['maint-meta-item']}>
                     <User size={12} />
-                    <span>Mechanic: <strong>{log.mechanic_name}</strong></span>
+                    <span>{lang === 'fr' ? 'Mécanicien :' : 'Mechanic:'} <strong>{log.mechanic_name}</strong></span>
                   </div>
                 )}
               </div>
 
               {log.mechanic_notes && (
                 <div className={styles['maint-notes']}>
-                  <strong>Mechanic notes:</strong> {log.mechanic_notes}
+                  <strong>{lang === 'fr' ? 'Notes du mécanicien :' : 'Mechanic notes:'}</strong> {log.mechanic_notes}
                 </div>
               )}
             </div>
@@ -128,7 +139,9 @@ export default function MaintenanceLogsTab({ maintenance }: MaintenanceLogsTabPr
         ) : (
           <div className={styles['empty-state']}>
             <Wrench className={styles['empty-state-icon']} />
-            <p>No maintenance logs found matching your search.</p>
+            <p>
+              {lang === 'fr' ? 'Aucun journal d\'entretien trouvé correspondant à votre recherche.' : 'No maintenance logs found matching your search.'}
+            </p>
           </div>
         )}
       </div>

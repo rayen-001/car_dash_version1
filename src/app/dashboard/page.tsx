@@ -1,48 +1,26 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { fetchAllBookings } from '@/app/actions/_shared'
 import DashboardClient from './DashboardClient'
+
+export const dynamic = 'force-dynamic'
 
 export default async function OwnerDashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Parallel fan-out: all 5 selects are independent. Each .eq('owner_id', user.id)
-  // preserves the multi-tenant isolation guarantee on every individual query.
-  const [vehiclesRes, vehicleLegalDocsRes, bookingsRes, expensesRes, maintenanceRes] = await Promise.all([
+  // Parallel fan-out: all independent queries.
+  const [vehiclesRes, vehicleLegalDocsRes, expensesRes, maintenanceRes] = await Promise.all([
     supabase
       .from('vehicles')
       .select('*')
-      .eq('owner_id', user.id),
+      .eq('owner_id', user.id)
+      .is('withdrawn_at', null),
     supabase
       .from('vehicle_legal_docs')
       .select('*')
       .eq('owner_id', user.id),
-    supabase
-      .from('bookings')
-      .select(`
-        *,
-        vehicles(id, brand, model, license_plate, price_per_day),
-        primary_client:clients!client_id(
-          id,
-          full_name, phone, license_number, cin, address,
-          trust_score,
-          date_naissance, cin_delivre_le,
-          permis_numero, permis_delivre_le
-        ),
-        secondary_client:clients!secondary_client_id(
-          id,
-          full_name, phone, license_number, cin, address,
-          trust_score,
-          date_naissance, cin_delivre_le,
-          permis_numero, permis_delivre_le
-        ),
-        installments:booking_installments(
-          id, amount, due_date, status, paid_date
-        )
-      `)
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: false }),
     supabase
       .from('expenses')
       .select('id, amount, category, description, created_at, client_id, vehicle_id')
@@ -53,15 +31,45 @@ export default async function OwnerDashboardPage() {
       .eq('owner_id', user.id),
   ])
 
-  const vehicles = vehiclesRes.data
-  const vehicleLegalDocs = vehicleLegalDocsRes.data
-  const bookings = bookingsRes.data
-  const expenses = expensesRes.data
-  const maintenance = maintenanceRes.data
+  // Fetch all bookings (handling Postgrest 1000 limit)
+  const bookings = await fetchAllBookings(
+    supabase,
+    user.id,
+    `
+      *,
+      vehicles(id, brand, model, license_plate, price_per_day),
+      primary_client:clients!client_id(
+        id,
+        full_name, phone, license_number, cin, address,
+        trust_score,
+        date_naissance, cin_delivre_le,
+        permis_numero, permis_delivre_le
+      ),
+      secondary_client:clients!secondary_client_id(
+        id,
+        full_name, phone, license_number, cin, address,
+        trust_score,
+        date_naissance, cin_delivre_le,
+        permis_numero, permis_delivre_le
+      ),
+      installments:booking_installments(
+        id, amount, due_date, status, paid_date
+      )
+    `
+  )
 
+  // vehiclesRes already filtered to withdrawn_at IS NULL — these are all active vehicles
+  const activeVehicles = vehiclesRes.data || []
+  const vehicleLegalDocs = vehicleLegalDocsRes.data || []
+  const expenses = expensesRes.data || []
+  const maintenance = maintenanceRes.data || []
 
+  const activeVehicleIds = new Set(activeVehicles.map((v: any) => v.id))
 
-  const fleetSize = vehicles?.length || 0
+  // Filter legal documents to only belong to active vehicles for active warnings
+  const activeVehicleLegalDocs = vehicleLegalDocs.filter((doc: any) => activeVehicleIds.has(doc.vehicle_id))
+
+  const fleetSize = activeVehicles.length
 
   let revenueYTD = 0
   let expensesYTD = 0
@@ -122,13 +130,13 @@ export default async function OwnerDashboardPage() {
         }
       }
 
-      // Active = currently within the rental date window AND status is confirmed.
-      if (isConfirmed && booking.start_date <= today && booking.end_date >= today) {
+      // Active = currently within the rental date window AND status is confirmed AND vehicle is active.
+      if (isConfirmed && booking.start_date <= today && booking.end_date >= today && activeVehicleIds.has(booking.vehicle_id)) {
         activeRentals++
       }
 
-      // Risk signal: Overdue return (confirmed status but end_date < today)
-      if (isConfirmed && booking.end_date < today) {
+      // Risk signal: Overdue return (confirmed status but end_date < today AND vehicle is active)
+      if (isConfirmed && booking.end_date < today && activeVehicleIds.has(booking.vehicle_id)) {
         riskSignalsCount++
       }
     })
@@ -157,8 +165,8 @@ export default async function OwnerDashboardPage() {
     })
   }
 
-  if (vehicleLegalDocs) {
-    vehicleLegalDocs.forEach((doc: any) => {
+  if (activeVehicleLegalDocs) {
+    activeVehicleLegalDocs.forEach((doc: any) => {
       if (doc.expiry_date) {
         const diffTime = new Date(doc.expiry_date).getTime() - new Date(today).getTime()
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
@@ -187,11 +195,11 @@ export default async function OwnerDashboardPage() {
         targetYear
       }}
       recentBookings={recentBookings}
-      vehicles={vehicles || []}
-      allBookings={bookings || []}
-      vehicleLegalDocs={vehicleLegalDocs || []}
-      expenses={expenses || []}
-      maintenance={maintenance || []}
+      vehicles={activeVehicles}
+      allBookings={bookings}
+      vehicleLegalDocs={activeVehicleLegalDocs}
+      expenses={expenses}
+      maintenance={maintenance}
     />
   )
 }

@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { AlertTriangle, Clock, CreditCard, FileText, Calendar, CarFront } from 'lucide-react'
 import styles from '../dashboard.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface AlertStripProps {
   allBookings: any[]
@@ -19,6 +20,8 @@ export default function AlertStrip({
   activeAlertFilter,
   setActiveAlertFilter
 }: AlertStripProps) {
+  const { lang } = useLanguage()
+
   const alerts = useMemo(() => {
     const activeAlerts = []
     const localToday = new Date()
@@ -39,8 +42,10 @@ export default function AlertStrip({
         id: 'overdue',
         type: 'danger',
         icon: <AlertTriangle size={18} />,
-        title: 'Overdue Returns',
-        message: `${overdueBookings.length} vehicle(s) are overdue for return.`
+        title: lang === 'fr' ? 'Retours en Retard' : 'Overdue Returns',
+        message: lang === 'fr'
+          ? `${overdueBookings.length} véhicule(s) en retard de restitution.`
+          : `${overdueBookings.length} vehicle(s) are overdue for return.`
       })
     }
 
@@ -54,11 +59,13 @@ export default function AlertStrip({
       id: 'returns-today',
       type: 'info',
       icon: <Clock size={18} />,
-      title: 'Returns Today',
-      message: `${returnsToday.length} vehicle(s) arriving back today.`
+      title: lang === 'fr' ? "Retours Aujourd'hui" : 'Returns Today',
+      message: lang === 'fr'
+        ? `${returnsToday.length} véhicule(s) de retour aujourd'hui.`
+        : `${returnsToday.length} vehicle(s) arriving back today.`
     })
 
-    // 2.5 Pickups Today (Cars Out Today — krehib li bich yhizhom il client)
+    // 2.5 Pickups Today (Cars Out Today)
     const pickupsToday = allBookings.filter(b => {
       if (b.status === 'cancelled') return false
       return b.start_date === todayStr
@@ -68,8 +75,10 @@ export default function AlertStrip({
       id: 'pickups-today',
       type: 'pickups',
       icon: <CarFront size={18} />,
-      title: 'Pickups Today',
-      message: `${pickupsToday.length} vehicle(s) going out today.`
+      title: lang === 'fr' ? "Départs Aujourd'hui" : 'Pickups Today',
+      message: lang === 'fr'
+        ? `${pickupsToday.length} véhicule(s) à récupérer aujourd'hui.`
+        : `${pickupsToday.length} vehicle(s) going out today.`
     })
 
     // 3. Pending Payments / Reste > 0
@@ -97,8 +106,10 @@ export default function AlertStrip({
         id: 'pending-payments',
         type: 'warning',
         icon: <CreditCard size={18} />,
-        title: 'Pending Balances',
-        message: `${pendingPayments.length} booking(s) owe a total of ${totalReste.toFixed(2)} DT.`
+        title: lang === 'fr' ? 'Créances en Attente' : 'Pending Balances',
+        message: lang === 'fr'
+          ? `${pendingPayments.length} réservation(s) avec un reste dû de ${totalReste.toFixed(2)} DT.`
+          : `${pendingPayments.length} booking(s) owe a total of ${totalReste.toFixed(2)} DT.`
       })
     }
 
@@ -129,8 +140,10 @@ export default function AlertStrip({
         id: 'expiring-docs',
         type: 'warning-doc',
         icon: <FileText size={18} />,
-        title: 'Expiring Docs & Maintenance',
-        message: `${totalExpiring} item(s) requiring immediate attention (Docs/Mech).`
+        title: lang === 'fr' ? 'Alertes Documents & Entretien' : 'Expiring Docs & Maintenance',
+        message: lang === 'fr'
+          ? `${totalExpiring} élément(s) requérant une attention immédiate (Docs/Méc).`
+          : `${totalExpiring} item(s) requiring immediate attention (Docs/Mech).`
       })
     }
 
@@ -145,13 +158,15 @@ export default function AlertStrip({
         id: 'tranches',
         type: 'tranches-info',
         icon: <Calendar size={18} />,
-        title: 'Scheduled Tranches',
-        message: `${scheduledTranches.length} client(s) with ${unpaidTranches} pending scheduled payments.`
+        title: lang === 'fr' ? 'Tranches Planifiées' : 'Scheduled Tranches',
+        message: lang === 'fr'
+          ? `${scheduledTranches.length} client(s) avec ${unpaidTranches} tranches en attente.`
+          : `${scheduledTranches.length} client(s) with ${unpaidTranches} pending scheduled payments.`
       })
     }
 
     return activeAlerts
-  }, [allBookings, vehicleLegalDocs])
+  }, [allBookings, vehicleLegalDocs, vehicles, lang])
 
   const filterMap: Record<string, 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches'> = {
     'overdue': 'overdue',

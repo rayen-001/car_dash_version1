@@ -14,6 +14,7 @@ import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/compone
 import { BusinessSettings } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
 import { bookingToRentalInflows, summarizeInflows, type RentalInflow } from '@/lib/rentalInflows'
+import { useLanguage } from '@/lib/i18n'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,15 @@ function formatTunisianPlate(plate: string): string {
   return plate ? `[ TN | ${plate} ]` : '—'
 }
 
-function getInfractionLabel(type?: string) {
+function getInfractionLabel(type?: string, lang?: 'fr' | 'en') {
+  if (lang === 'fr') {
+    switch (type) {
+      case 'damage_repair': return 'Réparation de Dégâts'
+      case 'installment_tranche': return 'Tranche de Paiement'
+      case 'late_return_penalty': return 'Pénalité de Retard'
+      default: return 'Réclamation Opérationnelle'
+    }
+  }
   switch (type) {
     case 'damage_repair': return 'Damage Repair'
     case 'installment_tranche': return 'Installment Tranche'
@@ -118,11 +127,14 @@ function getInfractionLabel(type?: string) {
   }
 }
 
-function normalizePhone(value?: string) {
-  return value ? value : 'Phone unavailable'
+function normalizePhone(value?: string, lang?: 'fr' | 'en') {
+  return value ? value : (lang === 'fr' ? 'Téléphone indisponible' : 'Phone unavailable')
 }
 
-function resolveDriverDocs(value?: string) {
+function resolveDriverDocs(value?: string, lang?: 'fr' | 'en') {
+  if (lang === 'fr') {
+    return value ? `Docs : ${value}` : 'Documentation conducteur en attente'
+  }
   return value ? `Docs: ${value}` : 'Driver documentation pending'
 }
 
@@ -521,6 +533,7 @@ export default function RevenuesClient({
   legalDocs?: { vehicle_id: string; doc_type: string; expiry_date: string }[]
 }) {
   const { showToast } = useToast()
+  const { t, lang } = useLanguage()
   const confirm = useConfirm()
   const TODAY = todayStr()
 
@@ -542,9 +555,17 @@ export default function RevenuesClient({
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]   = useState('')
 
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 20
+
   // ── Search + Type Filter ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery]   = useState('')
   const [typeFilter, setTypeFilter]     = useState<'all' | 'inflow' | 'outflow'>('all')
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [preset, customFrom, customTo, flowFilter, searchQuery, typeFilter])
 
   const searchParams = useSearchParams()
   useEffect(() => {
@@ -624,7 +645,7 @@ export default function RevenuesClient({
         date,
         type: 'inflow',
         category: 'rental_revenue',
-        description: `Contract ledger · ${entityLabel}`,
+        description: lang === 'fr' ? `Grand livre de contrat · ${entityLabel}` : `Contract ledger · ${entityLabel}`,
         entity: entityLabel,
         vehicleLabel: modelLabel,
         licensePlate: plate,
@@ -640,7 +661,7 @@ export default function RevenuesClient({
         settlementVehicleId: b.vehicle_id,
         settlementLineItemId: firstUnpaid?.id,
         clientPhone: (b as any).client_phone || '',
-        driverDocsLabel: (b as any).client_license_number ? resolveDriverDocs((b as any).client_license_number) : resolveDriverDocs(undefined),
+        driverDocsLabel: (b as any).client_license_number ? resolveDriverDocs((b as any).client_license_number, lang) : resolveDriverDocs(undefined, lang),
         vehicleId: b.vehicle_id,
         totalAmount,
         rawBooking: b,
@@ -667,9 +688,9 @@ export default function RevenuesClient({
         date,
         type: isClaim ? 'inflow' : 'outflow',
         category: (cat in CATEGORY_META ? cat : isClaim ? cat as LedgerRow['category'] : 'other') as LedgerRow['category'],
-        description: e.description || (isClaim ? `${getInfractionLabel(cat)} claim` : 'Expense entry'),
-        entity: e.vehicles ? modelLabel : 'General',
-        vehicleLabel: e.vehicles ? modelLabel : 'General',
+        description: e.description || (isClaim ? (lang === 'fr' ? `Réclamation ${getInfractionLabel(cat, lang).toLowerCase()}` : `${getInfractionLabel(cat, lang)} claim`) : (lang === 'fr' ? 'Entrée de dépense' : 'Expense entry')),
+        entity: e.vehicles ? modelLabel : (lang === 'fr' ? 'Dépense Générale' : 'General'),
+        vehicleLabel: e.vehicles ? modelLabel : (lang === 'fr' ? 'Dépense Générale' : 'General'),
         licensePlate: plate,
         amount,
         rawRef: isClaim ? 'claim' : 'expense',
@@ -687,7 +708,7 @@ export default function RevenuesClient({
     }
 
     return rows.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
-  }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims])
+  }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims, lang])
 
   // ── Smart Filter (date string, "overdue", "due today") ────────────────────
   const filtered = useMemo(() => {
@@ -810,10 +831,10 @@ export default function RevenuesClient({
           : inf.paymentType === 'balance' ? 'solde'
           : 'tranche'
         const trancheLabel =
-          inf.paymentType === 'acompte' ? 'Acompte Initial'
-          : inf.paymentType === 'balance' ? 'Remaining Balance'
-          : inf.paymentType === 'close_collection' ? 'Cash Collected'
-          : 'Tranche'
+          inf.paymentType === 'acompte' ? (lang === 'fr' ? 'Acompte Initial' : 'Initial Deposit')
+          : inf.paymentType === 'balance' ? (lang === 'fr' ? 'Solde Restant' : 'Remaining Balance')
+          : inf.paymentType === 'close_collection' ? (lang === 'fr' ? 'Espèces Encaissées' : 'Cash Collected')
+          : (lang === 'fr' ? 'Tranche' : 'Tranche')
 
         events.push({
           id: inf.id,
@@ -861,9 +882,14 @@ export default function RevenuesClient({
     )
   }, [visibleEvents])
 
+  const paginatedEvents = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE
+    return visibleEvents.slice(start, start + ITEMS_PER_PAGE)
+  }, [visibleEvents, currentPage])
+
   const dailyGroups = useMemo(() => {
     const groups: Record<string, PaymentEvent[]> = {}
-    visibleEvents.forEach(ev => {
+    paginatedEvents.forEach(ev => {
       if (!groups[ev.date]) groups[ev.date] = []
       groups[ev.date].push(ev)
     })
@@ -875,7 +901,7 @@ export default function RevenuesClient({
 
     const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
     return { groups, sortedKeys }
-  }, [visibleEvents])
+  }, [paginatedEvents])
 
   const eventsOutsideWindow = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -918,27 +944,27 @@ export default function RevenuesClient({
     try {
       await addExpense(new FormData(e.currentTarget))
       setIsAddModalOpen(false)
-      showToast('Expense logged successfully!', 'success')
+      showToast(lang === 'fr' ? 'Dépense enregistrée avec succès !' : 'Expense logged successfully!', 'success')
     } catch (err: any) {
-      showToast(err.message || 'Failed to log expense.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec de l\'enregistrement de la dépense.' : 'Failed to log expense.'), 'error')
     }
     setLoading(false)
   }
 
   const handleCascade = async (row: LedgerRow) => {
-    if (!row.settlementBookingId) return showToast('No booking attached to this row', 'error')
+    if (!row.settlementBookingId) return showToast(lang === 'fr' ? 'Aucune réservation associée à cette ligne' : 'No booking attached to this row', 'error')
     const raw = collectAmounts[row.id] || ''
     const amount = Number(raw)
-    if (!amount || amount <= 0) return showToast('Please enter a positive amount to cascade', 'info')
+    if (!amount || amount <= 0) return showToast(lang === 'fr' ? 'Veuillez saisir un montant positif' : 'Please enter a positive amount to cascade', 'info')
     setLoading(true)
     try {
       await updateBookingHistoricalDetails(row.settlementBookingId, row.settlementVehicleId || '', { amount_collected_now: amount })
       setCollectAmounts(prev => ({ ...prev, [row.id]: '' }))
-      showToast(`Allocated ${amount.toFixed(2)} DT`, 'success')
+      showToast(lang === 'fr' ? `Alloué ${amount.toFixed(2)} DT` : `Allocated ${amount.toFixed(2)} DT`, 'success')
       router.refresh()
     } catch (err: any) {
       console.error('Cascade error', err)
-      showToast(err?.message || 'Failed to allocate payment', 'error')
+      showToast(err?.message || (lang === 'fr' ? 'Échec de l\'allocation du paiement' : 'Failed to allocate payment'), 'error')
     } finally {
       setLoading(false)
     }
@@ -948,10 +974,10 @@ export default function RevenuesClient({
     setTrancheActionLoading(trancheId)
     try {
       await toggleTrancheStatus(bookingId, trancheId, currentStatus)
-      showToast(`Tranche status updated.`, 'success')
+      showToast(lang === 'fr' ? 'Statut de la tranche mis à jour.' : 'Tranche status updated.', 'success')
       router.refresh()
     } catch (err: any) {
-      showToast(err?.message || 'Failed to update tranche status', 'error')
+      showToast(err?.message || (lang === 'fr' ? 'Échec de la mise à jour du statut de la tranche' : 'Failed to update tranche status'), 'error')
     } finally {
       setTrancheActionLoading(null)
     }
@@ -960,15 +986,15 @@ export default function RevenuesClient({
   const handleDrawerCascade = async (bookingId: string, rowId: string) => {
     const raw = collectAmounts[rowId + '-drawer'] || ''
     const amount = Number(raw)
-    if (!amount || amount <= 0) return showToast('Please enter a positive amount to settle', 'info')
+    if (!amount || amount <= 0) return showToast(lang === 'fr' ? 'Veuillez saisir un montant positif' : 'Please enter a positive amount to settle', 'info')
     setLoading(true)
     try {
       await settleBookingTrancheCascade(bookingId, amount)
       setCollectAmounts(prev => ({ ...prev, [rowId + '-drawer']: '' }))
-      showToast(`Successfully cascaded ${amount.toFixed(2)} DT across tranches.`, 'success')
+      showToast(lang === 'fr' ? `${amount.toFixed(2)} DT répartis avec succès sur les tranches.` : `Successfully cascaded ${amount.toFixed(2)} DT across tranches.`, 'success')
       router.refresh()
     } catch (err: any) {
-      showToast(err?.message || 'Failed to cascade settlement', 'error')
+      showToast(err?.message || (lang === 'fr' ? 'Échec de la répartition du règlement' : 'Failed to cascade settlement'), 'error')
     } finally {
       setLoading(false)
     }
@@ -984,49 +1010,49 @@ export default function RevenuesClient({
     try {
       await updateExpense(formData)
       setEditingExpense(null)
-      showToast('Expense updated successfully!', 'success')
+      showToast(lang === 'fr' ? 'Dépense mise à jour avec succès !' : 'Expense updated successfully!', 'success')
     } catch (err: any) {
-      showToast(err.message || 'Failed to update expense.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec de la mise à jour de la dépense.' : 'Failed to update expense.'), 'error')
     }
     setLoading(false)
   }
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: 'Delete Expense',
-      message: 'Are you sure you want to permanently delete this expense record?',
-      confirmLabel: 'Yes, Delete',
+      title: lang === 'fr' ? 'Supprimer la Dépense' : 'Delete Expense',
+      message: lang === 'fr' ? 'Êtes-vous sûr de vouloir supprimer définitivement cet enregistrement de dépense ?' : 'Are you sure you want to permanently delete this expense record?',
+      confirmLabel: lang === 'fr' ? 'Oui, Supprimer' : 'Yes, Delete',
       danger: true,
     })
     if (!ok) return
     try {
       await deleteExpense(id)
-      showToast('Expense record deleted.', 'success')
+      showToast(lang === 'fr' ? 'Enregistrement de dépense supprimé.' : 'Expense record deleted.', 'success')
     } catch (err: any) {
-      showToast(err.message || 'Failed to delete expense.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec de la suppression de la dépense.' : 'Failed to delete expense.'), 'error')
     }
   }
 
   const handleClearOutstanding = async (row: LedgerRow) => {
     if (!row.settlementBookingId || !row.settlementLineItemId) {
-      showToast('No outstanding installment selected for settlement.', 'error')
+      showToast(lang === 'fr' ? 'Aucune tranche impayée sélectionnée pour le règlement.' : 'No outstanding installment selected for settlement.', 'error')
       return
     }
     setLoading(true)
     try {
       await clearOutstandingLedgerItem(row.settlementBookingId, row.settlementLineItemId)
       setSettledInstallmentIds(prev => Array.from(new Set([...prev, row.settlementLineItemId!])))
-      showToast('Outstanding liability settled instantly.', 'success')
+      showToast(lang === 'fr' ? 'Engagement impayé réglé instantanément.' : 'Outstanding liability settled instantly.', 'success')
       router.refresh()
     } catch (err: any) {
-      showToast(err.message || 'Failed to mark the debt as collected.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec du marquage de la dette comme recouvrée.' : 'Failed to mark the debt as collected.'), 'error')
     }
     setLoading(false)
   }
 
   const handleMarkClaimSettled = (row: LedgerRow) => {
     setLocallySettledClaims(prev => Array.from(new Set([...prev, row.id])))
-    showToast('Claim line marked collected.', 'success')
+    showToast(lang === 'fr' ? 'Ligne de réclamation marquée comme recouvrée.' : 'Claim line marked collected.', 'success')
   }
 
   // ─── Expense Form ─────────────────────────────────────────────────────────
@@ -1144,7 +1170,10 @@ export default function RevenuesClient({
   }
 
   const presetLabels: Record<DatePreset, string> = {
-    today: 'Today', week: 'This Week', month: 'This Month', custom: 'Custom Range',
+    today: t('preset.today'),
+    week: t('preset.week'),
+    month: t('preset.month'),
+    custom: t('preset.custom'),
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -1155,8 +1184,8 @@ export default function RevenuesClient({
       <div className="header-section">
         <div className="header-title-row">
           <div>
-            <h1 className="page-title">Rental Inflows Hub</h1>
-            <p className="subtitle">Track incoming payments, client cash collections, and unpaid tranches.</p>
+            <h1 className="page-title">{t('revenues.title')}</h1>
+            <p className="subtitle">{t('revenues.subtitle')}</p>
           </div>
           {/* No action buttons needed here for Rental Inflows Hub */}
         </div>
@@ -1186,12 +1215,12 @@ export default function RevenuesClient({
 
         {preset === 'custom' && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>From</span>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>{t('preset.from')}</span>
             <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPreset('custom') }} style={{
                 background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '6px',
               color: '#fff', padding: '0.4rem 0.6rem', fontSize: '0.82rem', colorScheme: 'dark', outline: 'none',
             }} />
-            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>To</span>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>{t('preset.to')}</span>
             <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPreset('custom') }} style={{
                 background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '6px',
               color: '#fff', padding: '0.4rem 0.6rem', fontSize: '0.82rem', colorScheme: 'dark', outline: 'none',
@@ -1217,7 +1246,7 @@ export default function RevenuesClient({
         )}
 
         <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'rgba(229,193,125,0.4)', paddingRight: '0.5rem' }}>
-          {visibleEvents.length} transactions
+          {visibleEvents.length} {t('preset.transactions')}
         </div>
       </div>
 
@@ -1239,9 +1268,9 @@ export default function RevenuesClient({
         scrollbarWidth: 'none',
       }} className="no-print">
         {[
-          { key: 'all', label: 'All Inflows', emoji: '📊', color: 'var(--accent-gold)' },
-          { key: 'settled', label: 'Fully Settled', emoji: '🟢', color: '#10b981' },
-          { key: 'unpaid', label: 'Unpaid/Overdue', emoji: '🔴', color: '#ef4444' }
+          { key: 'all', label: lang === 'fr' ? 'Toutes les Entrées' : 'All Inflows', emoji: '📊', color: 'var(--accent-gold)' },
+          { key: 'settled', label: lang === 'fr' ? 'Entièrement Réglées' : 'Fully Settled', emoji: '🟢', color: '#10b981' },
+          { key: 'unpaid', label: lang === 'fr' ? 'Impayées / En Retard' : 'Unpaid/Overdue', emoji: '🔴', color: '#ef4444' }
         ].map(item => {
           const active = flowFilter === item.key
           return (
@@ -1281,7 +1310,7 @@ export default function RevenuesClient({
           <Search size={16} style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(229,193,125,0.4)' }} />
           <input
             type="text"
-            placeholder='Search · "overdue" · "due today" · YYYY-MM-DD · client · plate'
+            placeholder={lang === 'fr' ? 'Rechercher · "overdue" · "due today" · AAAA-MM-JJ · client · plaque' : 'Search · "overdue" · "due today" · YYYY-MM-DD · client · plate'}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="form-input"
@@ -1314,6 +1343,8 @@ export default function RevenuesClient({
           visibleEvents directly via summarizeInflows(). */}
       {(() => {
         const totalEventsExist = visibleEvents.length + eventsOutsideWindow > 0
+        const totalItems = visibleEvents.length
+        const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE)
 
         if (visibleEvents.length === 0) {
           return (
@@ -1329,10 +1360,10 @@ export default function RevenuesClient({
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#10b981,transparent)' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <TrendingUp size={16} style={{ color: '#10b981' }} />
-                    <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>Total Rental Inflows</span>
+                    <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>{t('revenues.totalInflows')}</span>
                   </div>
                   <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#10b981', letterSpacing: '-0.02em' }}>+0.00 DT</div>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>0 paid transactions</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>{lang === 'fr' ? '0 transaction payée' : '0 paid transactions'}</div>
                 </div>
                 <div style={{
                   padding: '1.5rem 1.75rem', background: 'rgba(10,8,7,0.8)',
@@ -1343,10 +1374,10 @@ export default function RevenuesClient({
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#ef4444,transparent)' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Landmark size={16} style={{ color: '#ef4444' }} />
-                    <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>Unpaid Tranches / Debt</span>
+                    <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>{t('revenues.unpaidTranches')}</span>
                   </div>
                   <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#ef4444', letterSpacing: '-0.02em' }}>0.00 DT</div>
-                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>0 overdue tranches</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>{lang === 'fr' ? '0 tranche en retard' : '0 overdue tranches'}</div>
                 </div>
               </div>
               {/* Empty state */}
@@ -1355,11 +1386,13 @@ export default function RevenuesClient({
                 {totalEventsExist ? (
                   <>
                     <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
-                      No cash inflows in the current date range.
+                      {t('revenues.noInflowsRange')}
                     </p>
                     <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
-                      You have <strong style={{ color: '#E5C17D' }}>{eventsOutsideWindow}</strong> inflow event{eventsOutsideWindow > 1 ? 's' : ''} outside this window
-                      {flowFilter !== 'all' ? <> (filter: <em style={{ color: '#E5C17D' }}>{flowFilter === 'settled' ? 'Fully Settled' : 'Unpaid/Overdue'}</em>)</> : null}.
+                      {lang === 'fr'
+                        ? <>Vous avez <strong style={{ color: '#E5C17D' }}>{eventsOutsideWindow}</strong> entrée(s) de trésorerie en dehors de cette période</>
+                        : <>You have <strong style={{ color: '#E5C17D' }}>{eventsOutsideWindow}</strong> inflow event{eventsOutsideWindow > 1 ? 's' : ''} outside this window</>}
+                      {flowFilter !== 'all' ? <> ({lang === 'fr' ? 'filtre' : 'filter'} : <em style={{ color: '#E5C17D' }}>{flowFilter === 'settled' ? (lang === 'fr' ? 'Entérieurement Réglées' : 'Fully Settled') : (lang === 'fr' ? 'Impayées / En Retard' : 'Unpaid/Overdue')}</em>)</> : null}.
                     </p>
                     <button
                       onClick={() => { setCustomFrom('2024-01-01'); setCustomTo(TODAY); setPreset('custom') }}
@@ -1371,14 +1404,14 @@ export default function RevenuesClient({
                         boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
                       }}
                     >
-                      Show all inflows ever →
+                      {lang === 'fr' ? 'Afficher toutes les entrées →' : 'Show all inflows ever →'}
                     </button>
                   </>
                 ) : (
                   <>
-                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No inflows recorded yet.</p>
+                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>{t('revenues.noInflowsRecorded')}</p>
                     <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
-                      Create a booking with an acompte or scheduled tranches and they will surface here.
+                      {t('revenues.createBookingHint')}
                     </p>
                     {allRows.length > 0 && (
                       <button
@@ -1391,7 +1424,7 @@ export default function RevenuesClient({
                           boxShadow: '0 4px 14px rgba(229,193,125,0.3)',
                         }}
                       >
-                        Widen date range (2024 → today)
+                        {lang === 'fr' ? 'Élargir la plage de dates (2024 → aujourd\'hui)' : 'Widen date range (2024 → today)'}
                       </button>
                     )}
                   </>
@@ -1416,13 +1449,13 @@ export default function RevenuesClient({
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#10b981,transparent)' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <TrendingUp size={16} style={{ color: '#10b981' }} />
-                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>Total Rental Inflows</span>
+                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(16,185,129,0.7)', fontWeight: 700 }}>{t('revenues.totalInflows')}</span>
               </div>
               <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#10b981', letterSpacing: '-0.02em' }}>
                 +{kpiSummary.totalCollected.toFixed(2)} DT
               </div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
-                {kpiSummary.paidCount} paid transaction{kpiSummary.paidCount !== 1 ? 's' : ''}
+                {kpiSummary.paidCount} {kpiSummary.paidCount > 1 ? (lang === 'fr' ? 'transactions payées' : 'paid transactions') : (lang === 'fr' ? 'transaction payée' : 'paid transaction')}
               </div>
             </div>
 
@@ -1435,7 +1468,7 @@ export default function RevenuesClient({
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#ef4444,transparent)' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Landmark size={16} style={{ color: '#ef4444' }} />
-                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>Unpaid Tranches / Debt</span>
+                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>{t('revenues.unpaidTranches')}</span>
               </div>
               <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#ef4444', letterSpacing: '-0.02em' }}>
                 {kpiSummary.totalUnpaid.toFixed(2)} DT
@@ -1443,7 +1476,7 @@ export default function RevenuesClient({
               <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
                 <span style={{ color: kpiSummary.overdueCount > 0 ? '#ef4444' : 'inherit' }}>
                   {kpiSummary.overdueCount > 0 && <AlertCircle size={12} style={{ display: 'inline', marginRight: 4 }} />}
-                  {kpiSummary.overdueCount} overdue tranche{kpiSummary.overdueCount !== 1 ? 's' : ''}
+                  {kpiSummary.overdueCount} {kpiSummary.overdueCount > 1 ? (lang === 'fr' ? 'tranches en retard' : 'overdue tranches') : (lang === 'fr' ? 'tranche en retard' : 'overdue tranche')}
                 </span>
               </div>
             </div>
@@ -1458,7 +1491,7 @@ export default function RevenuesClient({
               const localized = (() => {
                 try {
                   const d = new Date(dateKey + 'T00:00:00')
-                  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+                  return d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })
                 } catch { return dateKey }
               })()
 
@@ -1487,7 +1520,7 @@ export default function RevenuesClient({
                         {localized}
                       </span>
                       <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginLeft: '0.25rem' }}>
-                        · {dayEvents.length} transaction{dayEvents.length > 1 ? 's' : ''}
+                        · {dayEvents.length} {dayEvents.length > 1 ? (lang === 'fr' ? 'transactions' : 'transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
@@ -1499,7 +1532,7 @@ export default function RevenuesClient({
                           color: '#f87171', fontSize: '0.78rem', fontWeight: 700,
                         }}>
                           <Clock size={11} />
-                          <span>Pending: {dailyPending.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</span>
+                          <span>{lang === 'fr' ? 'En attente' : 'Pending'} : {dailyPending.toLocaleString(lang === 'fr' ? 'fr-TN' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</span>
                         </div>
                       )}
                       {dailyInflow > 0 && (
@@ -1512,8 +1545,8 @@ export default function RevenuesClient({
                           boxShadow: '0 0 14px rgba(16,185,129,0.18), inset 0 0 4px rgba(16,185,129,0.05)',
                         }}>
                           <TrendingUp size={13} />
-                          <span style={{ opacity: 0.85 }}>Total Daily Inflow:</span>
-                          <span>+{dailyInflow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</span>
+                          <span style={{ opacity: 0.85 }}>{lang === 'fr' ? 'Total Entrées du Jour :' : 'Total Daily Inflow:'}</span>
+                          <span>+{dailyInflow.toLocaleString(lang === 'fr' ? 'fr-TN' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT</span>
                         </div>
                       )}
                     </div>
@@ -1628,7 +1661,7 @@ export default function RevenuesClient({
                                 </span>
                               </div>
                             ) : (
-                              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>No vehicle linked</span>
+                              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>{lang === 'fr' ? 'Aucun véhicule lié' : 'No vehicle linked'}</span>
                             )}
                           </div>
 
@@ -1663,7 +1696,7 @@ export default function RevenuesClient({
                               fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.05em',
                               width: 'fit-content',
                             }}>
-                              {isPaid ? '🟢 PAID' : isOverdue ? '🔴 OVERDUE' : '⚪ PENDING'}
+                              {isPaid ? (lang === 'fr' ? '🟢 PAYÉ' : '🟢 PAID') : isOverdue ? (lang === 'fr' ? '🔴 EN RETARD' : '🔴 OVERDUE') : (lang === 'fr' ? '⚪ EN ATTENTE' : '⚪ PENDING')}
                             </div>
                           </div>
 
@@ -1694,6 +1727,83 @@ export default function RevenuesClient({
               )
             })}
           </div>
+          {/* ── Pagination Controls ── */}
+          {totalPages > 1 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0.85rem 1.25rem', marginTop: '1.25rem', borderRadius: '12px',
+              background: 'rgba(38, 30, 24, 0.4)', border: '1px solid var(--border-color)',
+              flexWrap: 'wrap', gap: '0.75rem', width: '100%', boxSizing: 'border-box',
+              marginBottom: '2rem'
+            }} className="glass-panel no-print">
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {t('common.showing')} <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * ITEMS_PER_PAGE + 1)}-{Math.min(totalItems, currentPage * ITEMS_PER_PAGE)}</span> {t('common.of')} <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> {lang === 'fr' ? 'entrées' : 'inflows'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1, justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: currentPage === 1 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  className="hover-bg-glass"
+                >
+                  {t('common.previous')}
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, idx) => {
+                  let p = idx + 1;
+                  if (currentPage > 3 && totalPages > 5) {
+                    p = currentPage - 3 + idx;
+                    if (p + (4 - idx) > totalPages) {
+                      p = totalPages - 4 + idx;
+                    }
+                  }
+                  const active = currentPage === p
+                  return (
+                    <button
+                      type="button"
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      style={{
+                        width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                        background: active ? 'rgba(229,193,125,0.12)' : 'transparent',
+                        border: `1px solid ${active ? 'rgba(229,193,125,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                        color: active ? '#ae9260' : 'rgba(255,255,255,0.7)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      className="hover-bg-glass"
+                    >
+                      {p}
+                    </button>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: currentPage === totalPages ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  className="hover-bg-glass"
+                >
+                  {t('common.next')}
+                </button>
+              </div>
+            </div>
+          )}
           </>
         )
       })()}
@@ -1704,10 +1814,10 @@ export default function RevenuesClient({
         <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
-              <h2>Log New Expense</h2>
+              <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
               <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
             </div>
-            <ExpenseForm onSubmit={handleAdd} submitLabel="Add Expense" />
+            <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
           </div>
         </div>
       )}
@@ -1716,20 +1826,22 @@ export default function RevenuesClient({
         <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
-              <h2>Edit Expense</h2>
+              <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
               <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
             </div>
-            <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel="Save Changes" />
+            <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
           </div>
         </div>
       )}
 
-      <QuickEditBookingModal
-        booking={editingBooking}
-        isOpen={!!editingBooking}
-        onClose={() => setEditingBooking(null)}
-        vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
-      />
+      {editingBooking && (
+        <QuickEditBookingModal
+          booking={editingBooking}
+          isOpen={!!editingBooking}
+          onClose={() => setEditingBooking(null)}
+          vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
+        />
+      )}
 
       {isReportOpen && (
         <ExpenseReportModal

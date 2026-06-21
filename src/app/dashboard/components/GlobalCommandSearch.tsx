@@ -1,14 +1,35 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Calendar, X, AlertTriangle, Edit2, ShieldAlert, ShieldCheck, ShieldAlert as ShieldIcon, Star, Plane, Hotel, MapPin } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n'
+import Fuse from 'fuse.js'
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { updateBookingStatus } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { Booking, Vehicle, Client } from '@/types'
 import { formatFuelFraction, calculateFuelDelta, calculateDrivenMileage } from '@/app/dashboard/bookings/components/HandoverCalculators'
 import { calculateTrustScore } from '@/lib/trustScore'
+
+function normalizeText(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function isNonNameQuery(query: string): boolean {
+  const trimmed = query.trim()
+  if (!trimmed) return true
+  // Contains any digit (matches phone, CIN, passport, dates, numbers)
+  if (/\d/.test(trimmed)) return true
+  // Contains "TN" or "tn" (matches plates)
+  if (trimmed.toLowerCase().includes('tn')) return true
+  return false
+}
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface OmniBooking {
@@ -151,6 +172,59 @@ const getClientRiskProfile = (
   return { score, riskLevel }
 }
 
+/* ─── Damage Note Expandable Tag ─────────────────────────────────── */
+const DamageNoteView = ({ note }: { note: string }) => {
+  const [expanded, setExpanded] = useState(false)
+  
+  const isPerfect = note.toLowerCase().includes('perfect normal return') || note.includes('[GREEN]')
+  const isGray = note.includes('[GRAY]')
+  const cleanNotes = note.replace('[GREEN]', '').replace('[GRAY]', '').replace('[RED]', '').trim()
+  
+  const bgColor = isPerfect ? 'rgba(16, 185, 129, 0.12)' : isGray ? 'rgba(156, 163, 175, 0.12)' : 'rgba(239, 68, 68, 0.12)'
+  const color = isPerfect ? '#10b981' : isGray ? '#9ca3af' : '#ef4444'
+  const border = isPerfect ? '1px solid rgba(16, 185, 129, 0.25)' : isGray ? '1px solid rgba(156, 163, 175, 0.25)' : '1px solid rgba(239, 68, 68, 0.25)'
+  const icon = isPerfect ? '✅' : isGray ? '💬' : '⚠️'
+
+  const displayText = expanded 
+    ? cleanNotes 
+    : (cleanNotes.length > 22 ? cleanNotes.substring(0, 22) + '…' : cleanNotes)
+
+  return (
+    <span 
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setExpanded(!expanded)
+      }}
+      style={{ 
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        padding: '0.2rem 0.45rem',
+        borderRadius: '4px',
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        background: bgColor, 
+        color: color, 
+        border: border,
+        boxSizing: 'border-box',
+        marginTop: '0.25rem',
+        cursor: 'pointer',
+        userSelect: 'none',
+        maxWidth: expanded ? '240px' : '180px',
+        whiteSpace: expanded ? 'normal' : 'nowrap',
+        wordBreak: expanded ? 'break-word' : 'normal',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      }}
+      title={expanded ? "Click to collapse" : "Click to view full note"}
+    >
+      <span>{icon}</span>
+      <span>{displayText}</span>
+    </span>
+  )
+}
+
 /* ─── Component ──────────────────────────────────────────────────── */
 export default function GlobalCommandSearch({
   allBookings,
@@ -159,12 +233,23 @@ export default function GlobalCommandSearch({
   vehicleLegalDocs = [],
   vehicles = []
 }: GlobalCommandSearchProps) {
+  const { t, lang } = useLanguage()
   const [textQuery, setTextQuery]       = useState('')
+  const [smartSearchEnabled, setSmartSearchEnabled] = useState(false)
   const [interceptDate, setInterceptDate] = useState('')
   const [returnFrom, setReturnFrom] = useState('')
   const [returnTo, setReturnTo] = useState('')
   const [editingBooking, setEditingBooking] = useState<OmniBooking | null>(null)
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null)
+
+  // Pagination states
+  const itemsPerPage = 10
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // Reset currentPage to 1 when filters or toggle changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [textQuery, interceptDate, returnFrom, returnTo, activeAlertFilter, smartSearchEnabled])
 
   const isActive = textQuery.trim() !== '' || interceptDate !== '' || returnFrom !== '' || returnTo !== '' || activeAlertFilter !== null
   const isFineMode = textQuery.trim() !== '' || interceptDate !== '' || returnFrom !== '' || returnTo !== ''
@@ -343,7 +428,7 @@ export default function GlobalCommandSearch({
       }
     }
 
-    return filtered.filter(b => {
+    const bookingsAfterAlertAndDates = filtered.filter(b => {
       // ── GATE 1: Date interception (traffic-fine mode or tranches mode) ──
       if (interceptDate) {
         if (activeAlertFilter === 'tranches') {
@@ -365,29 +450,135 @@ export default function GlobalCommandSearch({
         if (returnFrom && ed < returnFrom) return false
         if (returnTo && ed > returnTo) return false
       }
-
-      // ── GATE 2: Omni-text (7 dimensions, fully null-safe) ──
-      if (!textQuery.trim()) return true
-      const q = textQuery.toLowerCase().trim()
-
-      const matchPlate = b.vehicles?.license_plate?.toLowerCase()?.includes(q) ?? false
-      const matchBrand = b.vehicles?.brand?.toLowerCase()?.includes(q)         ?? false
-      const matchModel = b.vehicles?.model?.toLowerCase()?.includes(q)         ?? false
-      const matchName  = b.primary_client?.full_name?.toLowerCase()?.includes(q)      ?? false
-      const matchCin   = b.primary_client?.license_number?.toLowerCase()?.includes(q) ?? false
-
-      const normalizedStoredPhone = normalizePhone(b.primary_client?.phone)
-      const normalizedQuery       = normalizePhone(textQuery)
-      const matchPhone = normalizedQuery.length >= 4
-        ? normalizedStoredPhone.includes(normalizedQuery)
-        : (b.primary_client?.phone?.toLowerCase()?.includes(q) ?? false)
-
-      const matchId    = b.id?.toLowerCase()?.includes(q)      ?? false
-
-      return matchPlate || matchBrand || matchModel ||
-             matchName  || matchCin   || matchPhone || matchId
+      return true
     })
-  }, [allBookings, textQuery, interceptDate, activeAlertFilter, vehicleLegalDocs, returnFrom, returnTo])
+
+    const normQuery = normalizeText(textQuery)
+    const isFuzzyActive = smartSearchEnabled && normQuery.length >= 3 && !isNonNameQuery(textQuery)
+
+    let fuzzyBookingIds = new Set<string>()
+    let fuzzyScoreMap = new Map<string, { matchPercent: number; isExactMatch: boolean }>()
+
+    if (isFuzzyActive) {
+      const fuzzyIndexData = bookingsAfterAlertAndDates.map((booking) => {
+        const primary = booking.primary_client || {
+          full_name: booking.client_name
+        }
+        const secondary = booking.secondary_client
+        return {
+          booking,
+          search_client_name: normalizeText(booking.client_name || ''),
+          search_primary_name: normalizeText(primary.full_name || ''),
+          search_secondary_name: normalizeText(secondary?.full_name || '')
+        }
+      })
+
+      const fuse = new Fuse(fuzzyIndexData, {
+        keys: ['search_client_name', 'search_primary_name', 'search_secondary_name'],
+        threshold: 0.40,
+        includeScore: true,
+        minMatchCharLength: 3
+      })
+
+      const resultsFuse = fuse.search(normQuery)
+      resultsFuse.forEach((res) => {
+        const matchPercent = Math.round((1 - (res.score ?? 1)) * 100)
+        if (matchPercent >= 60) {
+          const isExactMatch = 
+            res.item.search_client_name === normQuery ||
+            res.item.search_primary_name === normQuery ||
+            res.item.search_secondary_name === normQuery
+
+          fuzzyBookingIds.add(res.item.booking.id)
+          fuzzyScoreMap.set(res.item.booking.id, { matchPercent, isExactMatch })
+        }
+      })
+    }
+
+    const matched = bookingsAfterAlertAndDates.filter((b) => {
+      const getStrictMatch = (booking: OmniBooking) => {
+        const q = textQuery.toLowerCase().trim()
+        if (!q) return true
+
+        const matchPlate = booking.vehicles?.license_plate?.toLowerCase()?.includes(q) ?? false
+        const matchBrand = booking.vehicles?.brand?.toLowerCase()?.includes(q)         ?? false
+        const matchModel = booking.vehicles?.model?.toLowerCase()?.includes(q)         ?? false
+        const matchName  = booking.primary_client?.full_name?.toLowerCase()?.includes(q)      ?? false
+        const matchCin   = booking.primary_client?.license_number?.toLowerCase()?.includes(q) ?? false
+
+        const normalizedStoredPhone = normalizePhone(booking.primary_client?.phone)
+        const normalizedQuery       = normalizePhone(textQuery)
+        const matchPhone = normalizedQuery.length >= 4
+          ? normalizedStoredPhone.includes(normalizedQuery)
+          : (booking.primary_client?.phone?.toLowerCase()?.includes(q) ?? false)
+
+        const matchId    = booking.id?.toLowerCase()?.includes(q)      ?? false
+
+        return matchPlate || matchBrand || matchModel ||
+               matchName  || matchCin   || matchPhone || matchId
+      }
+
+      if (isFuzzyActive) {
+        return fuzzyBookingIds.has(b.id) || getStrictMatch(b)
+      }
+
+      return getStrictMatch(b)
+    })
+
+    // Sort:
+    // 1. exact/strict matches first
+    // 2. fuzzy matches after by matchPercent descending
+    // 3. date descending
+    if (isFuzzyActive) {
+      return [...matched].sort((a, b) => {
+        const fuzzyA = fuzzyScoreMap.get(a.id)
+        const fuzzyB = fuzzyScoreMap.get(b.id)
+
+        const isExactA = !fuzzyA || fuzzyA.isExactMatch
+        const isExactB = !fuzzyB || fuzzyB.isExactMatch
+
+        if (isExactA && !isExactB) return -1
+        if (!isExactA && isExactB) return 1
+
+        const percentA = fuzzyA?.matchPercent ?? 100
+        const percentB = fuzzyB?.matchPercent ?? 100
+
+        if (percentB !== percentA) {
+          return percentB - percentA
+        }
+
+        const da = a.start_date || ''
+        const db = b.start_date || ''
+        if (da !== db) return db.localeCompare(da)
+        return b.id.localeCompare(a.id)
+      })
+    }
+
+    return [...matched].sort((a, b) => {
+      const da = a.start_date || ''
+      const db = b.start_date || ''
+      if (da !== db) return db.localeCompare(da)
+      return b.id.localeCompare(a.id)
+    })
+  }, [allBookings, textQuery, interceptDate, activeAlertFilter, vehicleLegalDocs, returnFrom, returnTo, smartSearchEnabled])
+
+  const totalItems = results.length
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1
+
+  // Clamp currentPage if results count changes and it becomes invalid
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [totalItems, totalPages, currentPage])
+
+  // Paginated Results
+  const paginatedResults = useMemo(() => {
+    return results.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    )
+  }, [results, currentPage, itemsPerPage])
 
   const clearAll = () => {
     setTextQuery('')
@@ -456,129 +647,165 @@ export default function GlobalCommandSearch({
         }
       `}</style>
 
-      {/* ── Search Bar ── */}
-      <div className="omni-search-bar" style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-        padding: '0.9rem 1.25rem',
-        background: 'rgba(10, 8, 7, 0.92)',
-        border: `1px solid ${interceptDate ? 'rgba(245,158,11,0.5)' : 'rgba(229,193,125,0.22)'}`,
-        borderRadius: '14px',
-        boxShadow: interceptDate
-          ? '0 0 0 3px rgba(245,158,11,0.12), 0 8px 32px rgba(0,0,0,0.5)'
-          : '0 8px 32px rgba(0,0,0,0.5)',
-        transition: 'border-color 0.25s, box-shadow 0.25s',
-      }}>
-        <Search size={20} style={{ color: 'var(--accent-gold)', flexShrink: 0 }} />
-        <input
-          type="text"
-          value={textQuery}
-          onChange={e => setTextQuery(e.target.value)}
-          placeholder="Search by plate, name, CIN, phone, brand, model..."
+      {/* ── Search Bar & Toggle Row ── */}
+      <div className="no-print" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
+        <div className="omni-search-bar" style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          padding: '0.9rem 1.25rem',
+          background: 'rgba(10, 8, 7, 0.92)',
+          border: `1px solid ${interceptDate ? 'rgba(245,158,11,0.5)' : 'rgba(229,193,125,0.22)'}`,
+          borderRadius: '14px',
+          boxShadow: interceptDate
+            ? '0 0 0 3px rgba(245,158,11,0.12), 0 8px 32px rgba(0,0,0,0.5)'
+            : '0 8px 32px rgba(0,0,0,0.5)',
+          transition: 'border-color 0.25s, box-shadow 0.25s',
+          minWidth: '280px',
+        }}>
+          <Search size={20} style={{ color: 'var(--accent-gold)', flexShrink: 0 }} />
+          <input
+            type="text"
+            value={textQuery}
+            onChange={e => setTextQuery(e.target.value)}
+            placeholder="Search by plate, name, CIN, phone, brand, model..."
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#fff',
+              fontSize: '1rem',
+              fontFamily: 'var(--font-body)',
+              minWidth: 0,
+            }}
+          />
+
+          <div className="omni-divider" style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0 }} />
+
+          <Calendar size={18} style={{ color: interceptDate ? '#f59e0b' : 'rgba(229,193,125,0.5)', flexShrink: 0 }} />
+          <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
+              Incident Date
+            </span>
+            <input
+              type="date"
+              value={interceptDate}
+              onChange={e => setInterceptDate(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: interceptDate ? '#f59e0b' : 'rgba(255,255,255,0.6)',
+                fontSize: '0.9rem',
+                fontFamily: 'var(--font-body)',
+                cursor: 'pointer',
+                colorScheme: 'dark',
+                padding: 0,
+              }}
+            />
+          </div>
+
+          <div className="omni-divider" style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0, marginLeft: '0.5rem', marginRight: '0.5rem' }} />
+
+          <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
+              Return From
+            </span>
+            <input
+              type="date"
+              value={returnFrom}
+              onChange={e => setReturnFrom(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: returnFrom ? '#10b981' : 'rgba(255,255,255,0.6)',
+                fontSize: '0.9rem',
+                fontFamily: 'var(--font-body)',
+                cursor: 'pointer',
+                colorScheme: 'dark',
+                padding: 0,
+              }}
+            />
+          </div>
+
+          <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, marginLeft: '0.5rem' }}>
+            <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
+              Return To
+            </span>
+            <input
+              type="date"
+              value={returnTo}
+              onChange={e => setReturnTo(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: returnTo ? '#10b981' : 'rgba(255,255,255,0.6)',
+                fontSize: '0.9rem',
+                fontFamily: 'var(--font-body)',
+                cursor: 'pointer',
+                colorScheme: 'dark',
+                padding: 0,
+              }}
+            />
+          </div>
+
+          {isActive && (
+            <button
+              onClick={clearAll}
+              style={{
+                background: 'rgba(229,193,125,0.1)',
+                border: '1px solid rgba(229,193,125,0.2)',
+                borderRadius: '6px',
+                color: 'rgba(229,193,125,0.7)',
+                cursor: 'pointer',
+                padding: '0.3rem',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+              title="Clear search"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Smart Name Suggestions Toggle */}
+        <button
+          onClick={() => setSmartSearchEnabled(prev => !prev)}
+          className={`btn-secondary ${smartSearchEnabled ? 'active-gold' : ''}`}
           style={{
-            flex: 1,
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            color: '#fff',
-            fontSize: '1rem',
-            fontFamily: 'var(--font-body)',
-            minWidth: 0,
+            padding: '0.9rem 1.25rem',
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            border: smartSearchEnabled ? '1px solid #E5C17D' : '1px solid rgba(255, 255, 255, 0.1)',
+            background: smartSearchEnabled ? 'rgba(229, 193, 125, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+            color: smartSearchEnabled ? '#E5C17D' : 'var(--text-muted)',
+            borderRadius: '14px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            transition: 'all 0.2s ease',
           }}
-        />
-
-        <div className="omni-divider" style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0 }} />
-
-        <Calendar size={18} style={{ color: interceptDate ? '#f59e0b' : 'rgba(229,193,125,0.5)', flexShrink: 0 }} />
-        <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
-            Incident Date
-          </span>
-          <input
-            type="date"
-            value={interceptDate}
-            onChange={e => setInterceptDate(e.target.value)}
+        >
+          <span
             style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: interceptDate ? '#f59e0b' : 'rgba(255,255,255,0.6)',
-              fontSize: '0.9rem',
-              fontFamily: 'var(--font-body)',
-              cursor: 'pointer',
-              colorScheme: 'dark',
-              padding: 0,
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: smartSearchEnabled ? '#E5C17D' : 'rgba(255,255,255,0.2)',
+              display: 'inline-block',
+              boxShadow: smartSearchEnabled ? '0 0 8px #E5C17D' : 'none',
             }}
           />
-        </div>
-
-        <div className="omni-divider" style={{ width: '1px', height: '28px', background: 'rgba(229,193,125,0.15)', flexShrink: 0, marginLeft: '0.5rem', marginRight: '0.5rem' }} />
-
-        <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
-            Return From
-          </span>
-          <input
-            type="date"
-            value={returnFrom}
-            onChange={e => setReturnFrom(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: returnFrom ? '#10b981' : 'rgba(255,255,255,0.6)',
-              fontSize: '0.9rem',
-              fontFamily: 'var(--font-body)',
-              cursor: 'pointer',
-              colorScheme: 'dark',
-              padding: 0,
-            }}
-          />
-        </div>
-
-        <div className="omni-date-container" style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, marginLeft: '0.5rem' }}>
-          <span style={{ fontSize: '0.65rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', letterSpacing: '1px', lineHeight: 1 }}>
-            Return To
-          </span>
-          <input
-            type="date"
-            value={returnTo}
-            onChange={e => setReturnTo(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: returnTo ? '#10b981' : 'rgba(255,255,255,0.6)',
-              fontSize: '0.9rem',
-              fontFamily: 'var(--font-body)',
-              cursor: 'pointer',
-              colorScheme: 'dark',
-              padding: 0,
-            }}
-          />
-        </div>
-
-        {isActive && (
-          <button
-            onClick={clearAll}
-            style={{
-              background: 'rgba(229,193,125,0.1)',
-              border: '1px solid rgba(229,193,125,0.2)',
-              borderRadius: '6px',
-              color: 'rgba(229,193,125,0.7)',
-              cursor: 'pointer',
-              padding: '0.3rem',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.15s',
-              flexShrink: 0,
-            }}
-            title="Clear search"
-          >
-            <X size={16} />
-          </button>
-        )}
+          {lang === 'fr' ? 'Suggestions de noms' : 'Smart Name Suggestions'}
+        </button>
       </div>
 
       {/* ── Active Alert Filter Banner ── */}
@@ -845,12 +1072,7 @@ export default function GlobalCommandSearch({
       {/* ── Standard Booking Results (non-expiring filters) ── */}
       {activeAlertFilter !== 'expiring' && results.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {results.length > 10 && (
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(229,193,125,0.5)', textAlign: 'right' }}>
-              Showing top 10 of {results.length} matches
-            </p>
-          )}
-          {results.slice(0, 10).map(booking => (
+          {paginatedResults.map(booking => (
             <OmniResultCard
               key={booking.id}
               booking={booking}
@@ -859,6 +1081,84 @@ export default function GlobalCommandSearch({
               allBookings={allBookings}
             />
           ))}
+
+          {/* Pagination Controls */}
+          {totalItems > itemsPerPage && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0.85rem 1.25rem', marginTop: '1rem', borderRadius: '12px',
+              background: 'rgba(38, 30, 24, 0.4)', border: '1px solid var(--border-color)',
+              flexWrap: 'wrap', gap: '0.75rem', width: '100%', boxSizing: 'border-box',
+            }} className="glass-panel no-print">
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {lang === 'fr' ? (
+                  <>Affichage de <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)} à {Math.min(totalItems, currentPage * itemsPerPage)}</span> sur <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> résultats</>
+                ) : (
+                  <>Showing <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}–{Math.min(totalItems, currentPage * itemsPerPage)}</span> of <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> matches</>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1, justifyContent: 'center' }}>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: currentPage === 1 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  className="hover-bg-glass"
+                >
+                  {lang === 'fr' ? 'Précédent' : 'Previous'}
+                </button>
+                {Array.from({ length: Math.min(9, totalPages) }, (_, idx) => {
+                  let p = idx + 1;
+                  if (currentPage > 5 && totalPages > 9) {
+                    p = currentPage - 5 + idx;
+                    if (p + (8 - idx) > totalPages) {
+                      p = totalPages - 8 + idx;
+                    }
+                  }
+                  const active = currentPage === p
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      style={{
+                        width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                        background: active ? 'rgba(229,193,125,0.12)' : 'transparent',
+                        border: `1px solid ${active ? 'rgba(229,193,125,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                        color: active ? '#ae9260' : 'rgba(255,255,255,0.7)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      className="hover-bg-glass"
+                    >
+                      {p}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: currentPage === totalPages ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  className="hover-bg-glass"
+                >
+                  {lang === 'fr' ? 'Suivant' : 'Next'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -903,7 +1203,6 @@ function OmniResultCard({
   const router = useRouter()
   const { showToast } = useToast()
   const [loadingStatus, setLoadingStatus] = useState(false)
-
   const handleStatusChange = async (newStatus: string) => {
     setLoadingStatus(true)
     try {
@@ -926,6 +1225,7 @@ function OmniResultCard({
   const reste   = total - acompte
   const notes   = booking.damage_notes || ''
   const isPerfectComment = notes.toLowerCase().includes('perfect normal return') || notes.includes('[GREEN]')
+  const isGrayComment = notes.includes('[GRAY]')
   const hasDamage = Boolean(booking.damage_notes)
 
   const borderColor = isFineHighlight
@@ -1143,8 +1443,11 @@ function OmniResultCard({
         }}>
           #{booking.id.substring(0, 6).toUpperCase()}
         </span>
-        {hasDamage && !isPerfectComment && (
+        {hasDamage && !isPerfectComment && !isGrayComment && (
           <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginTop: '0.3rem' }}>⚠️ Damage</span>
+        )}
+        {hasDamage && isGrayComment && (
+          <span style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.3rem' }}>💬 Note</span>
         )}
       </Cell>
 
@@ -1253,8 +1556,14 @@ function OmniResultCard({
             background: 'rgba(229,193,125,0.15)', color: 'var(--accent-gold)',
             padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: 700,
             fontSize: '0.75rem',
+            width: 'fit-content',
+            whiteSpace: 'normal',
+            maxWidth: '100%'
           }}>
-            {booking.rental_days_text || (booking.start_date && booking.end_date ? Math.round((new Date(booking.end_date.split('T')[0] + 'T00:00:00').getTime() - new Date(booking.start_date.split('T')[0] + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)) : '—')} days
+            <span style={{ wordBreak: 'break-all' }}>
+              {booking.rental_days_text || (booking.start_date && booking.end_date ? Math.round((new Date(booking.end_date.split('T')[0] + 'T00:00:00').getTime() - new Date(booking.start_date.split('T')[0] + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)) : '—')}
+            </span>
+            <span> days</span>
           </span>
 
           {/* Phase 17a — Optional off-site Handover badge. Renders nothing when
@@ -1416,24 +1725,7 @@ function OmniResultCard({
               </>
             )
           })()}
-          {hasDamage && (() => {
-            const notes = booking.damage_notes || '';
-            const isPerfect = notes.toLowerCase().includes('perfect normal return') || notes.includes('[GREEN]');
-            const cleanNotes = notes.replace('[GREEN]', '').trim();
-            return (
-              <span 
-                style={{ 
-                  ...tagStyle, 
-                  background: isPerfect ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)', 
-                  color: isPerfect ? '#10b981' : '#ef4444', 
-                  border: isPerfect ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(239, 68, 68, 0.25)', 
-                  marginTop: '0.25rem' 
-                }}
-              >
-                {isPerfect ? '✅' : '⚠️'} {cleanNotes.substring(0, 22)}{cleanNotes.length > 22 ? '…' : ''}
-              </span>
-            );
-          })()}
+          {hasDamage && <DamageNoteView note={booking.damage_notes || ''} />}
         </Stack>
       </Cell>
 

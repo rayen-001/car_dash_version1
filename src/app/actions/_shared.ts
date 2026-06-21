@@ -45,3 +45,34 @@ export function parseCostFromNotes(notes: string | null | undefined, defaultCost
   }
   return defaultCost
 }
+
+/**
+ * Fetches all bookings belonging to the active tenant by handling Postgrest 1000 row limits.
+ * We fetch sequentially in chunks of 1000 rows.
+ */
+export async function fetchAllBookings(supabase: any, ownerId: string, selectQuery = '*') {
+  const bookings: any[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select(selectQuery)
+      .eq('owner_id', ownerId)
+      .order('created_at', { ascending: false })
+      .range(from, from + 999)
+
+    if (error) {
+      console.error('[fetchAllBookings] error fetching page chunk:', error.message)
+      break
+    }
+    if (data) {
+      bookings.push(...data)
+    }
+    if (!data || data.length < 1000) {
+      break
+    }
+    from += 1000
+  }
+  return bookings
+}
+

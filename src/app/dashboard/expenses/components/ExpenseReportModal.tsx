@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Printer } from 'lucide-react'
 import { BusinessSettings } from '@/types'
 
@@ -17,6 +19,22 @@ interface ExpenseReportModalProps {
   }
 }
 
+const getCategoryLabelFR = (cat: string) => {
+  switch (cat.toLowerCase()) {
+    case 'rental_revenue': return 'Revenus Locatifs'
+    case 'maintenance': return 'Entretien Véhicule'
+    case 'fuel': return 'Carburant Flotte'
+    case 'insurance': return 'Assurance'
+    case 'cleaning': return 'Nettoyage'
+    case 'incident': return 'Indemnité Incident'
+    case 'damage_repair': return 'Réparation Dégâts'
+    case 'installment_tranche': return 'Tranche de Paiement'
+    case 'late_return_penalty': return 'Pénalité de Retard'
+    case 'all': return 'Toutes les catégories'
+    default: return cat
+  }
+}
+
 export default function ExpenseReportModal({
   expenses,
   businessSettings,
@@ -24,6 +42,12 @@ export default function ExpenseReportModal({
   filters,
   stats
 }: ExpenseReportModalProps) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const currentSettings = {
     business_name: businessSettings?.business_name || 'RentCar Premium',
     logo_url: businessSettings?.logo_url || '',
@@ -33,7 +57,9 @@ export default function ExpenseReportModal({
     rental_terms: businessSettings?.rental_terms || ''
   }
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <div className="modal-overlay print-report-container" style={{ zIndex: 1100 }}>
       <div className="modal-content" style={{
         maxWidth: '850px',
@@ -58,15 +84,15 @@ export default function ExpenseReportModal({
           marginBottom: '2.5rem'
         }}>
           <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
-            Expense Report ready for Printing / PDF generation.
+            Rapport de dépenses prêt pour l'impression / génération de PDF.
           </span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn-primary" style={{ background: '#e5c17d', color: '#000000', fontWeight: 600 }} onClick={() => window.print()}>
                <Printer size={16} />
-               <span>Print / Save as PDF</span>
+               <span>Imprimer / Enregistrer en PDF</span>
             </button>
             <button className="btn-secondary" style={{ background: '#e2e8f0', color: '#1e293b' }} onClick={onClose}>
-               Close
+               Fermer
             </button>
           </div>
         </div>
@@ -99,13 +125,13 @@ export default function ExpenseReportModal({
                 color: '#0f172a',
                 letterSpacing: '0.5px'
               }}>
-                Expense Report
+                Rapport de Dépenses
               </div>
               <p style={{ fontSize: '0.8rem', color: '#475569', margin: 0 }}>
-                Date Generated: <strong>{new Date().toLocaleDateString()}</strong>
+                Date Génération : <strong>{new Date().toLocaleDateString()}</strong>
               </p>
               <p style={{ fontSize: '0.8rem', color: '#475569', margin: '0.2rem 0 0 0' }}>
-                Currency: <strong>{currentSettings.currency || 'DT'}</strong>
+                Devise : <strong>{currentSettings.currency || 'DT'}</strong>
               </p>
             </div>
           </div>
@@ -115,31 +141,31 @@ export default function ExpenseReportModal({
             {/* Filter Criteria block */}
             <div style={{ border: '1px solid #cbd5e1', padding: '1rem 1.25rem', borderRadius: '6px', background: '#f8fafc' }}>
               <h3 style={{ fontSize: '0.8rem', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 0.5rem 0', fontWeight: 700, letterSpacing: '0.5px' }}>
-                Report Filters
+                Filtres du Rapport
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', fontSize: '0.8rem', color: '#475569' }}>
-                <div>Category: <strong style={{ color: '#0f172a' }}>{filters.category}</strong></div>
-                <div>Vehicle: <strong style={{ color: '#0f172a' }}>{filters.vehicle}</strong></div>
-                <div>Search Query: <strong style={{ color: '#0f172a' }}>{filters.searchQuery || 'None'}</strong></div>
+                <div>Catégorie : <strong style={{ color: '#0f172a' }}>{getCategoryLabelFR(filters.category)}</strong></div>
+                <div>Véhicule : <strong style={{ color: '#0f172a' }}>{filters.vehicle === 'All Vehicles' ? 'Tous les Véhicules' : filters.vehicle}</strong></div>
+                <div>Recherche : <strong style={{ color: '#0f172a' }}>{filters.searchQuery || 'Aucune'}</strong></div>
               </div>
             </div>
 
             {/* Summary Statistics block */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
               <div style={{ border: '1px solid #cbd5e1', padding: '1.25rem', borderRadius: '6px', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>This Month</span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ce Mois</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem' }}>
                   {stats.thisMonth.toFixed(2)} {currentSettings.currency}
                 </div>
               </div>
               <div style={{ border: '1px solid #cbd5e1', padding: '1.25rem', borderRadius: '6px', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>All-Time Registered</span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Historique</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem' }}>
                   {stats.overall.toFixed(2)} {currentSettings.currency}
                 </div>
               </div>
               <div style={{ border: '1px solid #cbd5e1', padding: '1.25rem', borderRadius: '6px', textAlign: 'center', background: 'rgba(212, 180, 106, 0.05)', borderColor: '#e5c17d' }}>
-                <span style={{ fontSize: '0.75rem', color: '#8a6d35', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filtered Subset Total</span>
+                <span style={{ fontSize: '0.75rem', color: '#8a6d35', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Sélection Filtrée</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#8a6d35', marginTop: '0.25rem' }}>
                   {stats.filtered.toFixed(2)} {currentSettings.currency}
                 </div>
@@ -152,17 +178,17 @@ export default function ExpenseReportModal({
                 <thead>
                   <tr style={{ background: '#f1f5f9', borderBottom: '1.5px solid #cbd5e1' }}>
                     <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>Date</th>
-                    <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>Category</th>
-                    <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>Vehicle</th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>Catégorie</th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>Véhicule</th>
                     <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a' }}>Description</th>
-                    <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a', textAlign: 'right' }}>Amount</th>
+                    <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#0f172a', textAlign: 'right' }}>Montant</th>
                   </tr>
                 </thead>
                 <tbody>
                   {expenses.length === 0 ? (
                     <tr>
                       <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-                        No expense records match the active filters.
+                        Aucun enregistrement de dépenses ne correspond aux filtres actifs.
                       </td>
                     </tr>
                   ) : (
@@ -170,15 +196,15 @@ export default function ExpenseReportModal({
                       const vName = expense.vehicles 
                         ? `${expense.vehicles.brand} ${expense.vehicles.model}` 
                         : expense.vehicle_id 
-                          ? 'Associated Vehicle' 
-                          : 'General Business'
+                          ? 'Véhicule Associé' 
+                          : 'Dépense Générale'
                       return (
                         <tr key={expense.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                           <td style={{ padding: '0.75rem 1rem', color: '#1e293b' }}>
                             {new Date(expense.created_at || expense.date).toLocaleDateString()}
                           </td>
                           <td style={{ padding: '0.75rem 1rem', color: '#1e293b', fontWeight: 600 }}>
-                            {expense.category}
+                            {getCategoryLabelFR(expense.category)}
                           </td>
                           <td style={{ padding: '0.75rem 1rem', color: '#1e293b' }}>
                             {vName}
@@ -209,7 +235,7 @@ export default function ExpenseReportModal({
                 display: 'flex',
                 gap: '2rem'
               }}>
-                <span style={{ color: '#475569' }}>TOTAL EXPENDITURE:</span>
+                <span style={{ color: '#475569' }}>TOTAL DES DÉPENSES :</span>
                 <span style={{ color: '#ef4444' }}>-{stats.filtered.toFixed(2)} {currentSettings.currency}</span>
               </div>
             </div>
@@ -217,16 +243,17 @@ export default function ExpenseReportModal({
             {/* Signatures */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginTop: '4rem', fontSize: '0.8rem' }}>
               <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.5rem', textAlign: 'center', color: '#64748b' }}>
-                Prepared By: ___________________________
+                Préparé par : ___________________________
               </div>
               <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.5rem', textAlign: 'center', color: '#64748b' }}>
-                Manager Signature: ___________________________
+                Signature du Gérant : ___________________________
               </div>
             </div>
             
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

@@ -172,6 +172,7 @@ interface SimpleVehicle {
   current_km?: number
   next_vidange_km?: number
   next_pads_km?: number
+  withdrawn_at?: string | null
 }
 
 const MAINT_PREFIX = '_auto:maint:'
@@ -225,6 +226,7 @@ export async function syncMaintenanceTodos(
   }> = []
 
   for (const v of vehicles) {
+    if (v.withdrawn_at) continue // Stop generating new automatic alerts for withdrawn vehicles.
     const current = Number(v.current_km) || 0
     const label = `${v.brand} ${v.model}${v.license_plate ? ` (${v.license_plate})` : ''}`
 

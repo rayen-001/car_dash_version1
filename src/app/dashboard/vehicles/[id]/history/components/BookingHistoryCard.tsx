@@ -1,7 +1,8 @@
 'use client'
 
-import { AlertOctagon, HelpCircle, FileText, Phone, DollarSign, Calendar, Edit, MessageSquare } from 'lucide-react'
+import { AlertOctagon, Phone, Edit, MessageSquare, Calendar } from 'lucide-react'
 import styles from '../history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface Booking {
   id: string
@@ -24,6 +25,8 @@ interface BookingHistoryCardProps {
 }
 
 export default function BookingHistoryCard({ booking, onEditBooking }: BookingHistoryCardProps) {
+  const { lang } = useLanguage()
+
   // Extract initials for the avatar
   const getInitials = (name: string) => {
     return name
@@ -41,11 +44,20 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
 
   // Formatting dates
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', {
       day: 'numeric',
       month: 'short',
       year: 'numeric'
     })
+  }
+
+  const translateStatus = (status: string) => {
+    const s = status.toLowerCase()
+    if (s === 'confirmed') return lang === 'fr' ? 'Confirmée' : 'Confirmed'
+    if (s === 'pending') return lang === 'fr' ? 'En attente' : 'Pending'
+    if (s === 'completed') return lang === 'fr' ? 'Terminée' : 'Completed'
+    if (s === 'cancelled') return lang === 'fr' ? 'Annulée' : 'Cancelled'
+    return status
   }
 
   return (
@@ -71,7 +83,7 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
           {booking.accident_reported && (
             <span className={styles['incident-badge']}>
               <AlertOctagon size={12} />
-              Accident / Damage
+              {lang === 'fr' ? 'Accident / Dégât' : 'Accident / Damage'}
             </span>
           )}
           <span 
@@ -81,11 +93,11 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
               booking.status === 'completed' ? styles['active'] : styles['expired']
             }`}
           >
-            {booking.status}
+            {translateStatus(booking.status)}
           </span>
           <button 
             className="icon-btn" 
-            title="Edit Booking Details"
+            title={lang === 'fr' ? 'Modifier les détails de la réservation' : 'Edit Booking Details'}
             onClick={() => onEditBooking(booking)}
             style={{ marginLeft: '0.25rem' }}
           >
@@ -99,7 +111,7 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
         {/* Dates & Times */}
         <div className={styles['booking-dates-row']}>
           <div className={styles['date-block']}>
-            <span className={styles['date-block-label']}>Pick up</span>
+            <span className={styles['date-block-label']}>{lang === 'fr' ? 'Départ' : 'Pick up'}</span>
             <span className={styles['date-block-value']}>{formatDate(booking.start_date)}</span>
             <span className={styles['date-block-time']}>{booking.pickup_time || '10:00'}</span>
           </div>
@@ -109,7 +121,7 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
           </div>
 
           <div className={styles['date-block']} style={{ textAlign: 'right' }}>
-            <span className={styles['date-block-label']}>Return</span>
+            <span className={styles['date-block-label']}>{lang === 'fr' ? 'Retour' : 'Return'}</span>
             <span className={styles['date-block-value']}>{formatDate(booking.end_date)}</span>
             <span className={styles['date-block-time']}>{booking.return_time || '10:00'}</span>
           </div>
@@ -118,15 +130,15 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
         {/* Financial Row */}
         <div className={styles['financial-row']}>
           <div className={styles['fin-item']}>
-            <span className={styles['fin-label']}>Total</span>
+            <span className={styles['fin-label']}>{lang === 'fr' ? 'Total' : 'Total'}</span>
             <span className={`${styles['fin-value']} ${styles['total']}`}>{total.toFixed(2)} DT</span>
           </div>
           <div className={styles['fin-item']}>
-            <span className={styles['fin-label']}>Paid</span>
+            <span className={styles['fin-label']}>{lang === 'fr' ? 'Payé' : 'Paid'}</span>
             <span className={`${styles['fin-value']} ${styles['paid']}`}>{paid.toFixed(2)} DT</span>
           </div>
           <div className={styles['fin-item']}>
-            <span className={styles['fin-label']}>Balance</span>
+            <span className={styles['fin-label']}>{lang === 'fr' ? 'Solde' : 'Balance'}</span>
             <span className={`${styles['fin-value']} ${styles['remaining']} ${remaining === 0 ? styles['zero'] : styles['due']}`}>
               {remaining.toFixed(2)} DT
             </span>
@@ -138,7 +150,7 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
           <div className={styles['remarks-row']}>
             <MessageSquare size={14} className={styles['remarks-icon']} />
             <div>
-              <strong>Owner remarks:</strong> {booking.owner_remarks}
+              <strong>{lang === 'fr' ? 'Remarques du propriétaire :' : 'Owner remarks:'}</strong> {booking.owner_remarks}
             </div>
           </div>
         )}

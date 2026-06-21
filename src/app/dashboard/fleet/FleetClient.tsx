@@ -3,17 +3,19 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Car, Plus, Edit2, X, Upload, Trash, ChevronLeft, ChevronRight, History, Archive, RotateCcw } from 'lucide-react'
-import { addVehicle, updateVehicle, withdrawVehicle, restoreVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget } from '@/app/actions'
+import { Car, Plus, Edit2, X, Upload, Trash, ChevronLeft, ChevronRight, History, Archive, RotateCcw, Check } from 'lucide-react'
+import { addVehicle, updateVehicle, withdrawVehicle, restoreVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget, archiveVehicle, unarchiveVehicle } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { Badge } from '@/components/Badge'
 import { createClient } from '@/utils/supabase/client'
+import { useLanguage } from '@/lib/i18n'
 
 export default function FleetClient({ initialVehicles, bookings = [], expenses = [] }: { initialVehicles: any[], bookings?: any[], expenses?: any[] }) {
   const { showToast } = useToast()
   const confirm = useConfirm()
   const router = useRouter()
+  const { t, lang } = useLanguage()
 
   // Memoized timezone-anchored current date string (Africa/Tunis)
   const todayStr = useMemo(() => {
@@ -36,7 +38,13 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
   // Centralized operations states
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'rented' | 'vidange' | 'expiring' | 'withdrawn'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'rented' | 'vidange' | 'expiring' | 'withdrawn' | 'archived'>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [statusFilter, searchQuery])
 
   // Soft-withdrawal modal state
   const [withdrawModalVehicle, setWithdrawModalVehicle] = useState<any | null>(null)
@@ -147,11 +155,11 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
     setIsWithdrawing(true)
     try {
       await withdrawVehicle(withdrawModalVehicle.id, withdrawDate)
-      showToast(`${withdrawModalVehicle.brand} ${withdrawModalVehicle.model} has been withdrawn from the fleet.`, 'success')
+      showToast(lang === 'fr' ? `${withdrawModalVehicle.brand} ${withdrawModalVehicle.model} a été retiré de la flotte.` : `${withdrawModalVehicle.brand} ${withdrawModalVehicle.model} has been withdrawn from the fleet.`, 'success')
       setWithdrawModalVehicle(null)
       setWithdrawDate('')
     } catch (error: any) {
-      showToast('Error withdrawing vehicle: ' + error.message, 'error')
+      showToast(lang === 'fr' ? 'Erreur lors du retrait du véhicule : ' + error.message : 'Error withdrawing vehicle: ' + error.message, 'error')
     }
     setIsWithdrawing(false)
   }
@@ -162,13 +170,31 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
     setIsRestoring(true)
     try {
       await restoreVehicle(restoreModalVehicle.id)
-      showToast(`${restoreModalVehicle.brand} ${restoreModalVehicle.model} has been restored to the active fleet.`, 'success')
+      showToast(lang === 'fr' ? `${restoreModalVehicle.brand} ${restoreModalVehicle.model} a été restauré dans la flotte active.` : `${restoreModalVehicle.brand} ${restoreModalVehicle.model} has been restored to the active fleet.`, 'success')
       setRestoreModalVehicle(null)
     } catch (error: any) {
-      showToast('Error restoring vehicle: ' + error.message, 'error')
+      showToast(lang === 'fr' ? 'Erreur lors de la restauration du véhicule : ' + error.message : 'Error restoring vehicle: ' + error.message, 'error')
     }
     setIsRestoring(false)
   }
+  const handleArchiveClick = async (vehicleId: string, brand: string, model: string) => {
+    try {
+      await archiveVehicle(vehicleId)
+      showToast(lang === 'fr' ? `${brand} ${model} a été archivé.` : `${brand} ${model} has been archived.`, 'success')
+    } catch (error: any) {
+      showToast(lang === 'fr' ? 'Erreur lors de l\'archivage du véhicule : ' + error.message : 'Error archiving vehicle: ' + error.message, 'error')
+    }
+  }
+
+  const handleUnarchiveClick = async (vehicleId: string, brand: string, model: string) => {
+    try {
+      await unarchiveVehicle(vehicleId)
+      showToast(lang === 'fr' ? `${brand} ${model} a été restauré dans la liste des retraités.` : `${brand} ${model} has been restored to retired list.`, 'success')
+    } catch (error: any) {
+      showToast(lang === 'fr' ? 'Erreur lors de la restauration du véhicule depuis l\'archive : ' + error.message : 'Error restoring vehicle from archive: ' + error.message, 'error')
+    }
+  }
+
 
   // Add modal handlers
   const handleAddFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,9 +226,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       setAddFiles([])
       setAddOilDueKm('')
       setAddPadsDueKm('')
-      showToast('Vehicle added successfully!', 'success')
+      showToast(lang === 'fr' ? 'Véhicule ajouté avec succès !' : 'Vehicle added successfully!', 'success')
     } catch (error: any) {
-      showToast('Error adding vehicle: ' + error.message, 'error')
+      showToast(lang === 'fr' ? 'Erreur lors de l\'ajout du véhicule : ' + error.message : 'Error adding vehicle: ' + error.message, 'error')
     }
     setLoading(false)
   }
@@ -250,9 +276,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       setIsEditModalOpen(false)
       setEditingVehicle(null)
       setEditNewFiles([])
-      showToast('Vehicle updated successfully!', 'success')
+      showToast(lang === 'fr' ? 'Véhicule mis à jour avec succès !' : 'Vehicle updated successfully!', 'success')
     } catch (error: any) {
-      showToast('Error updating vehicle: ' + error.message, 'error')
+      showToast(lang === 'fr' ? 'Erreur lors de la mise à jour du véhicule : ' + error.message : 'Error updating vehicle: ' + error.message, 'error')
     }
     setLoading(false)
   }
@@ -290,7 +316,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
     if (inputVal === undefined) return // No change made
     const numVal = parseInt(inputVal)
     if (isNaN(numVal) || numVal < 0) {
-      showToast('Please enter a valid odometer mileage', 'error')
+      showToast(lang === 'fr' ? 'Veuillez entrer un kilométrage valide' : 'Please enter a valid odometer mileage', 'error')
       return
     }
 
@@ -302,7 +328,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
         targetCar?.oil_change_due_km || null,
         targetCar?.brake_pad_state || null
       )
-      showToast('Odometer mileage updated successfully!', 'success')
+      showToast(lang === 'fr' ? 'Kilométrage mis à jour avec succès !' : 'Odometer mileage updated successfully!', 'success')
       // Remove temporary edit state for this row to fetch fresh DB values
       setOdometers(prev => {
         const copy = { ...prev }
@@ -310,7 +336,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
         return copy
       })
     } catch (error: any) {
-      showToast('Error syncing mechanical state: ' + error.message, 'error')
+      showToast(lang === 'fr' ? 'Erreur lors de la synchronisation de l\'état mécanique : ' + error.message : 'Error syncing mechanical state: ' + error.message, 'error')
     }
   }
 
@@ -335,9 +361,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       // Lock in the new km threshold and log the expense securely on the server
       await executeMechanicalService(carId, type, targetCar.current_km || 0, cost, interval)
 
-      showToast(`${type === 'vidange' ? 'Vidange' : 'Brake Pads'} cycle successfully reset!`, 'success')
+      showToast(lang === 'fr' ? `${type === 'vidange' ? 'Vidange' : 'Plaquettes de frein'} réinitialisée avec succès !` : `${type === 'vidange' ? 'Vidange' : 'Brake Pads'} cycle successfully reset!`, 'success')
     } catch (error: any) {
-      showToast(`Error resetting ${type} cycle: ` + error.message, 'error')
+      showToast(lang === 'fr' ? `Erreur lors de la réinitialisation du cycle de ${type === 'vidange' ? 'vidange' : 'plaquettes de frein'} : ` + error.message : `Error resetting ${type} cycle: ` + error.message, 'error')
     }
   }
 
@@ -368,11 +394,11 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
     try {
       await renewVehicleDocument(carId, docType, calculatedExpiryDate, finalCost)
       const docLabel = docType === 'assurance' ? 'Assurance' : docType === 'visite_technique' ? 'Visite Technique' : 'Laissez-Passer'
-      showToast(`${docLabel} successfully extended!`, 'success')
+      showToast(lang === 'fr' ? `${docLabel} prolongé avec succès !` : `${docLabel} successfully extended!`, 'success')
       setConfirmingRenew(prev => ({ ...prev, [`${carId}-${docType}`]: false }))
       setEditingManualDate(prev => ({ ...prev, [`${carId}-${docType}`]: false }))
     } catch (error: any) {
-      showToast('Error executing legal document renewal: ' + error.message, 'error')
+      showToast(lang === 'fr' ? 'Erreur lors du renouvellement du document légal : ' + error.message : 'Error executing legal document renewal: ' + error.message, 'error')
     } finally {
       setRenewingDocs(prev => ({ ...prev, [`${carId}-${docType}`]: false }))
     }
@@ -388,10 +414,10 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
     try {
       await updateManualMechanicalTarget(carId, type, val)
-      showToast(`${type === 'vidange' ? 'Oil Change' : 'Brake Pads'} target updated!`, 'success')
+      showToast(lang === 'fr' ? `Cible de ${type === 'vidange' ? 'vidange' : 'plaquettes de frein'} mise à jour !` : `${type === 'vidange' ? 'Oil Change' : 'Brake Pads'} target updated!`, 'success')
       setEditingManualMech(prev => ({ ...prev, [key]: false }))
     } catch (error: any) {
-      showToast(`Error updating target: ${error.message}`, 'error')
+      showToast(lang === 'fr' ? `Erreur lors de la mise à jour de la cible : ${error.message}` : `Error updating target: ${error.message}`, 'error')
     }
   }
 
@@ -412,7 +438,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   }
 
   const renderTunisianPlate = (plate: string | null) => {
-    const match = (plate || '').trim().match(/^(\d+)\s*TU\s*(\d+)$/i)
+    const match = (plate || '').trim().match(/^(\d+)\s*TU\s*(\d+)\s*([A-Za-z]?)$/i)
     if (match) {
       return (
         <div className="tn-plate">
@@ -422,7 +448,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
           <div className="tn-plate-body">
             <span className="tn-plate-num">{match[1]}</span>
             <span className="tn-plate-divider">تونس</span>
-            <span className="tn-plate-num">{match[2]}</span>
+            <span className="tn-plate-num" style={{ whiteSpace: 'nowrap' }}>{match[2]}{match[3] ? ` ${match[3].toUpperCase()}` : ''}</span>
           </div>
         </div>
       )
@@ -578,45 +604,49 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
   const filteredVehicles = useMemo(() => {
     return initialVehicles.filter(car => {
       const isWithdrawn = !!car.withdrawn_at
-
-      // Retired filter: show ONLY withdrawn vehicles
-      if (statusFilter === 'withdrawn') return isWithdrawn
-
-      // All active filters: always exclude withdrawn vehicles
-      if (isWithdrawn) return false
+      const isArchived = !!car.archived_at
 
       // 1. Status Filter isolates
-      const isRented = bookings.some(b =>
-        b.vehicle_id === car.id &&
-        (b.status === 'confirmed' || b.status === 'completed') &&
-        b.start_date <= todayStr &&
-        b.end_date >= todayStr
-      )
+      if (statusFilter === 'withdrawn') {
+        if (!isWithdrawn || isArchived) return false
+      } else if (statusFilter === 'archived') {
+        if (!isArchived) return false
+      } else {
+        // Active filters: always exclude withdrawn/archived vehicles
+        if (isWithdrawn || isArchived) return false
 
-      const isVidangeDue = car.current_km !== null && (car.next_vidange_km ? car.current_km >= car.next_vidange_km : (car.last_vidange_km !== null && car.current_km >= car.last_vidange_km + 10000))
-      const isPadsDue = car.current_km !== null && (car.next_pads_km ? car.current_km >= car.next_pads_km : (car.last_pads_km !== null && car.current_km >= car.last_pads_km + 30000))
+        const isRented = bookings.some(b =>
+          b.vehicle_id === car.id &&
+          (b.status === 'confirmed' || b.status === 'completed') &&
+          b.start_date <= todayStr &&
+          b.end_date >= todayStr
+        )
 
-      const assuranceDoc = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'assurance')
-      const VTDoc = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'visite_technique')
-      const LPDoc = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'laissez_passer')
+        const isVidangeDue = car.current_km !== null && (car.next_vidange_km ? car.current_km >= car.next_vidange_km : (car.last_vidange_km !== null && car.current_km >= car.last_vidange_km + 10000))
+        const isPadsDue = car.current_km !== null && (car.next_pads_km ? car.current_km >= car.next_pads_km : (car.last_pads_km !== null && car.current_km >= car.last_pads_km + 30000))
 
-      const isDocExpiringSoon = (doc: any) => {
-        if (!doc?.expiry_date) return false
-        const exp = new Date(doc.expiry_date)
-        const today = new Date(todayStr)
-        exp.setHours(0,0,0,0)
-        today.setHours(0,0,0,0)
-        const diffTime = exp.getTime() - today.getTime()
-        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
-        return diffDays <= 7
+        const assuranceDoc = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'assurance')
+        const VTDoc = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'visite_technique')
+        const LPDoc = car.vehicle_legal_docs?.find((d: any) => d.doc_type === 'laissez_passer')
+
+        const isDocExpiringSoon = (doc: any) => {
+          if (!doc?.expiry_date) return false
+          const exp = new Date(doc.expiry_date)
+          const today = new Date(todayStr)
+          exp.setHours(0,0,0,0)
+          today.setHours(0,0,0,0)
+          const diffTime = exp.getTime() - today.getTime()
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
+          return diffDays <= 7
+        }
+
+        const hasExpiringDocs = isDocExpiringSoon(assuranceDoc) || isDocExpiringSoon(VTDoc) || isDocExpiringSoon(LPDoc)
+
+        if (statusFilter === 'available' && (isRented || !car.availability)) return false
+        if (statusFilter === 'rented' && !isRented) return false
+        if (statusFilter === 'vidange' && !(isVidangeDue || isPadsDue)) return false
+        if (statusFilter === 'expiring' && !hasExpiringDocs) return false
       }
-
-      const hasExpiringDocs = isDocExpiringSoon(assuranceDoc) || isDocExpiringSoon(VTDoc) || isDocExpiringSoon(LPDoc)
-
-      if (statusFilter === 'available' && (isRented || !car.availability)) return false
-      if (statusFilter === 'rented' && !isRented) return false
-      if (statusFilter === 'vidange' && !(isVidangeDue || isPadsDue)) return false
-      if (statusFilter === 'expiring' && !hasExpiringDocs) return false
 
       // 2. Query string search (plate, brand, model, active renter name)
       const q = searchQuery.toLowerCase().trim()
@@ -639,6 +669,13 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
       return true
     })
   }, [initialVehicles, bookings, statusFilter, searchQuery, todayStr])
+
+  const indexOfLastItem = currentPage * ITEMS_PER_PAGE
+  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE
+  const currentVehicles = useMemo(() => {
+    return filteredVehicles.slice(indexOfFirstItem, indexOfLastItem)
+  }, [filteredVehicles, indexOfFirstItem, indexOfLastItem])
+  const totalPages = Math.ceil(filteredVehicles.length / ITEMS_PER_PAGE)
 
   return (
     <div className='dashboard-page'>
@@ -1099,35 +1136,29 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               className={`capsule-btn ${statusFilter === 'all' ? 'active' : ''}`}
               onClick={() => setStatusFilter('all')}
             >
-              All Fleet
+              {t('fleet.allFleet')}
             </button>
             <button 
               type="button" 
               className={`capsule-btn ${statusFilter === 'available' ? 'active' : ''}`}
               onClick={() => setStatusFilter('available')}
             >
-              🟢 Available
+              🟢 {t('fleet.available')}
             </button>
             <button 
               type="button" 
               className={`capsule-btn ${statusFilter === 'rented' ? 'active' : ''}`}
               onClick={() => setStatusFilter('rented')}
             >
-              🔴 Rented
+              🔴 {t('fleet.rented')}
             </button>
-            <button 
-              type="button" 
-              className={`capsule-btn ${statusFilter === 'vidange' ? 'active' : ''} vidange`}
-              onClick={() => setStatusFilter('vidange')}
-            >
-              🚨 Vidange Due
-            </button>
+
             <button 
               type="button" 
               className={`capsule-btn ${statusFilter === 'expiring' ? 'active' : ''} expiring`}
               onClick={() => setStatusFilter('expiring')}
             >
-              ⚠️ Expiring Docs
+              ⚠️ {t('fleet.expiringDocs')}
             </button>
             <button
               type="button"
@@ -1135,7 +1166,15 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               onClick={() => setStatusFilter('withdrawn')}
               style={statusFilter === 'withdrawn' ? { borderColor: 'rgba(148,163,184,0.6)', color: '#94A3B8', background: 'rgba(148,163,184,0.08)' } : {}}
             >
-              🗃️ Retired
+              🗃️ {t('fleet.retired')}
+            </button>
+            <button
+              type="button"
+              className={`capsule-btn ${statusFilter === 'archived' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('archived')}
+              style={statusFilter === 'archived' ? { borderColor: 'rgba(148,163,184,0.6)', color: '#94A3B8', background: 'rgba(148,163,184,0.08)' } : {}}
+            >
+              📦 {t('fleet.archived')}
             </button>
           </div>
         </div>
@@ -1146,18 +1185,18 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
           <table className="data-table fleet-table">
             <thead>
               <tr>
-                <th style={{ width: '20%' }}>Vehicle Details</th>
-                <th style={{ width: '14%' }}>Odometer & Mechanical</th>
-                <th style={{ width: '16%' }}>Assurance (Statutory)</th>
-                <th style={{ width: '16%' }}>Visite Technique</th>
-                <th style={{ width: '16%' }}>Transport Authorization (Laissez-Passer)</th>
-                <th style={{ width: '12%' }}>Availability & Yield</th>
-                <th style={{ width: '6%' }}>Actions</th>
+                <th style={{ width: '20%' }}>{t('fleet.details')}</th>
+                <th style={{ width: '13%' }}>{t('fleet.odometer')}</th>
+                <th style={{ width: '14%' }}>{t('fleet.assurance')}</th>
+                <th style={{ width: '14%' }}>{t('fleet.visite')}</th>
+                <th style={{ width: '15%' }}>{t('fleet.transport')}</th>
+                <th style={{ width: '12%' }}>{t('fleet.availability')}</th>
+                <th style={{ width: '12%', textAlign: 'right' }}>{t('fleet.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {filteredVehicles && filteredVehicles.length > 0 ? (
-                filteredVehicles.map((car) => {
+              {filteredVehicles && currentVehicles.length > 0 ? (
+                currentVehicles.map((car) => {
                   const carBookings = bookings.filter((b: any) => b.vehicle_id === car.id && b.status !== 'cancelled')
                   const revenue = carBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
                   
@@ -1223,9 +1262,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                             {car.withdrawn_at && (
                               <div style={{ 
                                 fontSize: '0.72rem', 
-                                color: '#f87171', 
-                                background: 'rgba(239, 68, 68, 0.08)', 
-                                border: '1px solid rgba(239, 68, 68, 0.25)', 
+                                color: car.archived_at ? '#ae9260' : '#f87171', 
+                                background: car.archived_at ? 'rgba(174, 146, 96, 0.08)' : 'rgba(239, 68, 68, 0.08)', 
+                                border: car.archived_at ? '1px solid rgba(174, 146, 96, 0.25)' : '1px solid rgba(239, 68, 68, 0.25)', 
                                 padding: '2px 6px', 
                                 borderRadius: '4px', 
                                 width: 'fit-content', 
@@ -1234,9 +1273,13 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                                 alignItems: 'center',
                                 gap: '0.25rem',
                                 fontWeight: 500,
-                                textShadow: '0 0 6px rgba(239, 68, 68, 0.25)'
+                                textShadow: car.archived_at ? '0 0 6px rgba(174, 146, 96, 0.25)' : '0 0 6px rgba(239, 68, 68, 0.25)'
                               }}>
-                                <span>🗃️ Retired: {car.withdrawn_at}</span>
+                                {car.archived_at ? (
+                                  <span>📦 Archived: {car.archived_at}</span>
+                                ) : (
+                                  <span>🗃️ Retired: {car.withdrawn_at}</span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1560,8 +1603,8 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                       </td>
 
                       {/* COLUMN 7: Actions */}
-                      <td data-label="Actions">
-                        <div className="action-buttons">
+                      <td data-label="Actions" style={{ textAlign: 'right' }}>
+                        <div className="action-buttons" style={{ justifyContent: 'flex-end' }}>
                           <button className="icon-btn" title="View History" onClick={() => router.push(`/dashboard/vehicles/${car.id}/history`)}>
                             <History size={16} />
                           </button>
@@ -1580,14 +1623,37 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                               </button>
                             </>
                           ) : (
-                            <button
-                              className="icon-btn"
-                              title="Restore Vehicle"
-                              style={{ color: '#34D399' }}
-                              onClick={() => setRestoreModalVehicle(car)}
-                            >
-                              <RotateCcw size={16} />
-                            </button>
+                            <>
+                              {car.archived_at ? (
+                                <button
+                                  className="icon-btn"
+                                  title="Restore to Retired"
+                                  style={{ color: '#ae9260' }}
+                                  onClick={() => handleUnarchiveClick(car.id, car.brand, car.model)}
+                                >
+                                  <RotateCcw size={16} />
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    className="icon-btn"
+                                    title="Restore Vehicle"
+                                    style={{ color: '#34D399' }}
+                                    onClick={() => setRestoreModalVehicle(car)}
+                                  >
+                                    <RotateCcw size={16} />
+                                  </button>
+                                  <button
+                                    className="icon-btn"
+                                    title="Archive Vehicle"
+                                    style={{ color: '#E5C17D' }}
+                                    onClick={() => handleArchiveClick(car.id, car.brand, car.model)}
+                                  >
+                                    <Check size={16} />
+                                  </button>
+                                </>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -1607,6 +1673,90 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               )}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderTop: '1px solid rgba(229,193,125,0.1)', background: 'rgba(255,255,255,0.01)', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px', flexWrap: 'wrap', gap: '1rem' }}>
+              <span style={{ fontSize: '0.875rem', color: '#888' }}>
+                Showing <strong style={{ color: '#fff' }}>{indexOfFirstItem + 1}</strong> to <strong style={{ color: '#fff' }}>{Math.min(indexOfLastItem, filteredVehicles.length)}</strong> of <strong style={{ color: '#fff' }}>{filteredVehicles.length}</strong> vehicles
+              </span>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(229,193,125,0.15)',
+                    borderRadius: '6px',
+                    color: currentPage === 1 ? '#555' : '#ae9260',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Previous
+                </button>
+                
+                {/* Page numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, idx) => {
+                  let pageNum = idx + 1;
+                  // Center the active page if possible
+                  if (currentPage > 3 && totalPages > 5) {
+                    pageNum = currentPage - 3 + idx;
+                    if (pageNum + (4 - idx) > totalPages) {
+                      pageNum = totalPages - 4 + idx;
+                    }
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNum)}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: currentPage === pageNum ? '#ae9260' : 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(229,193,125,0.15)',
+                        borderRadius: '6px',
+                        color: currentPage === pageNum ? '#000' : '#fff',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: currentPage === pageNum ? 600 : 500,
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(229,193,125,0.15)',
+                    borderRadius: '6px',
+                    color: currentPage === totalPages ? '#555' : '#ae9260',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1615,7 +1765,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
         <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
-              <h2>Add New Vehicle</h2>
+              <h2>{t('fleet.addTitle')}</h2>
               <button className="icon-btn" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); setAddOilDueKm(''); }}><X size={20} /></button>
             </div>
             <form onSubmit={handleAddSubmit} className="modal-form">
@@ -1629,41 +1779,41 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
-                Core Specifications
+                {t('fleet.coreSpecs')}
               </h4>
 
               <div className="form-group">
-                <label>Brand</label>
-                <input type="text" name="brand" required placeholder="e.g. Mercedes-Benz" className="form-input" />
+                <label>{t('fleet.brand')}</label>
+                <input type="text" name="brand" required placeholder={t('fleet.brandPlaceholder')} className="form-input" />
               </div>
               <div className="form-group">
-                <label>Model</label>
-                <input type="text" name="model" required placeholder="e.g. G-Class" className="form-input" />
+                <label>{t('fleet.model')}</label>
+                <input type="text" name="model" required placeholder={t('fleet.modelPlaceholder')} className="form-input" />
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Year</label>
-                  <input type="number" name="year" required placeholder="2024" min="1900" max="2100" className="form-input" />
+                  <label>{t('fleet.year')}</label>
+                  <input type="number" name="year" required placeholder={t('fleet.yearPlaceholder')} min="1900" max="2100" className="form-input" />
                 </div>
                 <div className="form-group">
-                  <label>Price per Day (DT)</label>
-                  <input type="number" name="price_per_day" required placeholder="150" min="0" step="0.01" className="form-input" />
+                  <label>{t('fleet.pricePerDay')}</label>
+                  <input type="number" name="price_per_day" required placeholder={t('fleet.pricePlaceholder')} min="0" step="0.01" className="form-input" />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>License Plate</label>
-                  <input type="text" name="license_plate" placeholder="e.g. 123 TU 4567" className="form-input" />
+                  <label>{t('fleet.licensePlate')}</label>
+                  <input type="text" name="license_plate" placeholder={t('fleet.platePlaceholder')} className="form-input" />
                 </div>
                 <div className="form-group">
-                  <label>Color</label>
-                  <input type="text" name="color" placeholder="e.g. Pearl White" className="form-input" />
+                  <label>{t('fleet.color')}</label>
+                  <input type="text" name="color" placeholder={t('fleet.colorPlaceholder')} className="form-input" />
                 </div>
               </div>
               
               {/* VEHICLE IMAGE SYSTEM: UPLOAD & PREVIEW */}
               <div className="form-group">
-                <label>Vehicle Images</label>
+                <label>{t('fleet.images')}</label>
                 <input 
                   type="file" 
                   ref={addFileInputRef}
@@ -1674,8 +1824,8 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 />
                 <div className="upload-dropzone" onClick={() => addFileInputRef.current?.click()}>
                   <Upload size={24} style={{ color: 'var(--accent-gold)' }} />
-                  <p>Click to upload vehicle images</p>
-                  <span>Support JPEG, PNG, WEBP (Max 5MB each)</span>
+                  <p>{t('fleet.clickToUpload')}</p>
+                  <span>{t('fleet.uploadSupport')}</span>
                 </div>
                 
                 {addFiles.length > 0 && (
@@ -1713,32 +1863,32 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
-                Mechanical & Maintenance
+                {t('fleet.mechHeader')}
               </h4>
               
               <div className="form-group">
-                <label>Current Odometer (KM)</label>
-                <input type="number" name="current_km" placeholder="e.g. 15000" className="form-input" min="0" />
+                <label>{t('fleet.currentKm')}</label>
+                <input type="number" name="current_km" placeholder={t('fleet.currentKmPlaceholder')} className="form-input" min="0" />
               </div>
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Last Oil Change (KM)</label>
+                  <label>{t('fleet.lastOilChange')}</label>
                   <input 
                     type="number" 
                     name="last_vidange_km"
-                    placeholder="e.g. 9800" 
+                    placeholder={t('fleet.lastOilChangePlaceholder')} 
                     className="form-input" 
                     min="0"
                     onChange={handleLastOilChangeChange}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Next Oil Change Due (KM)</label>
+                  <label>{t('fleet.nextOilChange')}</label>
                   <input 
                     type="number" 
                     name="next_vidange_km" 
-                    placeholder="e.g. 19800" 
+                    placeholder={t('fleet.nextOilChangePlaceholder')} 
                     className="form-input" 
                     min="0"
                     value={addOilDueKm}
@@ -1749,22 +1899,22 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Last Pads Change (KM)</label>
+                  <label>{t('fleet.lastPadsChange')}</label>
                   <input 
                     type="number" 
                     name="last_pads_km"
-                    placeholder="e.g. 12000" 
+                    placeholder={t('fleet.lastPadsChangePlaceholder')} 
                     className="form-input" 
                     min="0"
                     onChange={handleLastPadsChangeChange}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Next Pads Change Due (KM)</label>
+                  <label>{t('fleet.nextPadsChange')}</label>
                   <input 
                     type="number" 
                     name="next_pads_km" 
-                    placeholder="e.g. 42000" 
+                    placeholder={t('fleet.nextPadsChangePlaceholder')} 
                     className="form-input" 
                     min="0"
                     value={addPadsDueKm}
@@ -1785,45 +1935,45 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
-                Legal Compliance Dates
+                {t('fleet.legalHeader')}
               </h4>
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Insurance Start</label>
+                  <label>{t('fleet.insuranceStart')}</label>
                   <input type="date" name="insurance_start_date" className="form-input" />
                 </div>
                 <div className="form-group">
-                  <label>Insurance Expiry (Assurance)</label>
+                  <label>{t('fleet.insuranceExpiry')}</label>
                   <input type="date" name="assurance_expiry" className="form-input" />
                 </div>
               </div>
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Visite Technique Expiry</label>
+                  <label>{t('fleet.visiteExpiry')}</label>
                   <input type="date" name="visite_technique_expiry" className="form-input" />
                 </div>
                 <div className="form-group">
-                  <label>Laissez-Passer Expiry</label>
+                  <label>{t('fleet.laissezPasserExpiry')}</label>
                   <input type="date" name="laissez_passer_expiry" className="form-input" />
                 </div>
               </div>
 
               <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                 <input type="checkbox" name="availability" defaultChecked id="avail" />
-                <label htmlFor="avail" style={{ margin: 0 }}>Available for rent immediately</label>
+                <label htmlFor="avail" style={{ margin: 0 }}>{t('fleet.availImmediately')}</label>
               </div>
               
               <div className="modal-footer" style={{ marginTop: '1.25rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); setAddOilDueKm(''); }}>Cancel</button>
+                <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setAddFiles([]); setAddOilDueKm(''); }}>{t('common.cancel')}</button>
                 <button type="submit" className="btn-primary" disabled={loading}>
                   {loading ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span className="loading-spinner"></span>
-                      <span>Saving...</span>
+                      <span>{t('fleet.saving')}</span>
                     </div>
-                  ) : 'Add Vehicle'}
+                  ) : t('fleet.add') /* Ajouter un Véhicule / Add Vehicle */}
                 </button>
               </div>
             </form>
@@ -1837,54 +1987,54 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
         <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
-              <h2>Edit Vehicle Details</h2>
+              <h2>{t('fleet.editTitle')}</h2>
               <button className="icon-btn" onClick={() => { setIsEditModalOpen(false); setEditingVehicle(null); setEditNewFiles([]); }}><X size={20} /></button>
             </div>
             <form onSubmit={handleEditSubmit} className="modal-form">
               <div className="form-group">
-                <label>Brand</label>
+                <label>{t('fleet.brand')}</label>
                 <input 
                   type="text" 
                   name="brand" 
                   required 
                   defaultValue={editingVehicle.brand} 
-                  placeholder="e.g. Mercedes-Benz" 
+                  placeholder={t('fleet.brandPlaceholder')} 
                   className="form-input" 
                 />
               </div>
               <div className="form-group">
-                <label>Model</label>
+                <label>{t('fleet.model')}</label>
                 <input 
                   type="text" 
                   name="model" 
                   required 
                   defaultValue={editingVehicle.model} 
-                  placeholder="e.g. G-Class" 
+                  placeholder={t('fleet.modelPlaceholder')} 
                   className="form-input" 
                 />
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Year</label>
+                  <label>{t('fleet.year')}</label>
                   <input 
                     type="number" 
                     name="year" 
                     required 
                     defaultValue={editingVehicle.year} 
-                    placeholder="2024" 
+                    placeholder={t('fleet.yearPlaceholder')} 
                     min="1900" 
                     max="2100" 
                     className="form-input" 
                   />
                 </div>
                 <div className="form-group">
-                  <label>Price per Day (DT)</label>
+                  <label>{t('fleet.pricePerDay')}</label>
                   <input 
                     type="number" 
                     name="price_per_day" 
                     required 
                     defaultValue={editingVehicle.price_per_day} 
-                    placeholder="150" 
+                    placeholder={t('fleet.pricePlaceholder')} 
                     min="0" 
                     step="0.01" 
                     className="form-input" 
@@ -1893,22 +2043,22 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>License Plate</label>
+                  <label>{t('fleet.licensePlate')}</label>
                   <input 
                     type="text" 
                     name="license_plate" 
                     defaultValue={editingVehicle.license_plate || ''} 
-                    placeholder="e.g. 123 TU 4567" 
+                    placeholder={t('fleet.platePlaceholder')} 
                     className="form-input" 
                   />
                 </div>
                 <div className="form-group">
-                  <label>Color</label>
+                  <label>{t('fleet.color')}</label>
                   <input 
                     type="text" 
                     name="color" 
                     defaultValue={editingVehicle.color || ''} 
-                    placeholder="e.g. Pearl White" 
+                    placeholder={t('fleet.colorPlaceholder')} 
                     className="form-input" 
                   />
                 </div>
@@ -1916,13 +2066,13 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
 
               {/* VEHICLE IMAGE SYSTEM: EXISTING & NEW UPLOADS */}
               <div className="form-group">
-                <label>Vehicle Images</label>
+                <label>{t('fleet.images')}</label>
                 
                 {/* Existing Images list */}
                 {editExistingImages.length > 0 && (
                   <div style={{ marginBottom: '1rem' }}>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Active Images
+                      {t('fleet.activeImages')}
                     </div>
                     <div className="previews-grid">
                       {editExistingImages.map((imgUrl, idx) => (
@@ -1957,13 +2107,13 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 />
                 <div className="upload-dropzone" onClick={() => editFileInputRef.current?.click()}>
                   <Upload size={20} style={{ color: 'var(--accent-gold)' }} />
-                  <p style={{ fontSize: '0.75rem' }}>Upload additional images</p>
+                  <p style={{ fontSize: '0.75rem' }}>{t('fleet.uploadAdditional')}</p>
                 </div>
                 
                 {editNewFiles.length > 0 && (
                   <div style={{ marginTop: '0.75rem' }}>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      To Upload (Preview)
+                      {t('fleet.toUploadPreview')}
                     </div>
                     <div className="previews-grid animate-fade-in">
                       {editNewFiles.map((file, idx) => (
@@ -2000,12 +2150,12 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
-                Insurance Dates
+                {t('fleet.insuranceDates')}
               </h4>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Insurance Start</label>
-                  <input
+                  <label>{t('fleet.insuranceStart')}</label>
+                  <input 
                     type="date"
                     name="insurance_start_date"
                     defaultValue={editingVehicle.insurance_start_date || ''}
@@ -2013,8 +2163,8 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                   />
                 </div>
                 <div className="form-group">
-                  <label>Insurance Expiry (Assurance)</label>
-                  <input
+                  <label>{t('fleet.insuranceExpiry')}</label>
+                  <input 
                     type="date"
                     name="assurance_expiry_edit"
                     defaultValue={editingVehicle.vehicle_legal_docs?.find((d: any) => d.doc_type === 'assurance')?.expiry_date || ''}
@@ -2024,24 +2174,24 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
               </div>
 
               <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
-                <input
+                <input 
                   type="checkbox"
                   name="availability"
                   defaultChecked={editingVehicle.availability}
                   id="edit-avail"
                 />
-                <label htmlFor="edit-avail" style={{ margin: 0 }}>Available for rent immediately</label>
+                <label htmlFor="edit-avail" style={{ margin: 0 }}>{t('fleet.availImmediately')}</label>
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setEditingVehicle(null); setEditNewFiles([]); }}>Cancel</button>
+                <button type="button" className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setEditingVehicle(null); setEditNewFiles([]); }}>{t('common.cancel')}</button>
                 <button type="submit" className="btn-primary" disabled={loading}>
                   {loading ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span className="loading-spinner"></span>
-                      <span>Saving Changes...</span>
+                      <span>{t('fleet.saving')}</span>
                     </div>
-                  ) : 'Save Changes'}
+                  ) : t('fleet.saveChanges')}
                 </button>
               </div>
             </form>
@@ -2055,21 +2205,21 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
         <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '480px' }}>
             <div className="modal-header">
-              <h2>Withdraw Vehicle</h2>
+              <h2>{t('fleet.withdrawTitle')}</h2>
               <button className="icon-btn" onClick={() => { setWithdrawModalVehicle(null); setWithdrawDate('') }}>
                 <X size={20} />
               </button>
             </div>
             <div style={{ padding: '0 1.5rem 0.5rem' }}>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                You are withdrawing{' '}
+                {t('fleet.withdrawDescPre')}{' '}
                 <strong style={{ color: '#E2E8F0' }}>
                   {withdrawModalVehicle.brand} {withdrawModalVehicle.model}{withdrawModalVehicle.license_plate ? ` (${withdrawModalVehicle.license_plate})` : ''}
                 </strong>{' '}
-                from the active fleet. All historical data, bookings, and records will be preserved.
+                {t('fleet.withdrawDescPost')}
               </p>
               <div className="form-group">
-                <label>Withdrawal Date <span style={{ color: '#EF4444' }}>*</span></label>
+                <label>{t('fleet.withdrawalDate')} <span style={{ color: '#EF4444' }}>*</span></label>
                 <input
                   type="date"
                   className="form-input"
@@ -2079,7 +2229,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 />
                 {!withdrawDate && (
                   <span style={{ fontSize: '0.75rem', color: 'rgba(239,68,68,0.8)', marginTop: '0.25rem', display: 'block' }}>
-                    Please select the exact date this vehicle was withdrawn.
+                    {t('fleet.withdrawalDateError')}
                   </span>
                 )}
               </div>
@@ -2091,7 +2241,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 onClick={() => { setWithdrawModalVehicle(null); setWithdrawDate('') }}
                 disabled={isWithdrawing}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -2113,9 +2263,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 }}
               >
                 {isWithdrawing ? (
-                  <><span className="loading-spinner-xs"></span><span>Withdrawing...</span></>
+                  <><span className="loading-spinner-xs"></span><span>{t('fleet.withdrawing')}</span></>
                 ) : (
-                  <><Archive size={15} /><span>Confirm Withdrawal</span></>
+                  <><Archive size={15} /><span>{t('fleet.confirmWithdrawal')}</span></>
                 )}
               </button>
             </div>
@@ -2129,22 +2279,22 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
         <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '440px' }}>
             <div className="modal-header">
-              <h2>Restore Vehicle</h2>
+              <h2>{t('fleet.restoreTitle')}</h2>
               <button className="icon-btn" onClick={() => setRestoreModalVehicle(null)}>
                 <X size={20} />
               </button>
             </div>
             <div style={{ padding: '0 1.5rem 0.5rem' }}>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                Restore{' '}
+                {t('fleet.restoreDescPre')}{' '}
                 <strong style={{ color: '#E2E8F0' }}>
                   {restoreModalVehicle.brand} {restoreModalVehicle.model}{restoreModalVehicle.license_plate ? ` (${restoreModalVehicle.license_plate})` : ''}
                 </strong>{' '}
-                back to the active fleet? It will reappear in all active filters and become available for new bookings.
+                {t('fleet.restoreDescPost')}
               </p>
               {restoreModalVehicle.withdrawn_at && (
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', opacity: 0.7 }}>
-                  Withdrawn on: <span style={{ fontFamily: 'monospace' }}>{restoreModalVehicle.withdrawn_at}</span>
+                  {t('fleet.withdrawnOn')} <span style={{ fontFamily: 'monospace' }}>{restoreModalVehicle.withdrawn_at}</span>
                 </p>
               )}
             </div>
@@ -2155,7 +2305,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 onClick={() => setRestoreModalVehicle(null)}
                 disabled={isRestoring}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -2165,9 +2315,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
               >
                 {isRestoring ? (
-                  <><span className="loading-spinner-xs"></span><span>Restoring...</span></>
+                  <><span className="loading-spinner-xs"></span><span>{t('fleet.restoring')}</span></>
                 ) : (
-                  <><RotateCcw size={15} /><span>Confirm Restore</span></>
+                  <><RotateCcw size={15} /><span>{t('fleet.confirmRestore')}</span></>
                 )}
               </button>
             </div>
@@ -2197,7 +2347,7 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: '1rem' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Image {lightboxIndex + 1} of {lightboxImages.length}
+                {t('fleet.lightboxImage')} {lightboxIndex + 1} {t('fleet.lightboxOf')} {lightboxImages.length}
               </span>
               <button className="icon-btn" onClick={() => setLightboxImages(null)}>
                 <X size={20} />

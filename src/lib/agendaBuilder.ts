@@ -187,6 +187,9 @@ export function buildAgenda(input: BuildAgendaInput): AgendaItem[] {
 
   // -- Stream 2: mechanical maintenance --------------------------------------
   for (const v of vehicles) {
+    // Skip withdrawn vehicles — no alerts should be generated for retired fleet
+    if (v.withdrawn_at) continue
+
     const current = Number(v.current_km) || 0
 
     // --- Vidange / Oil Change (warn at ≤1000 km remaining) -----------------
@@ -248,6 +251,10 @@ export function buildAgenda(input: BuildAgendaInput): AgendaItem[] {
     if (!doc.expiry_date) continue
     if (doc.expiry_date > horizon && doc.expiry_date > window.to) continue
 
+    // Skip docs belonging to withdrawn vehicles
+    const v = vehiclesById.get(doc.vehicle_id)
+    if (!v || v.withdrawn_at) continue
+
     const isExpired = doc.expiry_date < TODAY
     const daysUntil = daysBetween(TODAY, doc.expiry_date)
     const label =
@@ -256,7 +263,6 @@ export function buildAgenda(input: BuildAgendaInput): AgendaItem[] {
       doc.doc_type === 'laissez_passer' ? 'Laissez-Passer' :
       doc.doc_type
 
-    const v = vehiclesById.get(doc.vehicle_id)
     out.push({
       id: `doc__${doc.id}`,
       kind: 'document',

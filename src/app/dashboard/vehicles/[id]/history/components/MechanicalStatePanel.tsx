@@ -1,7 +1,8 @@
 'use client'
 
-import { Wrench, Edit } from 'lucide-react'
+import { Edit } from 'lucide-react'
 import styles from '../history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface MechanicalStateProps {
   currentKm: number | null
@@ -16,6 +17,8 @@ export default function MechanicalStatePanel({
   nextPadsKm,
   onEditMechanical
 }: MechanicalStateProps) {
+  const { lang } = useLanguage()
+
   // Oil change progress calculations
   const hasOilData = currentKm !== null && oilChangeDueKm !== null
   let oilRemaining = 0
@@ -61,10 +64,12 @@ export default function MechanicalStatePanel({
   return (
     <div className={`${styles['mech-panel']} glass-panel`}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 className={styles['mech-panel-title']}>Mechanical & Maintenance State</h3>
+        <h3 className={styles['mech-panel-title']}>
+          {lang === 'fr' ? 'État Mécanique & Entretien' : 'Mechanical & Maintenance State'}
+        </h3>
         <button 
           className="icon-btn" 
-          title="Update Mechanical Health"
+          title={lang === 'fr' ? "Modifier l'état mécanique" : "Update Mechanical Health"}
           onClick={onEditMechanical}
         >
           <Edit size={16} />
@@ -75,9 +80,9 @@ export default function MechanicalStatePanel({
         {/* Current KM */}
         <div className={styles['mech-item']}>
           <div className={styles['mech-item-header']}>
-            <span className={styles['mech-item-label']}>Current Odometer</span>
+            <span className={styles['mech-item-label']}>{lang === 'fr' ? 'Kilométrage Actuel' : 'Current Odometer'}</span>
             <span className={styles['mech-item-value']}>
-              {currentKm !== null ? `${currentKm.toLocaleString()} KM` : 'Not Logged'}
+              {currentKm !== null ? `${currentKm.toLocaleString()} KM` : (lang === 'fr' ? 'Non enregistré' : 'Not Logged')}
             </span>
           </div>
         </div>
@@ -85,9 +90,11 @@ export default function MechanicalStatePanel({
         {/* Oil Change Tracker */}
         <div className={styles['mech-item']}>
           <div className={styles['mech-item-header']}>
-            <span className={styles['mech-item-label']}>Oil Change (Vidange)</span>
+            <span className={styles['mech-item-label']}>{lang === 'fr' ? 'Vidange Huile' : 'Oil Change (Vidange)'}</span>
             <span className={styles['mech-item-value']}>
-              {hasOilData ? `Due at ${oilChangeDueKm!.toLocaleString()} KM` : 'Not Logged'}
+              {hasOilData 
+                ? (lang === 'fr' ? `Dû à ${oilChangeDueKm!.toLocaleString()} KM` : `Due at ${oilChangeDueKm!.toLocaleString()} KM`)
+                : (lang === 'fr' ? 'Non enregistré' : 'Not Logged')}
             </span>
           </div>
           
@@ -102,22 +109,26 @@ export default function MechanicalStatePanel({
               <div className={styles['mech-item-header']}>
                 <span className={styles['mech-item-sub']}>
                   {oilRemaining > 0 
-                    ? `${oilRemaining.toLocaleString()} KM remaining` 
-                    : `OVERDUE BY ${Math.abs(oilRemaining).toLocaleString()} KM 🚨`}
+                    ? (lang === 'fr' ? `${oilRemaining.toLocaleString()} KM restants` : `${oilRemaining.toLocaleString()} KM remaining`) 
+                    : (lang === 'fr' ? `EN RETARD DE ${Math.abs(oilRemaining).toLocaleString()} KM 🚨` : `OVERDUE BY ${Math.abs(oilRemaining).toLocaleString()} KM 🚨`)}
                 </span>
               </div>
             </>
           ) : (
-            <span className={styles['mech-item-sub']}>Set odometer & target interval to monitor oil health</span>
+            <span className={styles['mech-item-sub']}>
+              {lang === 'fr' ? "Définir le kilométrage et l'intervalle cible pour surveiller la vidange" : 'Set odometer & target interval to monitor oil health'}
+            </span>
           )}
         </div>
 
         {/* Brake Pads Tracker */}
         <div className={styles['mech-item']}>
           <div className={styles['mech-item-header']}>
-            <span className={styles['mech-item-label']}>Brake Pads (Plaquettes)</span>
+            <span className={styles['mech-item-label']}>{lang === 'fr' ? 'Plaquettes de Frein' : 'Brake Pads (Plaquettes)'}</span>
             <span className={styles['mech-item-value']}>
-              {hasPadsData ? `Due at ${nextPadsKm!.toLocaleString()} KM` : 'Not Logged'}
+              {hasPadsData 
+                ? (lang === 'fr' ? `Dû à ${nextPadsKm!.toLocaleString()} KM` : `Due at ${nextPadsKm!.toLocaleString()} KM`)
+                : (lang === 'fr' ? 'Non enregistré' : 'Not Logged')}
             </span>
           </div>
           
@@ -132,13 +143,15 @@ export default function MechanicalStatePanel({
               <div className={styles['mech-item-header']}>
                 <span className={styles['mech-item-sub']}>
                   {padsRemaining > 0 
-                    ? `${padsRemaining.toLocaleString()} KM remaining` 
-                    : `OVERDUE BY ${Math.abs(padsRemaining).toLocaleString()} KM 🚨`}
+                    ? (lang === 'fr' ? `${padsRemaining.toLocaleString()} KM restants` : `${padsRemaining.toLocaleString()} KM remaining`) 
+                    : (lang === 'fr' ? `EN RETARD DE ${Math.abs(padsRemaining).toLocaleString()} KM 🚨` : `OVERDUE BY ${Math.abs(padsRemaining).toLocaleString()} KM 🚨`)}
                 </span>
               </div>
             </>
           ) : (
-            <span className={styles['mech-item-sub']}>Set odometer & target interval to monitor brake pads health</span>
+            <span className={styles['mech-item-sub']}>
+              {lang === 'fr' ? "Définir le kilométrage et l'intervalle cible pour surveiller les plaquettes" : 'Set odometer & target interval to monitor brake pads health'}
+            </span>
           )}
         </div>
       </div>

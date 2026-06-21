@@ -30,17 +30,17 @@ export default function BiLabel({ fr, ar, value, dense }: BiLabelProps) {
   const hasValue = value !== undefined && value !== null && value !== ''
   return (
     <div
+      className={dense ? 'bilabel-dense' : 'bilabel-normal'}
       style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, auto) 1fr minmax(0, auto)',
         alignItems: 'baseline',
-        gap: '0.4rem',
-        lineHeight: dense ? 1.25 : 1.5,
-        fontSize: dense ? '8.5pt' : '9pt',
+        gap: 'var(--bilabel-gap, 0.4rem)',
       }}
     >
       <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fr}</span>
       <span
+        className="bilabel-value"
         style={{
           borderBottom: '1px dotted #555',
           minHeight: '1em',

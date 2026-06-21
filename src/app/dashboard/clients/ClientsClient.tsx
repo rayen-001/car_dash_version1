@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, Fragment, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, UserPlus, Search, Mail, Phone, CreditCard,
@@ -12,6 +13,28 @@ import { useToast } from '@/components/Toast'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { Client, Booking, Expense } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
+import { useLanguage } from '@/lib/i18n'
+import Fuse from 'fuse.js'
+
+function normalizeText(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function isNonNameQuery(query: string): boolean {
+  const trimmed = query.trim()
+  if (!trimmed) return true
+  // Contains any digit (matches phone, CIN, passport, dates, numbers)
+  if (/\d/.test(trimmed)) return true
+  // Contains "TN" or "tn" (matches plates)
+  if (trimmed.toLowerCase().includes('tn')) return true
+  return false
+}
+
 
 interface ClientsClientProps {
   initialClients: Client[]
@@ -68,6 +91,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   const router = useRouter()
   const { showToast } = useToast()
   const confirm = useConfirm()
+  const { t, lang } = useLanguage()
 
   const [clients, setClients] = useState<Client[]>(initialClients)
   
@@ -77,8 +101,17 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
 
   const [searchQuery, setSearchQuery] = useState('')
   const [riskFilter, setRiskFilter] = useState('All')
+  const [smartSearchEnabled, setSmartSearchEnabled] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 25
+
+  // Reset page to 1 on search, filter, or smart search toggle change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, riskFilter, smartSearchEnabled])
 
   const searchParams = useSearchParams()
   useEffect(() => {
@@ -90,6 +123,8 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   // Form states
   const [fullName, setFullName] = useState('')
@@ -137,22 +172,118 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     setSelectedClientId(prev => prev === clientId ? null : clientId)
   }
 
-  // Calculate rental history and dynamic debt aggregator for a client
-  const getClientStats = (clientId: string) => {
-    // 1. Calculate Inflows (Include both primary and secondary roles)
-    const primaryBookings = bookings.filter((b) => b.client_id === clientId || b.secondary_client_id === clientId)
+  // Pre-index bookings by client_id / client_name (excluding cancelled) for risk profiling
+  const activeBookingsByClient = useMemo(() => {
+    const map = new Map<string, Booking[]>()
+    
+    const addToMap = (key: string, b: Booking) => {
+      const normalizedKey = key.trim().toLowerCase()
+      if (!map.has(normalizedKey)) map.set(normalizedKey, [])
+      map.get(normalizedKey)!.push(b)
+    }
+
+    for (const b of bookings) {
+      if (b.status === 'cancelled') continue
+      
+      if (b.client_id) addToMap(b.client_id, b)
+      if (b.secondary_client_id) addToMap(b.secondary_client_id, b)
+      if (b.client_name) addToMap(b.client_name, b)
+      if (b.secondary_client?.full_name) addToMap(b.secondary_client.full_name, b)
+    }
+    return map
+  }, [bookings])
+
+  // Pre-index bookings and expenses by client_id (include both primary and secondary roles)
+  const bookingsByClientId = useMemo(() => {
+    const map = new Map<string, Booking[]>()
+    for (const b of bookings) {
+      if (b.client_id) {
+        if (!map.has(b.client_id)) map.set(b.client_id, [])
+        map.get(b.client_id)!.push(b)
+      }
+      if (b.secondary_client_id) {
+        if (!map.has(b.secondary_client_id)) map.set(b.secondary_client_id, [])
+        map.get(b.secondary_client_id)!.push(b)
+      }
+    }
+    return map
+  }, [bookings])
+
+  const expensesByClientId = useMemo(() => {
+    const map = new Map<string, Expense[]>()
+    for (const e of expenses) {
+      if (e.client_id) {
+        if (!map.has(e.client_id)) map.set(e.client_id, [])
+        map.get(e.client_id)!.push(e)
+      }
+    }
+    return map
+  }, [expenses])
+
+  const getClientRiskProfileMemoized = useCallback((
+    clientId: string | undefined,
+    clientName: string | undefined
+  ) => {
+    if (!clientId && !clientName) {
+      return { score: null, riskLevel: 'new_client' as const }
+    }
+
+    // Combine matching bookings from ID and Name lookups
+    const matchedSet = new Set<Booking>()
+    
+    if (clientId) {
+      const normalizedId = clientId.trim().toLowerCase()
+      const list = activeBookingsByClient.get(normalizedId)
+      if (list) list.forEach(b => matchedSet.add(b))
+    }
+    
+    if (clientName) {
+      const normalizedName = clientName.trim().toLowerCase()
+      const list = activeBookingsByClient.get(normalizedName)
+      if (list) list.forEach(b => matchedSet.add(b))
+    }
+
+    const clientBookings = Array.from(matchedSet)
+
+    if (clientBookings.length === 0) {
+      return { score: null, riskLevel: 'new_client' as const }
+    }
+
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+    const { trustScore: score, hasCriminalOverride } = calculateTrustScore(clientBookings as any, todayStr)
+
+    let riskLevel: 'very_low_risk' | 'low_risk' | 'medium_risk' | 'high_risk' | 'very_high_risk' | 'criminal'
+    
+    if (hasCriminalOverride || (score !== null && score < 15.0)) {
+      riskLevel = 'criminal'
+    } else if (score !== null && score >= 92.0) {
+      riskLevel = 'very_low_risk'
+    } else if (score !== null && score >= 80.0) {
+      riskLevel = 'low_risk'
+    } else if (score !== null && score >= 60.0) {
+      riskLevel = 'medium_risk'
+    } else if (score !== null && score >= 45.0) {
+      riskLevel = 'high_risk'
+    } else {
+      riskLevel = 'very_high_risk'
+    }
+
+    return { score, riskLevel }
+  }, [activeBookingsByClient])
+
+  const getClientStatsMemoized = useCallback((clientId: string) => {
+    const primaryBookings = bookingsByClientId.get(clientId) || []
     const totalSpent = primaryBookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0)
     
-    // 2. Calculate Outflows (Shared Damages from Expenses)
-    const clientExpenses = expenses.filter((e) => e.client_id === clientId)
+    const clientExpenses = expensesByClientId.get(clientId) || []
     const damageOutflows = clientExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
-    // Net LTV Expression
     const netLTV = totalSpent - damageOutflows
 
     const completedRents = primaryBookings.filter((b) => b.status === 'completed' || b.status === 'confirmed').length
     
-    // Aggregated Lifetime Debt: Unpaid balances across active (confirmed) and completed contracts
     const activeAndCompleted = primaryBookings.filter(b => b.status === 'confirmed' || b.status === 'completed')
     const totalOwed = activeAndCompleted.reduce((sum, b) => {
       const balance = Number(b.total_amount) - (Number(b.acompte_paid) || 0)
@@ -168,55 +299,126 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       totalOwed,
       clientExpenses
     }
-  }
+  }, [bookingsByClientId, expensesByClientId])
 
   // Filter clients by search query and risk rating
-  const filteredClients = clients.filter((client) => {
+  const filteredClients = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
-    const clientBookings = bookings.filter((b) => b.client_id === client.id)
+    const normQuery = normalizeText(searchQuery)
+    const isFuzzyActive = smartSearchEnabled && normQuery.length >= 3 && !isNonNameQuery(searchQuery)
 
-    // Compute live risk profile
-    const { score, riskLevel } = getClientRiskProfile(client.id, client.full_name, bookings)
-    const stats = getClientStats(client.id)
+    // First filter by risk rating
+    const riskFiltered = clients.filter((client) => {
+      let matchesRisk = true
+      if (riskFilter !== 'All') {
+        const { riskLevel } = getClientRiskProfileMemoized(client.id, client.full_name)
+        if (riskFilter === 'Elite / VIP Renter') matchesRisk = riskLevel === 'very_low_risk'
+        else if (riskFilter === 'Preferred') matchesRisk = riskLevel === 'low_risk'
+        else if (riskFilter === 'Standard') matchesRisk = riskLevel === 'medium_risk'
+        else if (riskFilter === 'Cautionary') matchesRisk = riskLevel === 'high_risk'
+        else if (riskFilter === 'Restricted / High Risk') matchesRisk = riskLevel === 'very_high_risk'
+        else if (riskFilter === 'Blacklisted / Suspended') matchesRisk = riskLevel === 'criminal'
+      }
+      return matchesRisk
+    })
 
-    const isDebtQuery = query === 'debt'
-    
-    // Cleansed phone matching
-    const normalizedStoredPhone = normalizePhone(client.phone)
-    const normalizedQuery       = normalizePhone(searchQuery)
-    const matchPhone = normalizedQuery.length >= 4
-      ? normalizedStoredPhone.includes(normalizedQuery)
-      : client.phone.toLowerCase().includes(query)
-
-    const matchesSearch = 
-      (isDebtQuery && stats.totalOwed > 0) ||
-      client.full_name.toLowerCase().includes(query) ||
-      (client.email || '').toLowerCase().includes(query) ||
-      matchPhone ||
-      (client.license_number || '').toLowerCase().includes(query) ||
-      (client.permis_numero || '').toLowerCase().includes(query) ||
-      clientBookings.some(b => 
-        (b.vehicle?.brand || '').toLowerCase().includes(query) ||
-        (b.vehicle?.model || '').toLowerCase().includes(query) ||
-        (b.vehicles?.brand || '').toLowerCase().includes(query) ||
-        (b.vehicles?.model || '').toLowerCase().includes(query) ||
-        (b.vehicle?.license_plate || '').toLowerCase().includes(query) ||
-        (b.vehicles?.license_plate || '').toLowerCase().includes(query)
-      )
-
-    // Matches Risk filter
-    let matchesRisk = true
-    if (riskFilter !== 'All') {
-      if (riskFilter === 'Elite / VIP Renter') matchesRisk = riskLevel === 'very_low_risk'
-      else if (riskFilter === 'Preferred') matchesRisk = riskLevel === 'low_risk'
-      else if (riskFilter === 'Standard') matchesRisk = riskLevel === 'medium_risk'
-      else if (riskFilter === 'Cautionary') matchesRisk = riskLevel === 'high_risk'
-      else if (riskFilter === 'Restricted / High Risk') matchesRisk = riskLevel === 'very_high_risk'
-      else if (riskFilter === 'Blacklisted / Suspended') matchesRisk = riskLevel === 'criminal'
+    if (!query) {
+      return riskFiltered
     }
 
-    return matchesSearch && matchesRisk
-  })
+    let fuzzyClientIds = new Set<string>()
+    let fuzzyScoreMap = new Map<string, { matchPercent: number; isExactMatch: boolean }>()
+
+    if (isFuzzyActive) {
+      const fuzzyIndexData = riskFiltered.map((client) => ({
+        client,
+        search_name: normalizeText(client.full_name || '')
+      }))
+
+      const fuse = new Fuse(fuzzyIndexData, {
+        keys: ['search_name'],
+        threshold: 0.40,
+        includeScore: true,
+        minMatchCharLength: 3
+      })
+
+      const resultsFuse = fuse.search(normQuery)
+      resultsFuse.forEach((res) => {
+        const matchPercent = Math.round((1 - (res.score ?? 1)) * 100)
+        if (matchPercent >= 60) {
+          const isExactMatch = res.item.search_name === normQuery
+          fuzzyClientIds.add(res.item.client.id)
+          fuzzyScoreMap.set(res.item.client.id, { matchPercent, isExactMatch })
+        }
+      })
+    }
+
+    const matched = riskFiltered.filter((client) => {
+      // If fuzzy search matched this client ID, it is a match!
+      if (isFuzzyActive && fuzzyClientIds.has(client.id)) {
+        return true
+      }
+
+      // Strict search gate
+      const clientBookings = bookingsByClientId.get(client.id) || []
+      const stats = getClientStatsMemoized(client.id)
+      const isDebtQuery = query === 'debt'
+      
+      const normalizedStoredPhone = normalizePhone(client.phone)
+      const normalizedQuery       = normalizePhone(searchQuery)
+      const matchPhone = normalizedQuery.length >= 4
+        ? normalizedStoredPhone.includes(normalizedQuery)
+        : client.phone.toLowerCase().includes(query)
+
+      const matchesStrict = 
+        (isDebtQuery && stats.totalOwed > 0) ||
+        client.full_name.toLowerCase().includes(query) ||
+        (client.email || '').toLowerCase().includes(query) ||
+        matchPhone ||
+        (client.license_number || '').toLowerCase().includes(query) ||
+        (client.permis_numero || '').toLowerCase().includes(query) ||
+        clientBookings.some(b => 
+          (b.vehicle?.brand || '').toLowerCase().includes(query) ||
+          (b.vehicle?.model || '').toLowerCase().includes(query) ||
+          (b.vehicles?.brand || '').toLowerCase().includes(query) ||
+          (b.vehicles?.model || '').toLowerCase().includes(query) ||
+          (b.vehicle?.license_plate || '').toLowerCase().includes(query) ||
+          (b.vehicles?.license_plate || '').toLowerCase().includes(query)
+        )
+
+      return matchesStrict
+    })
+
+    // Sort matched results if fuzzy search is active
+    if (isFuzzyActive) {
+      return [...matched].sort((a, b) => {
+        const scoreA = fuzzyScoreMap.get(a.id)
+        const scoreB = fuzzyScoreMap.get(b.id)
+
+        const isExactA = scoreA?.isExactMatch || !scoreA
+        const isExactB = scoreB?.isExactMatch || !scoreB
+
+        if (isExactA && !isExactB) return -1
+        if (!isExactA && isExactB) return 1
+
+        if (scoreA && scoreB) {
+          return scoreB.matchPercent - scoreA.matchPercent
+        }
+        return 0
+      })
+    }
+
+    return matched
+  }, [clients, searchQuery, riskFilter, bookingsByClientId, getClientRiskProfileMemoized, getClientStatsMemoized, smartSearchEnabled])
+
+  const totalDebtLiability = useMemo(() => {
+    return clients.reduce((acc, c) => acc + getClientStatsMemoized(c.id).totalOwed, 0)
+  }, [clients, getClientStatsMemoized])
+
+  const totalPages = Math.ceil(filteredClients.length / itemsPerPage)
+  const indexOfLastItem = currentPage * itemsPerPage
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage
+  const currentItems = filteredClients.slice(indexOfFirstItem, indexOfLastItem)
 
   // Date columns come back from Supabase as YYYY-MM-DD already, but defensively
   // trim any trailing time component so HTML date inputs accept the value.
@@ -327,9 +529,9 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   // Handle Delete Client
   const handleDelete = async (id: string) => {
     const confirmed = await confirm({
-      title: 'Delete Client',
-      message: 'Are you sure you want to delete this client? This will permanently remove their profile and rental history link.',
-      confirmLabel: 'Yes, Delete',
+      title: t('common.delete'),
+      message: t('clients.deleteConfirm'),
+      confirmLabel: t('common.yesDelete'),
       danger: true,
     })
     if (!confirmed) return
@@ -360,17 +562,17 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     if (isNew) {
       strokeColor = '#4b5563' // Gray
       glowColor = 'rgba(75, 85, 99, 0.2)'
-      statusText = 'New Client'
+      statusText = t('dri.newClient')
     } else if (riskLevel === 'criminal' || safeScore < 40) {
       strokeColor = '#ef4444' // Intense Crimson
       glowColor = 'rgba(239, 68, 68, 0.6)'
-      statusText = 'Blacklisted'
+      statusText = t('dri.blacklisted')
     } else if (safeScore >= 75) {
       strokeColor = '#10b981' // Emerald Green
       glowColor = 'rgba(16, 185, 129, 0.4)'
-      statusText = riskLevel === 'very_low_risk' ? 'VIP' : 'Preferred'
+      statusText = riskLevel === 'very_low_risk' ? t('dri.vip') : t('dri.preferred')
     } else {
-      statusText = riskLevel === 'high_risk' || riskLevel === 'very_high_risk' ? 'High Risk' : 'Standard'
+      statusText = riskLevel === 'high_risk' || riskLevel === 'very_high_risk' ? t('dri.highRisk') : t('dri.standard')
     }
 
     return (
@@ -444,31 +646,31 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
 
       <div className="header-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 className="page-title">👤 Mini-CRM Clients Directory</h1>
-          <p className="subtitle">Track client rental records, trust scoring metrics, scheduled installments cascades, and total debt exposure.</p>
+          <h1 className="page-title">👤 {t('clients.title')}</h1>
+          <p className="subtitle">{t('clients.subtitle')}</p>
         </div>
         <button className="btn-primary" onClick={handleOpenAdd}>
           <UserPlus size={18} />
-          <span>Register Client</span>
+          <span>{t('clients.new')}</span>
         </button>
       </div>
 
       {/* Stats Summary cards */}
       <div className="grid-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         <div className="glass-panel stat-card" style={{ padding: '1.5rem', borderRadius: '16px' }}>
-          <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>TOTAL REGISTERED CLIENTS</span>
+          <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.totalRegistered')}</span>
           <div style={{ fontSize: '2rem', fontWeight: 700, color: '#ffffff', marginTop: '0.5rem' }}>{clients.length}</div>
         </div>
         <div className="glass-panel stat-card" style={{ padding: '1.5rem', borderRadius: '16px' }}>
-          <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>ACTIVE RENTERS</span>
+          <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.activeRenters')}</span>
           <div style={{ fontSize: '2rem', fontWeight: 700, color: '#ffffff', marginTop: '0.5rem' }}>
-            {bookings.filter((b) => b.status === 'confirmed').length} Clients
+            {bookings.filter((b) => b.status === 'confirmed').length} {t('clients.title')}
           </div>
         </div>
         <div className="glass-panel stat-card" style={{ padding: '1.5rem', borderRadius: '16px' }}>
-          <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>TOTAL Llifetime DEBT LIABILITY</span>
+          <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.debtLiability')}</span>
           <div style={{ fontSize: '2rem', fontWeight: 700, color: '#f87171', marginTop: '0.5rem', textShadow: '0 0 8px rgba(239, 68, 68, 0.3)' }}>
-            {clients.reduce((acc, c) => acc + getClientStats(c.id).totalOwed, 0).toFixed(2)} DT
+            {totalDebtLiability.toFixed(2)} DT
           </div>
         </div>
       </div>
@@ -476,32 +678,66 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       {/* Main Table Container */}
       <div className="glass-panel" style={{ borderRadius: '16px', padding: '1.5rem', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
-          <div className="search-box" style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px', padding: '0.5rem 1rem', width: '360px' }}>
-            <Search size={16} style={{ color: '#ae9260', marginRight: '0.75rem' }} />
-            <input 
-              type="text" 
-              placeholder="Search by name, license, CIN, phone, plate..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: '#ffffff', outline: 'none', width: '100%', fontSize: '0.9rem' }}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div className="search-box" style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px', padding: '0.5rem 1rem', width: '360px' }}>
+              <Search size={16} style={{ color: '#ae9260', marginRight: '0.75rem' }} />
+              <input 
+                type="text" 
+                placeholder={t('common.search')} 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ background: 'transparent', border: 'none', color: '#ffffff', outline: 'none', width: '100%', fontSize: '0.9rem' }}
+              />
+            </div>
+
+            {/* Smart Name Suggestions Toggle */}
+            <button
+              onClick={() => setSmartSearchEnabled(prev => !prev)}
+              style={{
+                padding: '0.55rem 1rem',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                border: smartSearchEnabled ? '1px solid #ae9260' : '1px solid rgba(255, 255, 255, 0.1)',
+                background: smartSearchEnabled ? 'rgba(229, 193, 125, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                color: smartSearchEnabled ? '#ae9260' : 'rgba(255, 255, 255, 0.6)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'all 0.2s ease',
+              }}
+              className="no-print"
+            >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: smartSearchEnabled ? '#ae9260' : 'rgba(255,255,255,0.2)',
+                  display: 'inline-block',
+                  boxShadow: smartSearchEnabled ? '0 0 6px #ae9260' : 'none',
+                }}
+              />
+              {lang === 'fr' ? 'Suggestions de noms' : 'Smart Name Suggestions'}
+            </button>
           </div>
 
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <label style={{ color: '#ae9260', fontSize: '0.85rem', fontWeight: 600 }}>Risk Rating:</label>
+            <label style={{ color: '#ae9260', fontSize: '0.85rem', fontWeight: 600 }}>{t('clients.riskRating')}:</label>
             <select
               value={riskFilter}
               onChange={(e) => setRiskFilter(e.target.value)}
               className="form-input"
               style={{ minWidth: '220px', background: 'rgba(0, 0, 0, 0.3)', color: '#fff', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer' }}
             >
-              <option value="All">All Standing Categories</option>
-              <option value="Elite / VIP Renter">Elite / VIP Renter (DRI ≥ 92)</option>
-              <option value="Preferred">Preferred (DRI 80-92)</option>
-              <option value="Standard">Standard (DRI 60-80)</option>
-              <option value="Cautionary">Cautionary (DRI 45-60)</option>
-              <option value="Restricted / High Risk">Restricted / High Risk (DRI 15-45)</option>
-              <option value="Blacklisted / Suspended">Blacklisted / Suspended (DRI &lt; 15)</option>
+              <option value="All">{t('clients.allStanding')}</option>
+              <option value="Elite / VIP Renter">{t('clients.eliteVip')}</option>
+              <option value="Preferred">{t('clients.preferred')}</option>
+              <option value="Standard">{t('clients.standard')}</option>
+              <option value="Cautionary">{t('clients.cautionary')}</option>
+              <option value="Restricted / High Risk">{t('clients.restricted')}</option>
+              <option value="Blacklisted / Suspended">{t('clients.blacklisted')}</option>
             </select>
           </div>
         </div>
@@ -511,27 +747,27 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(229,193,125,0.15)', textAlign: 'left' }}>
                 <th style={{ width: '40px', padding: '1rem 0.5rem' }}></th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>Client & Standing</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>Contact Info</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>CIN</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>Driver License</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>Rents</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>Total Spent</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>Total Owed (Reste Total)</th>
-                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.colClient')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.colContact')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('form.cin')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.colLicense')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.colRents')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.colSpent')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600 }}>{t('clients.colOwed')}</th>
+                <th style={{ padding: '1rem 0.75rem', color: '#ae9260', fontWeight: 600, textAlign: 'right' }}>{t('fleet.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {filteredClients.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: '#888' }}>
-                    No clients found matching the selected query or standing categories.
+                    {t('clients.noClients')}
                   </td>
                 </tr>
               ) : (
-                filteredClients.map((client) => {
-                  const stats = getClientStats(client.id)
-                  const { score, riskLevel } = getClientRiskProfile(client.id, client.full_name, bookings)
+                currentItems.map((client) => {
+                  const stats = getClientStatsMemoized(client.id)
+                  const { score, riskLevel } = getClientRiskProfileMemoized(client.id, client.full_name)
                   const isExpanded = selectedClientId === client.id
 
                   return (
@@ -716,7 +952,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                             <button 
                               type="button"
                               className="btn-action-icon" 
-                              title="Rental History Drawer"
+                              title={t('clients.history')}
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleRow(client.id); }}
                               style={{ background: 'rgba(229,193,125,0.1)', color: '#ae9260', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                             >
@@ -725,7 +961,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                             <button 
                               type="button"
                               className="btn-action-icon" 
-                              title="Edit Profile"
+                              title={t('clients.edit')}
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleOpenEdit(client); }}
                               style={{ background: 'rgba(255,255,255,0.05)', color: '#ffffff', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                             >
@@ -734,7 +970,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                             <button 
                               type="button"
                               className="btn-action-icon" 
-                              title="Remove Client"
+                              title={t('common.delete')}
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(client.id); }}
                               style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                             >
@@ -753,15 +989,15 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                 <div style={{ flex: '1 1 400px' }}>
                                   <h3 style={{ margin: '0 0 1.5rem 0', color: '#ae9260', fontSize: '1.2rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                     <History size={20} />
-                                    <span>Client Profile & Ledger</span>
+                                    <span>{t('clients.drawerTitle')}</span>
                                   </h3>
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                     <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                      <span style={{ fontSize: '0.7rem', color: '#ae9260', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Lifetime Revenue</span>
+                                      <span style={{ fontSize: '0.7rem', color: '#ae9260', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{t('clients.lifetimeRevenue')}</span>
                                       <div style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700, marginTop: '0.25rem' }}>{stats.totalSpent.toFixed(2)} DT</div>
                                     </div>
                                     <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                      <span style={{ fontSize: '0.7rem', color: '#ae9260', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Net LTV (Rev - Dmg)</span>
+                                      <span style={{ fontSize: '0.7rem', color: '#ae9260', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{t('clients.netLtv')}</span>
                                       <div style={{ 
                                         color: stats.netLTV < 0 ? '#ef4444' : '#10b981', 
                                         fontSize: '1.25rem', 
@@ -773,11 +1009,11 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                       </div>
                                     </div>
                                     <div style={{ background: 'rgba(239,68,68,0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                                      <span style={{ fontSize: '0.7rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Outstanding Debt</span>
+                                      <span style={{ fontSize: '0.7rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{t('clients.outstandingDebt')}</span>
                                       <div style={{ color: '#ef4444', fontSize: '1.25rem', fontWeight: 700, marginTop: '0.25rem' }}>{stats.totalOwed.toFixed(2)} DT</div>
                                     </div>
                                     <div style={{ background: 'rgba(245,158,11,0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(245,158,11,0.2)' }}>
-                                      <span style={{ fontSize: '0.7rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Damage Logs</span>
+                                      <span style={{ fontSize: '0.7rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{t('clients.damageLogs')}</span>
                                       <div style={{ color: '#f59e0b', fontSize: '1.25rem', fontWeight: 700, marginTop: '0.25rem' }}>{stats.damageOutflows.toFixed(2)} DT</div>
                                     </div>
                                   </div>
@@ -786,11 +1022,11 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                 {/* Right Side: Timeline */}
                                 <div style={{ flex: '1 1 500px', background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                                   <h4 style={{ margin: '0 0 1.5rem 0', color: '#ae9260', fontSize: '0.9rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Rental Timeline
+                                    {t('clients.timeline')}
                                   </h4>
                                   {stats.bookingsList.length === 0 ? (
                                     <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.9rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                                      No historical bookings linked to this client yet.
+                                      {t('clients.noHistory')}
                                     </div>
                                   ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
@@ -803,7 +1039,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                           ? `${booking.vehicle.brand} ${booking.vehicle.model}` 
                                           : booking.vehicles 
                                             ? `${booking.vehicles.brand} ${booking.vehicles.model}` 
-                                            : 'Deleted Vehicle';
+                                            : t('clients.deletedVehicle');
                                         
                                         const incidentExpenses = stats.clientExpenses.filter(e => e.vehicle_id === booking.vehicle_id && new Date(e.created_at || '') >= new Date(booking.start_date) && new Date(e.created_at || '') <= new Date(booking.actual_return_date || booking.end_date || new Date().toISOString()))
 
@@ -826,7 +1062,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                                 <div style={{ textAlign: 'right' }}>
                                                   <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>{Number(booking.total_amount).toFixed(2)} DT</div>
                                                   <div style={{ fontSize: '0.75rem', color: remains > 0 ? '#ef4444' : '#10b981', fontWeight: 600, marginTop: '0.25rem' }}>
-                                                    {remains > 0 ? `Unpaid: ${remains.toFixed(2)} DT` : 'Fully Paid'}
+                                                    {remains > 0 ? `${t('clients.unpaid')}: ${remains.toFixed(2)} DT` : t('clients.fullyPaid')}
                                                   </div>
                                                 </div>
                                               </div>
@@ -836,12 +1072,12 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                                   {booking.client_behavior_status && (
                                                     <div style={{ fontSize: '0.75rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
                                                       <ShieldAlert size={12} />
-                                                      Flags: {booking.client_behavior_status.replace(/_/g, ' ')}
+                                                      {t('clients.flags')}: {booking.client_behavior_status.replace(/_/g, ' ')}
                                                     </div>
                                                   )}
                                                   {incidentExpenses.map(e => (
                                                     <div key={e.id} style={{ fontSize: '0.75rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                                      <span>Damage Logged:</span>
+                                                      <span>{t('clients.damageLogged')}:</span>
                                                       <span style={{ fontWeight: 600 }}>{Number(e.amount).toFixed(2)} DT</span>
                                                       <span style={{ color: 'rgba(255,255,255,0.4)' }}>({e.description})</span>
                                                     </div>
@@ -867,10 +1103,94 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', borderTop: '1px solid rgba(229,193,125,0.1)', background: 'rgba(255,255,255,0.01)', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px', flexWrap: 'wrap', gap: '1rem' }}>
+            <span style={{ fontSize: '0.875rem', color: '#888' }}>
+              {t('common.showing')} <strong style={{ color: '#fff' }}>{indexOfFirstItem + 1}</strong> {lang === 'fr' ? 'à' : 'to'} <strong style={{ color: '#fff' }}>{Math.min(indexOfLastItem, filteredClients.length)}</strong> {t('common.of')} <strong style={{ color: '#fff' }}>{filteredClients.length}</strong> {t('clients.title').toLowerCase()}
+            </span>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(229,193,125,0.15)',
+                  borderRadius: '6px',
+                  color: currentPage === 1 ? '#555' : '#ae9260',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s'
+                }}
+              >
+                {t('common.previous')}
+              </button>
+              
+              {/* Page numbers */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, idx) => {
+                let pageNum = idx + 1;
+                // Center the active page if possible
+                if (currentPage > 3 && totalPages > 5) {
+                  pageNum = currentPage - 3 + idx;
+                  if (pageNum + (4 - idx) > totalPages) {
+                    pageNum = totalPages - 4 + idx;
+                  }
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setCurrentPage(pageNum)}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: currentPage === pageNum ? '#ae9260' : 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(229,193,125,0.15)',
+                      borderRadius: '6px',
+                      color: currentPage === pageNum ? '#000' : '#fff',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: currentPage === pageNum ? 600 : 500,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(229,193,125,0.15)',
+                  borderRadius: '6px',
+                  color: currentPage === totalPages ? '#555' : '#ae9260',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s'
+                }}
+              >
+                {t('common.next')}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* --- ADD CLIENT MODAL --- */}
-      {isAddModalOpen && (
+      {isAddModalOpen && mounted && createPortal(
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '550px', width: '95%' }}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(229,193,125,0.2)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
@@ -1046,10 +1366,10 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* --- EDIT CLIENT MODAL --- */}
-      {editingClient && (
+      {editingClient && mounted && createPortal(
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '550px', width: '95%' }}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(229,193,125,0.2)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
@@ -1221,7 +1541,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import AlertStrip from './components/AlertStrip'
 import GlobalCommandSearch from './components/GlobalCommandSearch'
 import FleetPerformanceMatrix from './components/FleetPerformanceMatrix'
 import { Landmark, ArrowDownRight, ArrowUpRight, ShieldCheck } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n'
 
 interface DashboardClientProps {
   stats: {
@@ -40,6 +41,7 @@ export default function DashboardClient({
   expenses = [],
   maintenance = []
 }: DashboardClientProps) {
+  const { t, lang } = useLanguage()
   // 1. Shared state for interactive operational alert drilling
   const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | null>(null)
 
@@ -81,8 +83,8 @@ export default function DashboardClient({
   return (
     <div className={styles['owner-dashboard']}>
       <div className={styles['header-section']} style={{ position: 'relative', overflow: 'visible' }}>
-        <h1 className={styles['page-title']}>Operations Command Center</h1>
-        <p className={styles['subtitle']}>Search any plate, client, CIN, or date to surface a contract instantly</p>
+        <h1 className={styles['page-title']}>{t('dashboard.title')}</h1>
+        <p className={styles['subtitle']}>{t('dashboard.subtitle')}</p>
 
         {/* Beautiful Dotted Gold World Map Watermark matching reference photo */}
         <svg className={styles['world-map-watermark']} viewBox="0 0 1000 400" fill="none" xmlns="http://www.w3.org/2000/svg" style={{
@@ -178,17 +180,17 @@ export default function DashboardClient({
             </div>
             <div>
               <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
-                Daily Shift Reconciliation Ledger
+                {t('dashboard.reconciliationLedger')}
               </h3>
               <span style={{ fontSize: '0.75rem', color: 'rgba(229, 193, 125, 0.6)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                End-of-Day register audit & shift change ledger
+                {t('dashboard.reconciliationSubtitle')}
               </span>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(229,193,125,0.1)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
             <span style={{ fontSize: '0.8rem', color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-              Audit Date: {localToday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {t('dashboard.auditDate')}: {localToday.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           </div>
         </div>
@@ -198,7 +200,7 @@ export default function DashboardClient({
           <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.12)', padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(16, 185, 129, 0.7)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Daily Cash Intake
+                {t('dashboard.dailyIntake')}
               </span>
               <span style={{ color: '#10b981', display: 'flex', alignItems: 'center' }}><ArrowUpRight size={14} /></span>
             </div>
@@ -206,7 +208,7 @@ export default function DashboardClient({
               + {dailyCashIntake.toFixed(2)} DT
             </strong>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-              Physical cash deposits collected at register today
+              {t('dashboard.dailyIntakeDesc')}
             </span>
           </div>
 
@@ -214,7 +216,7 @@ export default function DashboardClient({
           <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.12)', padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(239, 68, 68, 0.7)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Daily Operational Expenses
+                {t('dashboard.dailyExpenses')}
               </span>
               <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center' }}><ArrowDownRight size={14} /></span>
             </div>
@@ -222,7 +224,7 @@ export default function DashboardClient({
               - {totalDailyExpenses.toFixed(2)} DT
             </strong>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-              Physical cash payouts for expenses & maintenance today
+              {t('dashboard.dailyExpensesDesc')}
             </span>
           </div>
 
@@ -234,7 +236,7 @@ export default function DashboardClient({
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Net Expected Register Cash
+                {t('dashboard.netExpectedCash')}
               </span>
               <span style={{ color: 'var(--accent-gold)', display: 'flex', alignItems: 'center' }}><ShieldCheck size={14} /></span>
             </div>
@@ -242,7 +244,7 @@ export default function DashboardClient({
               {netCashPosition.toFixed(2)} DT
             </strong>
             <span style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 500 }}>
-              Tangible cash to hand over at shift end
+              {t('dashboard.netExpectedCashDesc')}
             </span>
           </div>
         </div>

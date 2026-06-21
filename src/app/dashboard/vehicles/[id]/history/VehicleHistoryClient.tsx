@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Wrench, X, ShieldAlert, Check } from 'lucide-react'
-import { Badge } from '@/components/Badge'
+import { ArrowLeft, Calendar, Wrench, X, ShieldAlert } from 'lucide-react'
 import { useToast } from '@/components/Toast'
 import styles from './history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 // Actions
 import { 
@@ -92,6 +92,7 @@ export default function VehicleHistoryClient({
   const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState<'bookings' | 'maintenance'>('bookings')
   const [isPending, startTransition] = useTransition()
+  const { lang } = useLanguage()
 
   // 1. Legal Document Modal State
   const [isLegalModalOpen, setIsLegalModalOpen] = useState(false)
@@ -157,10 +158,15 @@ export default function VehicleHistoryClient({
     startTransition(async () => {
       try {
         await upsertVehicleLegalDoc(currentVehicle.id, activeDocType, expiryDate, docNotes || null)
-        showToast('Legal compliance tracker updated successfully!', 'success')
+        showToast(
+          lang === 'fr'
+            ? 'Suivi de conformité légale mis à jour avec succès !'
+            : 'Legal compliance tracker updated successfully!',
+          'success'
+        )
         setIsLegalModalOpen(false)
       } catch (err: any) {
-        showToast(err.message || 'Failed to update compliance details.', 'error')
+        showToast(err.message || (lang === 'fr' ? 'Échec de la mise à jour des détails de conformité.' : 'Failed to update compliance details.'), 'error')
       }
     })
   }
@@ -187,10 +193,15 @@ export default function VehicleHistoryClient({
     startTransition(async () => {
       try {
         await updateVehicleMechanicalState(currentVehicle.id, parsedKm, parsedOil, parsedLastPads, parsedNextPads)
-        showToast('Mechanical state updated successfully!', 'success')
+        showToast(
+          lang === 'fr'
+            ? 'État mécanique mis à jour avec succès !'
+            : 'Mechanical state updated successfully!',
+          'success'
+        )
         setIsMechModalOpen(false)
       } catch (err: any) {
-        showToast(err.message || 'Failed to update mechanical details.', 'error')
+        showToast(err.message || (lang === 'fr' ? 'Échec de la mise à jour des détails mécaniques.' : 'Failed to update mechanical details.'), 'error')
       }
     })
   }
@@ -222,10 +233,15 @@ export default function VehicleHistoryClient({
             owner_remarks: ownerRem || null,
           }
         )
-        showToast('Booking operational log updated successfully!', 'success')
+        showToast(
+          lang === 'fr'
+            ? 'Journal opérationnel de la réservation mis à jour avec succès !'
+            : 'Booking operational log updated successfully!',
+          'success'
+        )
         setIsBookingModalOpen(false)
       } catch (err: any) {
-        showToast(err.message || 'Failed to save booking details.', 'error')
+        showToast(err.message || (lang === 'fr' ? 'Échec de l\'enregistrement des détails de la réservation.' : 'Failed to save booking details.'), 'error')
       }
     })
   }
@@ -238,9 +254,9 @@ export default function VehicleHistoryClient({
   const completedRentals = bookings.length
 
   const getDocTypeLabel = (type: typeof activeDocType) => {
-    if (type === 'assurance') return 'Insurance (Assurance)'
-    if (type === 'visite_technique') return 'Technical Inspection'
-    if (type === 'laissez_passer') return 'Transport Authorization'
+    if (type === 'assurance') return lang === 'fr' ? "l'Assurance" : 'Insurance (Assurance)'
+    if (type === 'visite_technique') return lang === 'fr' ? 'la Visite Technique' : 'Technical Inspection'
+    if (type === 'laissez_passer') return lang === 'fr' ? "l'Autorisation de Transport" : 'Transport Authorization'
     return ''
   }
 
@@ -250,15 +266,19 @@ export default function VehicleHistoryClient({
       <div>
         <Link href="/dashboard/fleet" className={styles['back-nav']}>
           <ArrowLeft size={16} />
-          Back to Fleet
+          {lang === 'fr' ? 'Retour à la Flotte' : 'Back to Fleet'}
         </Link>
       </div>
 
       {/* Header section */}
       <div>
-        <h1 className={styles['page-title']}>Vehicle 360° History Hub</h1>
+        <h1 className={styles['page-title']}>
+          {lang === 'fr' ? "Centre d'Historique à 360° du Véhicule" : 'Vehicle 360° History Hub'}
+        </h1>
         <p className={styles['page-subtitle']}>
-          Operational, administrative compliance, mechanical, and financial dossier.
+          {lang === 'fr'
+            ? 'Dossier opérationnel, de conformité administrative, mécanique et financière.'
+            : 'Operational, administrative compliance, mechanical, and financial dossier.'}
         </p>
       </div>
 
@@ -297,7 +317,7 @@ export default function VehicleHistoryClient({
           onClick={() => setActiveTab('bookings')}
         >
           <Calendar size={16} />
-          <span>Booking History</span>
+          <span>{lang === 'fr' ? 'Historique des Réservations' : 'Booking History'}</span>
           <span className={styles['tab-count']}>{bookings.length}</span>
         </button>
 
@@ -306,7 +326,7 @@ export default function VehicleHistoryClient({
           onClick={() => setActiveTab('maintenance')}
         >
           <Wrench size={16} />
-          <span>Maintenance Logs</span>
+          <span>{lang === 'fr' ? "Journaux d'Entretien" : 'Maintenance Logs'}</span>
           <span className={styles['tab-count']}>{maintenance.length}</span>
         </button>
       </div>
@@ -329,7 +349,7 @@ export default function VehicleHistoryClient({
           <div className={`${styles['legal-modal']} glass-panel`} onClick={(e) => e.stopPropagation()}>
             <div className={styles['legal-modal-header']}>
               <h3 className={styles['legal-modal-title']}>
-                Update {getDocTypeLabel(activeDocType)}
+                {lang === 'fr' ? `Mettre à jour ${getDocTypeLabel(activeDocType)}` : `Update ${getDocTypeLabel(activeDocType)}`}
               </h3>
               <button className="icon-btn" onClick={() => setIsLegalModalOpen(false)}>
                 <X size={18} />
@@ -338,7 +358,9 @@ export default function VehicleHistoryClient({
 
             <form onSubmit={handleSaveLegalDoc} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div className="form-group">
-                <label className="form-label" htmlFor="expiry_date">Expiry Date</label>
+                <label className="form-label" htmlFor="expiry_date">
+                  {lang === 'fr' ? "Date d'expiration" : 'Expiry Date'}
+                </label>
                 <input
                   type="date"
                   id="expiry_date"
@@ -346,16 +368,19 @@ export default function VehicleHistoryClient({
                   required
                   value={expiryDate}
                   onChange={(e) => setExpiryDate(e.target.value)}
+                  style={{ colorScheme: 'dark' }}
                 />
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="notes">Remarks / Policy number</label>
+                <label className="form-label" htmlFor="notes">
+                  {lang === 'fr' ? 'Remarques / Numéro de police' : 'Remarks / Policy number'}
+                </label>
                 <textarea
                   id="notes"
                   className="form-input"
                   rows={3}
-                  placeholder="e.g. Policy #99283-A, Comar Assurances"
+                  placeholder={lang === 'fr' ? 'ex. Police N°99283-A, Comar Assurances' : 'e.g. Policy #99283-A, Comar Assurances'}
                   value={docNotes}
                   onChange={(e) => setDocNotes(e.target.value)}
                 />
@@ -368,7 +393,7 @@ export default function VehicleHistoryClient({
                   style={{ flex: 1 }}
                   onClick={() => setIsLegalModalOpen(false)}
                 >
-                  Cancel
+                  {lang === 'fr' ? 'Annuler' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
@@ -376,7 +401,7 @@ export default function VehicleHistoryClient({
                   style={{ flex: 1 }}
                   disabled={isPending}
                 >
-                  {isPending ? 'Saving...' : 'Save Changes'}
+                  {isPending ? (lang === 'fr' ? 'Enregistrement...' : 'Saving...') : (lang === 'fr' ? 'Enregistrer' : 'Save Changes')}
                 </button>
               </div>
             </form>
@@ -389,7 +414,9 @@ export default function VehicleHistoryClient({
         <div className={styles['legal-modal-overlay']} onClick={() => setIsMechModalOpen(false)}>
           <div className={`${styles['legal-modal']} glass-panel`} onClick={(e) => e.stopPropagation()}>
             <div className={styles['legal-modal-header']}>
-              <h3 className={styles['legal-modal-title']}>Update Odometer & Health</h3>
+              <h3 className={styles['legal-modal-title']}>
+                {lang === 'fr' ? "Mettre à jour l'Odomètre & l'État" : 'Update Odometer & Health'}
+              </h3>
               <button className="icon-btn" onClick={() => setIsMechModalOpen(false)}>
                 <X size={18} />
               </button>
@@ -397,7 +424,9 @@ export default function VehicleHistoryClient({
 
             <form onSubmit={handleSaveMechanical} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div className="form-group">
-                <label className="form-label" htmlFor="current_km">Current Odometer (KM)</label>
+                <label className="form-label" htmlFor="current_km">
+                  {lang === 'fr' ? 'Kilométrage Actuel (KM)' : 'Current Odometer (KM)'}
+                </label>
                 <input
                   type="number"
                   id="current_km"
@@ -409,7 +438,9 @@ export default function VehicleHistoryClient({
               </div>
 
                <div className="form-group">
-                <label className="form-label" htmlFor="last_oil_change_km">Last Oil Change (KM)</label>
+                <label className="form-label" htmlFor="last_oil_change_km">
+                  {lang === 'fr' ? 'Dernière Vidange (KM)' : 'Last Oil Change (KM)'}
+                </label>
                 <input
                   type="number"
                   id="last_oil_change_km"
@@ -421,7 +452,9 @@ export default function VehicleHistoryClient({
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="oil_due_km">Oil Change Target (KM)</label>
+                <label className="form-label" htmlFor="oil_due_km">
+                  {lang === 'fr' ? 'Objectif de Vidange (KM)' : 'Oil Change Target (KM)'}
+                </label>
                 <input
                   type="number"
                   id="oil_due_km"
@@ -433,7 +466,9 @@ export default function VehicleHistoryClient({
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="last_pads_km">Last Pads Change (KM)</label>
+                <label className="form-label" htmlFor="last_pads_km">
+                  {lang === 'fr' ? 'Dernier Changement de Plaquettes (KM)' : 'Last Pads Change (KM)'}
+                </label>
                 <input
                   type="number"
                   id="last_pads_km"
@@ -445,7 +480,9 @@ export default function VehicleHistoryClient({
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="next_pads_km">Pads Change Target (KM)</label>
+                <label className="form-label" htmlFor="next_pads_km">
+                  {lang === 'fr' ? 'Objectif de Changement de Plaquettes (KM)' : 'Pads Change Target (KM)'}
+                </label>
                 <input
                   type="number"
                   id="next_pads_km"
@@ -463,7 +500,7 @@ export default function VehicleHistoryClient({
                   style={{ flex: 1 }}
                   onClick={() => setIsMechModalOpen(false)}
                 >
-                  Cancel
+                  {lang === 'fr' ? 'Annuler' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
@@ -471,7 +508,7 @@ export default function VehicleHistoryClient({
                   style={{ flex: 1 }}
                   disabled={isPending}
                 >
-                  {isPending ? 'Updating...' : 'Save Health'}
+                  {isPending ? (lang === 'fr' ? 'Mise à jour...' : 'Updating...') : (lang === 'fr' ? 'Enregistrer' : 'Save Health')}
                 </button>
               </div>
             </form>
@@ -484,7 +521,9 @@ export default function VehicleHistoryClient({
         <div className={styles['legal-modal-overlay']} onClick={() => setIsBookingModalOpen(false)}>
           <div className={`${styles['legal-modal']} glass-panel`} onClick={(e) => e.stopPropagation()}>
             <div className={styles['legal-modal-header']}>
-              <h3 className={styles['legal-modal-title']}>Edit Rental Record Details</h3>
+              <h3 className={styles['legal-modal-title']}>
+                {lang === 'fr' ? 'Modifier les Détails du Dossier de Location' : 'Edit Rental Record Details'}
+              </h3>
               <button className="icon-btn" onClick={() => setIsBookingModalOpen(false)}>
                 <X size={18} />
               </button>
@@ -492,12 +531,14 @@ export default function VehicleHistoryClient({
 
             <form onSubmit={handleSaveBookingDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ fontSize: '0.85rem', color: 'rgba(229, 193, 125, 0.6)' }}>
-                Client: <strong>{selectedBooking.client_name}</strong><br />
-                Total Rental Cost: <strong>{Number(selectedBooking.total_amount).toFixed(2)} DT</strong>
+                {lang === 'fr' ? 'Client :' : 'Client:'} <strong>{selectedBooking.client_name}</strong><br />
+                {lang === 'fr' ? 'Coût Total de Location :' : 'Total Rental Cost:'} <strong>{Number(selectedBooking.total_amount).toFixed(2)} DT</strong>
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="paid_amount">Amount Paid (DT)</label>
+                <label className="form-label" htmlFor="paid_amount">
+                  {lang === 'fr' ? 'Montant Payé (DT)' : 'Amount Paid (DT)'}
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -519,17 +560,19 @@ export default function VehicleHistoryClient({
                 />
                 <label htmlFor="accident_reported" style={{ fontSize: '0.9rem', color: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <ShieldAlert size={16} style={{ color: '#ef4444' }} />
-                  Accident / Damage reported on this booking
+                  {lang === 'fr' ? 'Accident / Dégât signalé sur cette réservation' : 'Accident / Damage reported on this booking'}
                 </label>
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="owner_remarks">Behavioral Remarks & Notes</label>
+                <label className="form-label" htmlFor="owner_remarks">
+                  {lang === 'fr' ? 'Remarques comportementales & Notes' : 'Behavioral Remarks & Notes'}
+                </label>
                 <textarea
                   id="owner_remarks"
                   className="form-input"
                   rows={3}
-                  placeholder="e.g. Aggressive driving style, returned late, clean inside..."
+                  placeholder={lang === 'fr' ? 'ex. Conduite agressive, retour tardif, propre...' : 'e.g. Aggressive driving style, returned late, clean inside...'}
                   value={ownerRem}
                   onChange={(e) => setOwnerRem(e.target.value)}
                 />
@@ -542,7 +585,7 @@ export default function VehicleHistoryClient({
                   style={{ flex: 1 }}
                   onClick={() => setIsBookingModalOpen(false)}
                 >
-                  Cancel
+                  {lang === 'fr' ? 'Annuler' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
@@ -550,7 +593,7 @@ export default function VehicleHistoryClient({
                   style={{ flex: 1 }}
                   disabled={isPending}
                 >
-                  {isPending ? 'Saving...' : 'Save Log'}
+                  {isPending ? (lang === 'fr' ? 'Enregistrement...' : 'Saving...') : (lang === 'fr' ? 'Enregistrer' : 'Save Log')}
                 </button>
               </div>
             </form>

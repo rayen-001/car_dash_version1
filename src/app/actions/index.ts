@@ -14,6 +14,8 @@ export {
   syncVehicleMaxOdometer,
   upsertVehicleLegalDoc,
   renewVehicleDocument,
+  archiveVehicle,
+  unarchiveVehicle,
 } from './vehicles'
 
 export {

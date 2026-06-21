@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { getAuthedUser, parseCostFromNotes } from './_shared'
+import { syncMaintenanceTodos } from './todos'
 
 export async function addVehicle(formData: FormData) {
   const { supabase, user } = await getAuthedUser()
@@ -250,7 +251,16 @@ export async function withdrawVehicle(vehicleId: string, withdrawnAt: string) {
     .eq('owner_id', user.id)
 
   if (error) throw new Error(error.message)
+
+  // Revalidate ALL active operational pages so the withdrawn vehicle
+  // disappears immediately everywhere — not just on the fleet page.
+  revalidatePath('/dashboard')
   revalidatePath('/dashboard/fleet')
+  revalidatePath('/dashboard/todo')
+  revalidatePath('/dashboard/bookings')
+  revalidatePath('/dashboard/expenses')
+  revalidatePath('/dashboard/revenues')
+  revalidatePath('/dashboard/maintenance')
   revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
 }
 
@@ -268,6 +278,20 @@ export async function restoreVehicle(vehicleId: string) {
     .eq('owner_id', user.id)
 
   if (error) throw new Error(error.message)
+
+  // Fetch all vehicles for the user (including the newly restored one)
+  const { data: allVehicles } = await supabase
+    .from('vehicles')
+    .select('id, brand, model, license_plate, current_km, next_vidange_km, next_pads_km, withdrawn_at')
+    .eq('owner_id', user.id)
+
+  if (allVehicles) {
+    // Trigger the maintenance-alert synchronization process immediately
+    await syncMaintenanceTodos(allVehicles)
+  }
+
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/todo')
   revalidatePath('/dashboard/fleet')
   revalidatePath(`/dashboard/vehicles/${vehicleId}/history`)
 }
@@ -580,3 +604,48 @@ export async function updateManualMechanicalTarget(vehicleId: string, type: 'vid
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/fleet')
 }
+
+/**
+ * Archive a withdrawn vehicle: sets archived_at to today's date (formatted as 'YYYY-MM-DD').
+ */
+export async function archiveVehicle(vehicleId: string) {
+  const { supabase, user } = await getAuthedUser()
+  
+  // Format today's date in Africa/Tunis time zone
+  const now = new Date()
+  const formatter = new Intl.DateTimeFormat('fr-CA', {
+    timeZone: 'Africa/Tunis',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+  const today = formatter.format(now)
+
+  const { error } = await supabase
+    .from('vehicles')
+    .update({ archived_at: today })
+    .eq('id', vehicleId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/dashboard/fleet')
+}
+
+/**
+ * Unarchive an archived vehicle: clears archived_at (moves back to Retired).
+ */
+export async function unarchiveVehicle(vehicleId: string) {
+  const { supabase, user } = await getAuthedUser()
+
+  const { error } = await supabase
+    .from('vehicles')
+    .update({ archived_at: null })
+    .eq('id', vehicleId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/dashboard/fleet')
+}
+

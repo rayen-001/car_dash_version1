@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { Search, X, Calendar } from 'lucide-react'
 import BookingHistoryCard from './BookingHistoryCard'
 import styles from '../history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface Booking {
   id: string
@@ -28,6 +29,7 @@ interface BookingHistoryTabProps {
 
 export default function BookingHistoryTab({ bookings, onEditBooking }: BookingHistoryTabProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const { lang } = useLanguage()
 
   // Filter bookings in-memory
   const filteredBookings = useMemo(() => {
@@ -52,7 +54,7 @@ export default function BookingHistoryTab({ bookings, onEditBooking }: BookingHi
         <input
           type="text"
           className={styles['nested-search-input']}
-          placeholder="Filter bookings by client name, phone number, CIN, or date..."
+          placeholder={lang === 'fr' ? 'Filtrer les réservations par nom de client, téléphone, CIN ou date...' : 'Filter bookings by client name, phone number, CIN, or date...'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -80,7 +82,9 @@ export default function BookingHistoryTab({ bookings, onEditBooking }: BookingHi
         ) : (
           <div className={styles['empty-state']}>
             <Calendar className={styles['empty-state-icon']} />
-            <p>No bookings found matching your search.</p>
+            <p>
+              {lang === 'fr' ? 'Aucune réservation trouvée correspondant à votre recherche.' : 'No bookings found matching your search.'}
+            </p>
           </div>
         )}
       </div>

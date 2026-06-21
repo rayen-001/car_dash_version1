@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast'
 import { Booking, Vehicle, Client } from '@/types'
 import SearchableCombobox from '@/components/SearchableCombobox'
 import { useSearchParams } from 'next/navigation'
+import { useLanguage } from '@/lib/i18n'
 
 interface BookingFormModalProps {
   isOpen: boolean
@@ -28,6 +29,7 @@ export default function BookingFormModal({
   onClose
 }: BookingFormModalProps) {
   const { showToast } = useToast()
+  const { t, lang } = useLanguage()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -133,7 +135,7 @@ export default function BookingFormModal({
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     })()
     const fmtDate = (ymd: string) =>
-      new Date(ymd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      new Date(ymd).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
     // --- Vidange / Oil Change threshold (warn at ≤1000 km remaining) ---------
     const current = Number(v.current_km) || 0
@@ -143,11 +145,17 @@ export default function BookingFormModal({
       if (delta <= 1000) {
         // Tiered severity: overdue or critically close (≤200 km) → red, approaching (≤1000 km) → amber
         const severity = (delta <= 0 || delta <= 200) ? 'red' : 'amber'
-        const text = delta <= 0
-          ? `🔴 Oil Change OVERDUE: Vehicle is ${Math.abs(delta).toLocaleString()} km past the Vidange limit (current: ${current.toLocaleString()} km, limit: ${targetVid.toLocaleString()} km). Do NOT dispatch until serviced.`
-          : delta <= 200
-          ? `🔴 Oil Change CRITICAL: Only ${delta.toLocaleString()} km remaining before mandatory Vidange (current: ${current.toLocaleString()} km). Schedule immediately.`
-          : `⚠ Oil Change Approaching: ${delta.toLocaleString()} km remaining before Vidange/Service limit (current: ${current.toLocaleString()} km, limit: ${targetVid.toLocaleString()} km).`
+        const text = lang === 'fr'
+          ? (delta <= 0
+            ? `🔴 Vidange DÉPASSÉE : Le véhicule a dépassé de ${Math.abs(delta).toLocaleString()} km la limite de vidange (actuel : ${current.toLocaleString()} km, limite : ${targetVid.toLocaleString()} km). Ne PAS attribuer avant entretien.`
+            : delta <= 200
+            ? `🔴 Vidange CRITIQUE : Plus que ${delta.toLocaleString()} km restants avant la vidange obligatoire (actuel : ${current.toLocaleString()} km). Planifier immédiatement.`
+            : `⚠ Vidange en approche : ${delta.toLocaleString()} km restants avant la limite de vidange (actuel : ${current.toLocaleString()} km, limite : ${targetVid.toLocaleString()} km).`)
+          : (delta <= 0
+            ? `🔴 Oil Change OVERDUE: Vehicle is ${Math.abs(delta).toLocaleString()} km past the Vidange limit (current: ${current.toLocaleString()} km, limit: ${targetVid.toLocaleString()} km). Do NOT dispatch until serviced.`
+            : delta <= 200
+            ? `🔴 Oil Change CRITICAL: Only ${delta.toLocaleString()} km remaining before mandatory Vidange (current: ${current.toLocaleString()} km). Schedule immediately.`
+            : `⚠ Oil Change Approaching: ${delta.toLocaleString()} km remaining before Vidange/Service limit (current: ${current.toLocaleString()} km, limit: ${targetVid.toLocaleString()} km).`)
         alerts.push({ kind: 'mechanical', severity, text })
       }
     }
@@ -158,11 +166,17 @@ export default function BookingFormModal({
       const delta = targetPads - current
       if (delta <= 1000) {
         const severity = (delta <= 0 || delta <= 200) ? 'red' : 'amber'
-        const text = delta <= 0
-          ? `🔴 Brake Pads OVERDUE: Vehicle is ${Math.abs(delta).toLocaleString()} km past the pad replacement limit (current: ${current.toLocaleString()} km, limit: ${targetPads.toLocaleString()} km). Safety risk — do NOT dispatch.`
-          : delta <= 200
-          ? `🔴 Brake Pads CRITICAL: Only ${delta.toLocaleString()} km remaining before mandatory pad replacement (current: ${current.toLocaleString()} km). Replace before next rental.`
-          : `⚠ Brake Pads Approaching: ${delta.toLocaleString()} km remaining before pad replacement limit (current: ${current.toLocaleString()} km, limit: ${targetPads.toLocaleString()} km).`
+        const text = lang === 'fr'
+          ? (delta <= 0
+            ? `🔴 Plaquettes de frein DÉPASSÉES : Le véhicule a dépassé de ${Math.abs(delta).toLocaleString()} km la limite de remplacement (actuel : ${current.toLocaleString()} km, limite : ${targetPads.toLocaleString()} km). Risque de sécurité — ne PAS attribuer.`
+            : delta <= 200
+            ? `🔴 Plaquettes de frein CRITIQUES : Plus que ${delta.toLocaleString()} km restants avant le remplacement obligatoire (actuel : ${current.toLocaleString()} km). Remplacer avant la prochaine location.`
+            : `⚠ Plaquettes de frein en approche : ${delta.toLocaleString()} km restants avant la limite de remplacement (actuel : ${current.toLocaleString()} km, limite : ${targetPads.toLocaleString()} km).`)
+          : (delta <= 0
+            ? `🔴 Brake Pads OVERDUE: Vehicle is ${Math.abs(delta).toLocaleString()} km past the pad replacement limit (current: ${current.toLocaleString()} km, limit: ${targetPads.toLocaleString()} km). Safety risk — do NOT dispatch.`
+            : delta <= 200
+            ? `🔴 Brake Pads CRITICAL: Only ${delta.toLocaleString()} km remaining before mandatory pad replacement (current: ${current.toLocaleString()} km). Replace before next rental.`
+            : `⚠ Brake Pads Approaching: ${delta.toLocaleString()} km remaining before pad replacement limit (current: ${current.toLocaleString()} km, limit: ${targetPads.toLocaleString()} km).`)
         alerts.push({ kind: 'mechanical', severity, text })
       }
     }
@@ -181,20 +195,25 @@ export default function BookingFormModal({
       // Skip the in-rental case — the existing amber block already handles it.
       if (expiresInRental) continue
 
-      const label =
-        doc.doc_type === 'assurance' ? 'Assurance' :
-        doc.doc_type === 'visite_technique' ? 'Visite Technique' :
-        doc.doc_type === 'laissez_passer' ? 'Laissez-Passer' :
-        doc.doc_type
+      const label = doc.doc_type === 'assurance'
+        ? (lang === 'fr' ? 'Assurance' : 'Assurance')
+        : doc.doc_type === 'visite_technique'
+        ? (lang === 'fr' ? 'Visite Technique' : 'Visite Technique')
+        : doc.doc_type === 'laissez_passer'
+        ? (lang === 'fr' ? 'Autorisation de Transport (Laissez-Passer)' : 'Transport Authorization (Laissez-Passer)')
+        : doc.doc_type
+
       alerts.push({
         kind: 'document',
         severity: doc.expiry_date < TODAY ? 'red' : 'amber',
-        text: `⚠ Statutory Document Expiration: ${label} is scheduled to expire on ${fmtDate(doc.expiry_date)}.`,
+        text: lang === 'fr'
+          ? `⚠ Expiration de document légal : ${label} expire le ${fmtDate(doc.expiry_date)}.`
+          : `⚠ Statutory Document Expiration: ${label} is scheduled to expire on ${fmtDate(doc.expiry_date)}.`,
       })
     }
 
     return alerts
-  }, [vehicleId, startDate, endDate, vehicles, vehicleLegalDocs])
+  }, [vehicleId, startDate, endDate, vehicles, vehicleLegalDocs, lang])
 
   // Mechanical maintenance items for the structured warning box in the rental period section
   // (same data as inFormOrangeAlerts mechanical entries, but structured for the card layout)
@@ -209,18 +228,30 @@ export default function BookingFormModal({
     if (targetVid > 0) {
       const delta = targetVid - current
       if (delta <= 1000) {
-        items.push({ label: 'Oil Change (Vidange)', delta, limit: targetVid, icon: '🛢', isCritical: delta <= 200 || delta <= 0 })
+        items.push({ 
+          label: lang === 'fr' ? 'Vidange (Entretien Huile)' : 'Oil Change (Vidange)', 
+          delta, 
+          limit: targetVid, 
+          icon: '🛢', 
+          isCritical: delta <= 200 || delta <= 0 
+        })
       }
     }
     const targetPads = Number(v.next_pads_km) || 0
     if (targetPads > 0) {
       const delta = targetPads - current
       if (delta <= 1000) {
-        items.push({ label: 'Brake Pads', delta, limit: targetPads, icon: '🔧', isCritical: delta <= 200 || delta <= 0 })
+        items.push({ 
+          label: lang === 'fr' ? 'Plaquettes de frein' : 'Brake Pads', 
+          delta, 
+          limit: targetPads, 
+          icon: '🔧', 
+          isCritical: delta <= 200 || delta <= 0 
+        })
       }
     }
     return items
-  }, [vehicleId, vehicles])
+  }, [vehicleId, vehicles, lang])
 
 
   // Blacklist Evaluation Engine
@@ -510,16 +541,31 @@ export default function BookingFormModal({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (conflictInfo) {
-      showToast('Cannot save booking: this vehicle is already occupied during this period.', 'error')
+      showToast(
+        lang === 'fr' 
+          ? 'Impossible d\'enregistrer la réservation : ce véhicule est déjà occupé durant cette période.' 
+          : 'Cannot save booking: this vehicle is already occupied during this period.', 
+        'error'
+      )
       return
     }
     if (!clientName) {
-      showToast('Please select or specify a Client Name before saving.', 'error')
+      showToast(
+        lang === 'fr' 
+          ? 'Veuillez sélectionner ou spécifier un nom de client avant d\'enregistrer.' 
+          : 'Please select or specify a Client Name before saving.', 
+        'error'
+      )
       return
     }
 
     if (installments.length > 0 && Math.abs(parsedAcompte + installmentsSum - parsedTotal) > 0.05) {
-      showToast(`Validation Failed: The sum of Advance (${parsedAcompte} DT) and Installments (${installmentsSum} DT) must equal the Total Amount (${parsedTotal} DT). Discrepancy: ${(parsedTotal - parsedAcompte - installmentsSum).toFixed(2)} DT`, 'error')
+      showToast(
+        lang === 'fr'
+          ? `Échec de validation : La somme de l'acompte (${parsedAcompte} DT) et des tranches (${installmentsSum} DT) doit être égale au montant total (${parsedTotal} DT). Écart : ${(parsedTotal - parsedAcompte - installmentsSum).toFixed(2)} DT`
+          : `Validation Failed: The sum of Advance (${parsedAcompte} DT) and Installments (${installmentsSum} DT) must equal the Total Amount (${parsedTotal} DT). Discrepancy: ${(parsedTotal - parsedAcompte - installmentsSum).toFixed(2)} DT`,
+        'error'
+      )
       return
     }
 
@@ -529,10 +575,10 @@ export default function BookingFormModal({
       if (editingBooking) {
         formData.append('id', editingBooking.id)
         await updateBooking(formData)
-        showToast('Booking updated successfully!', 'success')
+        showToast(lang === 'fr' ? 'Réservation mise à jour avec succès !' : 'Booking updated successfully!', 'success')
       } else {
         await addBooking(formData)
-        showToast('Booking created successfully!', 'success')
+        showToast(lang === 'fr' ? 'Réservation créée avec succès !' : 'Booking created successfully!', 'success')
       }
       // Bump vehicle current_km to the highest recorded KM across all bookings/handovers
       if (vehicleId) {
@@ -540,7 +586,7 @@ export default function BookingFormModal({
       }
       onClose()
     } catch (err: any) {
-      showToast(err.message || 'Error saving booking. Please try again.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Erreur lors de l\'enregistrement de la réservation. Veuillez réessayer.' : 'Error saving booking. Please try again.'), 'error')
     } finally {
       setLoading(false)
     }
@@ -613,8 +659,8 @@ export default function BookingFormModal({
               <FileText size={16} style={{ color: '#ae9260' }} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{editingBooking ? 'Edit Pickup details' : 'New Booking Contract'}</h2>
-              <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>Pickup operational &amp; client parameters creation</p>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{editingBooking ? t('bookingForm.titleEdit') : t('bookingForm.titleNew')}</h2>
+              <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>{t('bookingForm.subtitle')}</p>
             </div>
           </div>
           <button className="icon-btn" type="button" onClick={onClose}><X size={20} /></button>
@@ -635,13 +681,13 @@ export default function BookingFormModal({
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <User size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Client &amp; Vehicle</span>
+              <span style={sectionTitleStyle}>{t('bookingForm.clientVehicle')}</span>
             </div>
             <div style={grid2Style}>
 
               {/* ── CLIENT COMBOBOX ── */}
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><User size={11} /> CRM Client</label>
+                <label style={labelStyle}><User size={11} /> {t('bookingForm.crmClient')}</label>
                 <SearchableCombobox
                   options={clients.map(c => ({
                     value: c.id,
@@ -692,35 +738,36 @@ export default function BookingFormModal({
                       setClientPermisDelivreLe('')
                     }
                   }}
-                  placeholder="Select a client..."
-                  searchPlaceholder="Search client by name or phone..."
-                  pinnedOption={{ value: 'manual', label: '✏️ Manual / Walk-in Client' }}
+                  placeholder={t('bookingForm.selectClient')}
+                  searchPlaceholder={t('bookingForm.searchClient')}
+                  pinnedOption={{ value: 'manual', label: t('bookingForm.manualClient') }}
                 />
                 {clientId && clientId !== 'manual' && (
                   <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                     <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <span>✓</span> <strong>{clients.find(cl => cl.id === clientId)?.full_name}</strong> selected
+                      <span>✓</span> <strong>{clients.find(cl => cl.id === clientId)?.full_name}</strong> {t('bookingForm.clientSelected')}
                     </div>
                     {(() => {
                       const c = clients.find(cl => cl.id === clientId)
                       const score = c?.trust_score
-                      if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>Status: Unrated</div>
+                      if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>{t('bookingForm.statusLabel')} {t('dri.unrated')}</div>
+                      const statusText = score >= 80 ? t('dri.excellent') : score >= 60 ? t('dri.standard') : score >= 30 ? t('dri.watch') : t('dri.blacklisted')
                       return (
                         <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
-                          Status: {score >= 80 ? 'Excellent' : score >= 60 ? 'Standard' : score >= 30 ? 'Watch' : 'Blacklisted'} ({score} DRI)
+                          {t('bookingForm.statusLabel')} {statusText} ({score} DRI)
                         </div>
                       )
                     })()}
                   </div>
                 )}
                 {clientId === 'manual' && (
-                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#ae9260' }}>✏️ Manual entry — fill name below</div>
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#ae9260' }}>{t('bookingForm.manualEntryHint')}</div>
                 )}
               </div>
 
               {/* ── CO-DRIVER COMBOBOX ── */}
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><User size={11} /> Secondary / Co-Driver</label>
+                <label style={labelStyle}><User size={11} /> {t('bookingForm.secondaryDriver')}</label>
                 <SearchableCombobox
                   options={clients.map(c => ({
                     value: c.id,
@@ -771,36 +818,37 @@ export default function BookingFormModal({
                       setSecondaryClientPermisDelivreLe('')
                     }
                   }}
-                  placeholder="Select a secondary driver..."
-                  searchPlaceholder="Search client by name or phone..."
-                  pinnedOption={{ value: 'manual', label: '✏️ Manual / Walk-in Client' }}
+                  placeholder={t('bookingForm.selectSecondary')}
+                  searchPlaceholder={t('bookingForm.searchClient')}
+                  pinnedOption={{ value: 'manual', label: t('bookingForm.manualClient') }}
                 />
                 {secondaryClientId && secondaryClientId !== 'manual' && (
                   <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                     <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <span>✓</span> <strong>{clients.find(cl => cl.id === secondaryClientId)?.full_name}</strong> selected
+                      <span>✓</span> <strong>{clients.find(cl => cl.id === secondaryClientId)?.full_name}</strong> {t('bookingForm.clientSelected')}
                     </div>
                     {(() => {
                       const c = clients.find(cl => cl.id === secondaryClientId)
                       const score = c?.trust_score
-                      if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>Status: Unrated</div>
+                      if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>{t('bookingForm.statusLabel')} {t('dri.unrated')}</div>
+                      const statusText = score >= 80 ? t('dri.excellent') : score >= 60 ? t('dri.standard') : score >= 30 ? t('dri.watch') : t('dri.blacklisted')
                       return (
                         <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
-                          Status: {score >= 80 ? 'Excellent' : score >= 60 ? 'Standard' : score >= 30 ? 'Watch' : 'Blacklisted'} ({score} DRI)
+                          {t('bookingForm.statusLabel')} {statusText} ({score} DRI)
                         </div>
                       )
                     })()}
                   </div>
                 )}
                 {secondaryClientId === 'manual' && (
-                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#ae9260' }}>✏️ Manual entry — fill name below</div>
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#ae9260' }}>{t('bookingForm.manualEntryHint')}</div>
                 )}
               </div>
 
               {/* ── VEHICLE COMBOBOX ── */}
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <Car size={12} /> Vehicle
+                  <Car size={12} /> {t('bookingForm.vehicle')}
                 </label>
                 <SearchableCombobox
                   options={vehicles
@@ -809,15 +857,15 @@ export default function BookingFormModal({
                       value: v.id,
                       label: `${v.brand} ${v.model}`,
                       sublabel: v.license_plate ? `🚘 ${v.license_plate} ${v.color ? `· ${v.color}` : ''}` : '',
-                      badge: `${v.price_per_day} DT/day`
+                      badge: `${v.price_per_day} DT${t('fleet.day')}`
                     }))}
                   value={vehicleId}
                   onChange={(val) => handleVehicleChange(val)}
-                  placeholder="Select a vehicle..."
-                  searchPlaceholder="Search by brand or model..."
+                  placeholder={t('bookingForm.selectVehicle')}
+                  searchPlaceholder={t('bookingForm.searchVehicle')}
                 />
                 {vehicleId && (
-                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#10b981' }}>✓ Vehicle selected</div>
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#10b981' }}>{t('bookingForm.vehicleSelected')}</div>
                 )}
                 {/* PHASE 18 — In-Form Orange/Amber Alerts */}
                 {inFormOrangeAlerts.length > 0 && (
@@ -857,7 +905,7 @@ export default function BookingFormModal({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem', marginTop: '0.85rem' }}>
                 {clientId === 'manual' && (
                   <div className="form-group animate-fade-in" style={{ margin: 0 }}>
-                    <label style={labelStyle}>Client Name (Manual Input)</label>
+                    <label style={labelStyle}>{t('bookingForm.manualNameClient')}</label>
                     <input
                       type="text"
                       value={clientName}
@@ -871,7 +919,7 @@ export default function BookingFormModal({
                 )}
                 {secondaryClientId === 'manual' && (
                   <div className="form-group animate-fade-in" style={{ margin: 0 }}>
-                    <label style={labelStyle}>Co-Driver Name (Manual Input)</label>
+                    <label style={labelStyle}>{t('bookingForm.manualNameCoDriver')}</label>
                     <input
                       type="text"
                       value={secondaryClientName}
@@ -891,12 +939,12 @@ export default function BookingFormModal({
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <CalendarDays size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Rental Period</span>
+              <span style={sectionTitleStyle}>{t('bookings.rentalWindow')}</span>
             </div>
             <div style={grid4Style}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>
-                  <CalendarDays size={11} /> Start Date
+                  <CalendarDays size={11} /> {t('form.startDate')}
                 </label>
                 <input
                   type="date"
@@ -911,7 +959,7 @@ export default function BookingFormModal({
               </div>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>
-                  <Clock size={11} /> Pickup Time
+                  <Clock size={11} /> {t('bookingForm.pickupTime')}
                 </label>
                 <input
                   type="time"
@@ -925,7 +973,7 @@ export default function BookingFormModal({
               </div>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>
-                  <CalendarDays size={11} /> End Date
+                  <CalendarDays size={11} /> {t('form.endDate')}
                 </label>
                 <input
                   type="date"
@@ -940,7 +988,7 @@ export default function BookingFormModal({
               </div>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>
-                  <Clock size={11} /> Return Time
+                  <Clock size={11} /> {t('bookingForm.returnTime')}
                 </label>
                 <input
                   type="time"
@@ -968,14 +1016,14 @@ export default function BookingFormModal({
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f87171', fontWeight: 600, fontSize: '0.82rem' }}>
                   <AlertTriangle size={15} />
-                  <span>Vehicle already booked during this period</span>
+                  <span>{t('bookingForm.conflictTitle')}</span>
                 </div>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Occupied: <strong style={{ color: '#fca5a5' }}>{conflictInfo.occupiedRange}</strong>
+                  {t('bookingForm.occupied')} <strong style={{ color: '#fca5a5' }}>{conflictInfo.occupiedRange}</strong>
                 </p>
                 {conflictInfo.freeDates.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.25rem' }}>
-                    <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, marginRight: '0.25rem' }}>Free days:</span>
+                    <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, marginRight: '0.25rem' }}>{t('bookingForm.freeDays')}</span>
                     {conflictInfo.freeDates.map((fd, idx) => (
                       <span key={idx} style={{
                         fontSize: '0.68rem', fontWeight: 700,
@@ -1002,19 +1050,19 @@ export default function BookingFormModal({
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b', fontWeight: 600, fontSize: '0.82rem' }}>
                   <Shield size={15} />
-                  <span>⚠ Legal Document Expiry Warning</span>
+                  <span>{t('bookingForm.docExpiryWarning')}</span>
                 </div>
                 <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.5' }}>
-                  The following vehicle document(s) will <strong style={{ color: '#fbbf24' }}>expire during this rental period</strong>. The vehicle may become legally non-compliant mid-trip.
+                  {t('bookingForm.docExpiryDesc')}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.15rem' }}>
                   {legalDocConflicts.map((doc: any) => {
                     const docLabel =
-                      doc.doc_type === 'assurance' ? 'Insurance (Assurance)' :
-                      doc.doc_type === 'visite_technique' ? 'Technical Inspection (Visite)' :
-                      doc.doc_type === 'laissez_passer' ? 'Transport Authorization' :
+                      doc.doc_type === 'assurance' ? (lang === 'fr' ? 'Assurance' : 'Insurance (Assurance)') :
+                      doc.doc_type === 'visite_technique' ? (lang === 'fr' ? 'Visite Technique' : 'Technical Inspection (Visite)') :
+                      doc.doc_type === 'laissez_passer' ? (lang === 'fr' ? 'Autorisation de Transport' : 'Transport Authorization') :
                       doc.doc_type || 'Unknown Document'
-                    const expiryFormatted = new Date(doc.expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                    const expiryFormatted = new Date(doc.expiry_date).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                     return (
                       <div key={doc.id} style={{
                         display: 'flex',
@@ -1036,7 +1084,7 @@ export default function BookingFormModal({
                           padding: '0.15rem 0.45rem',
                           borderRadius: '4px',
                         }}>
-                          Expires {expiryFormatted}
+                          {t('bookingForm.expires')} {expiryFormatted}
                         </span>
                       </div>
                     )
@@ -1066,13 +1114,10 @@ export default function BookingFormModal({
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: headingColor, fontWeight: 600, fontSize: '0.82rem' }}>
                     <Wrench size={15} />
-                    <span>⚠ Mechanical Maintenance Warning</span>
+                    <span>{t('bookingForm.mechWarning')}</span>
                   </div>
                   <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.5' }}>
-                    The following service(s) are{' '}
-                    <strong style={{ color: hasCritical ? '#f87171' : '#fbbf24' }}>
-                      {hasCritical ? 'critically overdue or nearly due' : 'approaching their service limit'}
-                    </strong>. Schedule maintenance before dispatching this vehicle.
+                    {t('bookingForm.mechDesc')}
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.15rem' }}>
                     {mechMaintItems.map((it) => {
@@ -1081,8 +1126,8 @@ export default function BookingFormModal({
                       const badgeColor = it.isCritical ? '#f87171'                : '#fb923c'
                       const badgeBg    = it.isCritical ? 'rgba(239,68,68,0.12)'   : 'rgba(249,115,22,0.12)'
                       const statusText = it.delta <= 0
-                        ? `Overdue by ${Math.abs(it.delta).toLocaleString()} km`
-                        : `${it.delta.toLocaleString()} km remaining`
+                        ? (lang === 'fr' ? `${t('bookingForm.mechOverdue')} ${Math.abs(it.delta).toLocaleString()} km` : `Overdue by ${Math.abs(it.delta).toLocaleString()} km`)
+                        : (lang === 'fr' ? `${it.delta.toLocaleString()} km ${t('bookingForm.mechRemaining')}` : `${it.delta.toLocaleString()} km remaining`)
                       return (
                         <div key={it.label} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1092,7 +1137,7 @@ export default function BookingFormModal({
                           <span style={{ fontSize: '0.78rem', color: '#fff', fontWeight: 500 }}>
                             {it.icon} {it.label}
                             <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400, marginLeft: '0.4rem', fontSize: '0.72rem' }}>
-                              (current: {current.toLocaleString()} km · limit: {it.limit.toLocaleString()} km)
+                              ({lang === 'fr' ? 'actuel :' : 'current:'} {current.toLocaleString()} km · {lang === 'fr' ? 'limite :' : 'limit:'} {it.limit.toLocaleString()} km)
                             </span>
                           </span>
                           <span style={{
@@ -1118,12 +1163,12 @@ export default function BookingFormModal({
             <div style={sectionHeaderStyle}>
               <MapPin size={14} style={{ color: '#ae9260' }} />
               <span style={sectionTitleStyle}>
-                Logistics Handover <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>(Optional · Airport / Hotel / Custom)</span>
+                {t('bookingForm.handoverTitle')} <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>{t('bookingForm.handoverSubtitle')}</span>
               </span>
             </div>
             <div style={grid2Style}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><MapPin size={11} /> Handover Location</label>
+                <label style={labelStyle}><MapPin size={11} /> {t('bookingForm.handoverLocation')}</label>
                 <input
                   type="text"
                   name="handover_location"
@@ -1135,7 +1180,7 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><CalendarDays size={11} /> Handover Date</label>
+                <label style={labelStyle}><CalendarDays size={11} /> {t('bookingForm.handoverDate')}</label>
                 <input
                   type="date"
                   value={handoverDate}
@@ -1146,7 +1191,7 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Clock size={11} /> Handover Hour (Optional)</label>
+                <label style={labelStyle}><Clock size={11} /> {t('bookingForm.handoverHour')}</label>
                 <input
                   type="time"
                   value={handoverTime}
@@ -1160,7 +1205,7 @@ export default function BookingFormModal({
             {handoverLocation && (
               <div style={{ marginTop: '0.6rem', fontSize: '0.7rem', color: 'rgba(229,193,125,0.7)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px rgba(16,185,129,0.7)' }} />
-                <span>This booking will surface a delivery badge on the Operations grid and Bookings table.</span>
+                <span>{t('bookingForm.handoverHint')}</span>
               </div>
             )}
           </div>
@@ -1169,11 +1214,11 @@ export default function BookingFormModal({
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <Gauge size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Vehicle Condition (Pickup State)</span>
+              <span style={sectionTitleStyle}>{t('bookingForm.vehicleCondition')}</span>
             </div>
             <div style={grid3Style}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Gauge size={11} /> Starting km</label>
+                <label style={labelStyle}><Gauge size={11} /> {t('bookingForm.startingKm')}</label>
                 <input
                   type="number"
                   name="starting_km"
@@ -1186,20 +1231,20 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Fuel size={11} /> Fuel Level (Pickup)</label>
+                <label style={labelStyle}><Fuel size={11} /> {t('bookingForm.fuelLevel')}</label>
                 <select name="fuel_level_pickup" value={fuelLevelPickup} onChange={(e) => setFuelLevelPickup(e.target.value)} className="form-input" style={{ margin: 0 }}>
-                  <option value="Empty">Empty</option>
+                  <option value="Empty">{t('bookingForm.fuelEmpty')}</option>
                   <option value="1/4">1/4</option>
                   <option value="1/2">1/2</option>
                   <option value="3/4">3/4</option>
-                  <option value="Full">Full</option>
+                  <option value="Full">{t('bookingForm.fuelFull')}</option>
                 </select>
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Fuel size={11} /> Lavage (Pickup)</label>
+                <label style={labelStyle}><Fuel size={11} /> {t('bookingForm.lavage')}</label>
                 <select name="lavage_pickup" value={lavagePickup} onChange={(e) => setLavagePickup(e.target.value)} className="form-input" style={{ margin: 0 }}>
-                  <option value="clean_wash">Clean Wash (Lavage jdid)</option>
-                  <option value="average_dust">Average (3adiya/feha 8abra)</option>
+                  <option value="clean_wash">{t('bookingForm.lavageClean')}</option>
+                  <option value="average_dust">{t('bookingForm.lavageAverage')}</option>
                   <option value="dirty">Dirty (Mas5a)</option>
                 </select>
               </div>
@@ -1210,11 +1255,11 @@ export default function BookingFormModal({
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <CreditCard size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Renter Details <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>(Contract Snapshot)</span></span>
+              <span style={sectionTitleStyle}>{t('bookingForm.renterDetails')} <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>{t('bookingForm.contractSnapshot')}</span></span>
             </div>
             <div style={grid2Style}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><Phone size={11} /> Phone Number</label>
+                <label style={labelStyle}><Phone size={11} /> {t('bookingForm.phone')}</label>
                 <input
                   type="text"
                   name="client_phone"
@@ -1227,7 +1272,7 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><CreditCard size={11} /> CIN / Passport ID</label>
+                <label style={labelStyle}><CreditCard size={11} /> {t('bookingForm.cinPassport')}</label>
                 <input
                   type="text"
                   name="client_cin_passport"
@@ -1240,7 +1285,7 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><FileText size={11} /> Driver's License No.</label>
+                <label style={labelStyle}><FileText size={11} /> {t('bookingForm.licenseNo')}</label>
                 <input
                   type="text"
                   name="client_license_number"
@@ -1253,7 +1298,7 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><MapPin size={11} /> Full Address</label>
+                <label style={labelStyle}><MapPin size={11} /> {t('bookingForm.address')}</label>
                 <input
                   type="text"
                   name="client_address"
@@ -1272,15 +1317,15 @@ export default function BookingFormModal({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ae9260', boxShadow: '0 0 8px rgba(229,193,125,0.55)' }} />
                 <span style={{ fontSize: '0.68rem', color: '#ae9260', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                  Tunisian Legal Identity
+                  {t('form.tunisianLegalIdentity')}
                 </span>
                 <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
-                  — updates the CRM record on save
+                  {t('bookingForm.crmRecordSyncHint')}
                 </span>
               </div>
               <div style={grid2Style}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}>Date of Birth (DOB)</label>
+                  <label style={labelStyle}>{t('form.dob')}</label>
                   <input
                     type="date"
                     name="client_date_naissance"
@@ -1291,7 +1336,7 @@ export default function BookingFormModal({
                   />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}>CIN Issue Date (Iss)</label>
+                  <label style={labelStyle}>{t('form.cinIssueDate')}</label>
                   <input
                     type="date"
                     name="client_cin_delivre_le"
@@ -1302,7 +1347,7 @@ export default function BookingFormModal({
                   />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}>Permit Number (Permis)</label>
+                  <label style={labelStyle}>{t('form.permitNumber')}</label>
                   <input
                     type="text"
                     name="client_permis_numero"
@@ -1314,7 +1359,7 @@ export default function BookingFormModal({
                   />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}>Permit Issue Date</label>
+                  <label style={labelStyle}>{t('form.permitIssueDate')}</label>
                   <input
                     type="date"
                     name="client_permis_delivre_le"
@@ -1333,11 +1378,11 @@ export default function BookingFormModal({
             <div style={sectionStyle}>
               <div style={sectionHeaderStyle}>
                 <CreditCard size={14} style={{ color: '#ae9260' }} />
-                <span style={sectionTitleStyle}>Co-Driver Details <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>(Contract Snapshot)</span></span>
+                <span style={sectionTitleStyle}>{t('bookingForm.coDriverDetails')} <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>{t('bookingForm.contractSnapshot')}</span></span>
               </div>
               <div style={grid2Style}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}><Phone size={11} /> Phone Number</label>
+                  <label style={labelStyle}><Phone size={11} /> {t('bookingForm.phone')}</label>
                   <input
                     type="text"
                     name="secondary_client_phone"
@@ -1350,7 +1395,7 @@ export default function BookingFormModal({
                   />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}><CreditCard size={11} /> CIN / Passport ID</label>
+                  <label style={labelStyle}><CreditCard size={11} /> {t('bookingForm.cinPassport')}</label>
                   <input
                     type="text"
                     name="secondary_client_cin_passport"
@@ -1363,7 +1408,7 @@ export default function BookingFormModal({
                   />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}><FileText size={11} /> Driver's License No.</label>
+                  <label style={labelStyle}><FileText size={11} /> {t('bookingForm.licenseNo')}</label>
                   <input
                     type="text"
                     name="secondary_client_license_number"
@@ -1376,7 +1421,7 @@ export default function BookingFormModal({
                   />
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={labelStyle}><MapPin size={11} /> Full Address</label>
+                  <label style={labelStyle}><MapPin size={11} /> {t('bookingForm.address')}</label>
                   <input
                     type="text"
                     name="secondary_client_address"
@@ -1395,15 +1440,15 @@ export default function BookingFormModal({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ae9260', boxShadow: '0 0 8px rgba(229,193,125,0.55)' }} />
                   <span style={{ fontSize: '0.68rem', color: '#ae9260', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                    Tunisian Legal Identity
+                    {t('form.tunisianLegalIdentity')}
                   </span>
                   <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 500 }}>
-                    — updates the co-driver's CRM record on save
+                    {t('bookingForm.crmCoDriverRecordSyncHint')}
                   </span>
                 </div>
                 <div style={grid2Style}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={labelStyle}>Date of Birth (DOB)</label>
+                    <label style={labelStyle}>{t('form.dob')}</label>
                     <input
                       type="date"
                       name="secondary_client_date_naissance"
@@ -1414,7 +1459,7 @@ export default function BookingFormModal({
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={labelStyle}>CIN Issue Date (Iss)</label>
+                    <label style={labelStyle}>{t('form.cinIssueDate')}</label>
                     <input
                       type="date"
                       name="secondary_client_cin_delivre_le"
@@ -1425,7 +1470,7 @@ export default function BookingFormModal({
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={labelStyle}>Permit Number (Permis)</label>
+                    <label style={labelStyle}>{t('form.permitNumber')}</label>
                     <input
                       type="text"
                       name="secondary_client_permis_numero"
@@ -1437,7 +1482,7 @@ export default function BookingFormModal({
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={labelStyle}>Permit Issue Date</label>
+                    <label style={labelStyle}>{t('form.permitIssueDate')}</label>
                     <input
                       type="date"
                       name="secondary_client_permis_delivre_le"
@@ -1456,18 +1501,18 @@ export default function BookingFormModal({
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>
               <DollarSign size={14} style={{ color: '#ae9260' }} />
-              <span style={sectionTitleStyle}>Financials</span>
+              <span style={sectionTitleStyle}>{t('bookings.financials')}</span>
             </div>
             <div style={grid3Style}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><DollarSign size={11} /> Total Amount (DT)</label>
+                <label style={labelStyle}><DollarSign size={11} /> {t('form.totalAmount')} (DT)</label>
                 <input
                   type="number"
                   name="total_amount"
                   value={totalAmount}
                   onChange={(e) => setTotalAmount(e.target.value)}
                   required
-                  placeholder="Auto-calculated"
+                  placeholder={lang === 'fr' ? 'Calcul automatique' : 'Auto-calculated'}
                   min="0"
                   step="0.01"
                   className="form-input"
@@ -1475,7 +1520,7 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><DollarSign size={11} /> Acompte Paid (DT)</label>
+                <label style={labelStyle}><DollarSign size={11} /> {t('bookings.acompte')} (DT)</label>
                 <input
                   type="number"
                   name="acompte_paid"
@@ -1488,13 +1533,13 @@ export default function BookingFormModal({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}><FileText size={11} /> Rental Days</label>
+                <label style={labelStyle}><FileText size={11} /> {t('bookingForm.rentalDays')}</label>
                 <input
                   type="text"
                   name="rental_days_text"
                   value={rentalDaysText}
                   readOnly
-                  placeholder="Auto-calculated"
+                  placeholder={lang === 'fr' ? 'Calcul automatique' : 'Auto-calculated'}
                   className="form-input"
                   style={{ margin: 0, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(229,193,125,0.1)', color: 'rgba(255,255,255,0.5)', cursor: 'not-allowed' }}
                 />
@@ -1510,9 +1555,9 @@ export default function BookingFormModal({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                 <div>
                   <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#ae9260', display: 'flex', alignItems: 'center', gap: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    <Coins size={13} /> Tranches de Paiement
+                    <Coins size={13} /> {t('bookingForm.tranches')}
                   </h4>
-                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.68rem', color: 'var(--text-muted)' }}>Split the remaining contract balance into scheduled dates.</p>
+                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.68rem', color: 'var(--text-muted)' }}>{t('bookingForm.tranchesDesc')}</p>
                 </div>
                 <button
                   type="button"
@@ -1535,7 +1580,7 @@ export default function BookingFormModal({
                     cursor: 'pointer'
                   }}
                 >
-                  <Plus size={12} /> Add Tranche
+                  <Plus size={12} /> {t('bookingForm.addTranche')}
                 </button>
               </div>
 
@@ -1554,15 +1599,15 @@ export default function BookingFormModal({
               }}>
                 <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem' }}>
                   <div>
-                    <span style={{ color: 'var(--text-muted)' }}>Advance: </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{t('bookingForm.advance')} </span>
                     <strong style={{ color: '#fff' }}>{parsedAcompte} DT</strong>
                   </div>
                   <div>
-                    <span style={{ color: 'var(--text-muted)' }}>Tranches Sum: </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{t('bookingForm.tranchesSum')} </span>
                     <strong style={{ color: '#fff' }}>{installmentsSum.toFixed(2)} DT</strong>
                   </div>
                   <div>
-                    <span style={{ color: 'var(--text-muted)' }}>Scheduled Total: </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{t('bookingForm.scheduledTotal')} </span>
                     <strong style={{ color: '#fff' }}>{(parsedAcompte + installmentsSum).toFixed(2)} / {parsedTotal.toFixed(2)} DT</strong>
                   </div>
                 </div>
@@ -1571,15 +1616,15 @@ export default function BookingFormModal({
                   <div>
                     {Math.abs(remainingToSchedule) < 0.05 ? (
                       <span style={{ fontSize: '0.7rem', color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ fontSize: '0.8rem' }}>✓</span> Fully Scheduled
+                        <span style={{ fontSize: '0.8rem' }}>✓</span> {t('bookingForm.fullyScheduled')}
                       </span>
                     ) : remainingToSchedule > 0 ? (
                       <span style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(245,158,11,0.08)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>
-                        ⚠️ {remainingToSchedule.toFixed(2)} DT remaining
+                        ⚠️ {remainingToSchedule.toFixed(2)} DT {t('bookingForm.remaining')}
                       </span>
                     ) : (
                       <span style={{ fontSize: '0.7rem', color: '#f87171', background: 'rgba(239,68,68,0.08)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>
-                        🚨 Over-allocated by {Math.abs(remainingToSchedule).toFixed(2)} DT
+                        🚨 {t('bookingForm.overallocated')} {Math.abs(remainingToSchedule).toFixed(2)} DT
                       </span>
                     )}
                   </div>
@@ -1597,7 +1642,7 @@ export default function BookingFormModal({
                   color: 'var(--text-muted)',
                   fontSize: '0.72rem'
                 }}>
-                  No scheduled tranches. Booking operates on a standard total balance ledger.
+                  {t('bookingForm.noTranches')}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -1613,7 +1658,7 @@ export default function BookingFormModal({
                       borderRadius: '8px'
                     }}>
                       <div>
-                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>Montant (DT)</label>
+                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>{t('bookingForm.montant')}</label>
                         <div style={{ position: 'relative' }}>
                           <input
                             type="number"
@@ -1624,7 +1669,7 @@ export default function BookingFormModal({
                               updated[index].amount = val
                               setInstallments(updated)
                             }}
-                            placeholder="Amount in DT"
+                            placeholder={lang === 'fr' ? 'Montant en DT' : 'Amount in DT'}
                             min="0"
                             step="0.01"
                             required
@@ -1636,7 +1681,7 @@ export default function BookingFormModal({
                       </div>
 
                       <div>
-                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>Due Date</label>
+                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>{t('bookingForm.dueDate')}</label>
                         <input
                           type="date"
                           value={inst.due_date ? inst.due_date.split('T')[0] : ''}
@@ -1653,7 +1698,7 @@ export default function BookingFormModal({
                       </div>
 
                       <div>
-                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>Status</label>
+                        <label style={{ ...labelStyle, fontSize: '0.62rem', marginBottom: '0.2rem' }}>{t('bookingForm.trancheStatus')}</label>
                         <select
                           value={inst.status}
                           onChange={(e) => {
@@ -1664,8 +1709,8 @@ export default function BookingFormModal({
                           className="form-input"
                           style={{ margin: 0 }}
                         >
-                          <option value="unpaid">❌ Unpaid</option>
-                          <option value="paid">✅ Paid</option>
+                          <option value="unpaid">{t('bookingForm.unpaid')}</option>
+                          <option value="paid">{t('bookingForm.paid')}</option>
                         </select>
                       </div>
 
@@ -1689,7 +1734,7 @@ export default function BookingFormModal({
                             cursor: 'pointer',
                             transition: 'all 0.2s'
                           }}
-                          title="Delete Tranche"
+                          title={t('bookingForm.deleteTranche')}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -1702,10 +1747,10 @@ export default function BookingFormModal({
 
             <div style={{ ...grid2Style, marginTop: '0.85rem' }}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={labelStyle}>Booking Status</label>
+                <label style={labelStyle}>{t('bookingForm.bookingStatus')}</label>
                 <select name="status" className="form-input" defaultValue={editingBooking?.status || 'confirmed'} style={{ margin: 0 }}>
-                  <option value="confirmed">✓ Confirmed</option>
-                  <option value="pending">⏳ Pending</option>
+                  <option value="confirmed">{t('bookingForm.confirmed')}</option>
+                  <option value="pending">{t('bookingForm.pending')}</option>
                 </select>
               </div>
             </div>
@@ -1727,23 +1772,23 @@ export default function BookingFormModal({
               <AlertTriangle size={24} style={{ color: '#ef4444' }} />
               <div>
                 <strong style={{ display: 'block', fontSize: '0.9rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  🚨 Critical Safety Fraud
+                  {t('bookingForm.blacklistWarningTitle')}
                 </strong>
-                <span style={{ fontSize: '0.8rem' }}>One or more assigned drivers are BLACKLISTED. Contract generation is strictly locked.</span>
+                <span style={{ fontSize: '0.8rem' }}>{t('bookingForm.blacklistWarningDesc')}</span>
               </div>
             </div>
           )}
 
           {/* ── FOOTER ── */}
           <div className="modal-footer" style={{ borderTop: '1px solid rgba(229,193,125,0.12)', paddingTop: '1rem', marginTop: '0.5rem', position: 'sticky', bottom: '-1px', background: 'linear-gradient(155deg, #18130f, #110e0c)', paddingBottom: '10px', zIndex: 10, marginInline: '-10px', paddingInline: '10px' }}>
-            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
             <button type="submit" className="btn-primary" disabled={loading || !!conflictInfo || isBlacklisted}>
               {loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="loading-spinner"></span>
-                  <span>Saving...</span>
+                  <span>{t('bookingForm.saving')}</span>
                 </div>
-              ) : editingBooking ? 'Save Changes' : 'Create Booking'}
+              ) : editingBooking ? t('bookingForm.saveChanges') : t('bookingForm.createBooking')}
             </button>
           </div>
         </form>

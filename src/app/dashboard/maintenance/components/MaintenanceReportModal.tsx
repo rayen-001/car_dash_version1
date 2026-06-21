@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Printer } from 'lucide-react'
 import { BusinessSettings } from '@/types'
 
@@ -23,6 +25,12 @@ export default function MaintenanceReportModal({
   filters,
   stats
 }: MaintenanceReportModalProps) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const currentSettings = {
     business_name: businessSettings?.business_name || 'RentCar Premium',
     logo_url: businessSettings?.logo_url || '',
@@ -32,7 +40,9 @@ export default function MaintenanceReportModal({
     rental_terms: businessSettings?.rental_terms || ''
   }
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <div className="modal-overlay print-report-container" style={{ zIndex: 1100 }}>
       <div className="modal-content" style={{
         maxWidth: '850px',
@@ -233,6 +243,7 @@ export default function MaintenanceReportModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

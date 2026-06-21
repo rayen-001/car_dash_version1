@@ -19,6 +19,7 @@ export default async function MaintenancePage() {
     .from('vehicles')
     .select('id, brand, model')
     .eq('owner_id', user.id)
+    .is('withdrawn_at', null)
 
   const settings = await getBusinessSettings()
 

@@ -13,6 +13,7 @@ import ExpenseReportModal from './components/ExpenseReportModal'
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { BusinessSettings } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
+import { useLanguage } from '@/lib/i18n'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -97,7 +98,15 @@ function formatTunisianPlate(plate: string): string {
   return plate ? `[ TN | ${plate} ]` : '—'
 }
 
-function getInfractionLabel(type?: string) {
+function getInfractionLabel(type?: string, lang?: 'fr' | 'en') {
+  if (lang === 'fr') {
+    switch (type) {
+      case 'damage_repair': return 'Réparation de Dégâts'
+      case 'installment_tranche': return 'Tranche de Paiement'
+      case 'late_return_penalty': return 'Pénalité de Retard'
+      default: return 'Réclamation Opérationnelle'
+    }
+  }
   switch (type) {
     case 'damage_repair': return 'Damage Repair'
     case 'installment_tranche': return 'Installment Tranche'
@@ -509,6 +518,7 @@ export default function ExpensesClient({
   legalDocs?: { vehicle_id: string; doc_type: string; expiry_date: string }[]
 }) {
   const { showToast } = useToast()
+  const { t, lang } = useLanguage()
   const confirm = useConfirm()
   const TODAY = todayStr()
 
@@ -587,7 +597,7 @@ export default function ExpensesClient({
         date,
         type: isClaim ? 'inflow' : 'outflow',
         category: (cat in CATEGORY_META ? cat : isClaim ? cat as LedgerRow['category'] : 'other') as LedgerRow['category'],
-        description: e.description || (isClaim ? `${getInfractionLabel(cat)} claim` : 'Expense entry'),
+        description: e.description || (isClaim ? (lang === 'fr' ? `Réclamation ${getInfractionLabel(cat, lang).toLowerCase()}` : `${getInfractionLabel(cat, lang)} claim`) : (lang === 'fr' ? 'Entrée de dépense' : 'Expense entry')),
         entity: vendorEntity,
         vehicleLabel: e.vehicles ? modelLabel : 'General',
         licensePlate: plate,
@@ -617,8 +627,8 @@ export default function ExpensesClient({
         date,
         type: 'outflow',
         category: 'maintenance',
-        description: m.description || 'Maintenance Service',
-        entity: m.description || 'Speedy Motors Workshop',
+        description: m.description || (lang === 'fr' ? 'Service d\'entretien' : 'Maintenance Service'),
+        entity: m.description || (lang === 'fr' ? 'Garage Speedy Motors' : 'Speedy Motors Workshop'),
         vehicleLabel: v ? modelLabel : 'Vehicle',
         licensePlate: plate,
         amount: Number(m.cost) || 0,
@@ -636,7 +646,7 @@ export default function ExpensesClient({
     }
 
     return rows.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
-  }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims])
+  }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims, lang])
 
   // ── Smart Filter (date string, "overdue", "due today") ────────────────────
   const filtered = useMemo(() => {
@@ -728,27 +738,27 @@ export default function ExpensesClient({
     try {
       await addExpense(new FormData(e.currentTarget))
       setIsAddModalOpen(false)
-      showToast('Expense logged successfully!', 'success')
+      showToast(lang === 'fr' ? 'Dépense enregistrée avec succès !' : 'Expense logged successfully!', 'success')
     } catch (err: any) {
-      showToast(err.message || 'Failed to log expense.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec de l\'enregistrement de la dépense.' : 'Failed to log expense.'), 'error')
     }
     setLoading(false)
   }
 
   const handleCascade = async (row: LedgerRow) => {
-    if (!row.settlementBookingId) return showToast('No booking attached to this row', 'error')
+    if (!row.settlementBookingId) return showToast(lang === 'fr' ? 'Aucune réservation associée à cette ligne' : 'No booking attached to this row', 'error')
     const raw = collectAmounts[row.id] || ''
     const amount = Number(raw)
-    if (!amount || amount <= 0) return showToast('Please enter a positive amount to cascade', 'info')
+    if (!amount || amount <= 0) return showToast(lang === 'fr' ? 'Veuillez saisir un montant positif' : 'Please enter a positive amount to cascade', 'info')
     setLoading(true)
     try {
       await updateBookingHistoricalDetails(row.settlementBookingId, row.settlementVehicleId || '', { amount_collected_now: amount })
       setCollectAmounts(prev => ({ ...prev, [row.id]: '' }))
-      showToast(`Allocated ${amount.toFixed(2)} DT`, 'success')
+      showToast(lang === 'fr' ? `Alloué ${amount.toFixed(2)} DT` : `Allocated ${amount.toFixed(2)} DT`, 'success')
       router.refresh()
     } catch (err: any) {
       console.error('Cascade error', err)
-      showToast(err?.message || 'Failed to allocate payment', 'error')
+      showToast(err?.message || (lang === 'fr' ? 'Échec de l\'allocation du paiement' : 'Failed to allocate payment'), 'error')
     } finally {
       setLoading(false)
     }
@@ -758,10 +768,10 @@ export default function ExpensesClient({
     setTrancheActionLoading(trancheId)
     try {
       await toggleTrancheStatus(bookingId, trancheId, currentStatus)
-      showToast(`Tranche status updated.`, 'success')
+      showToast(lang === 'fr' ? 'Statut de la tranche mis à jour.' : 'Tranche status updated.', 'success')
       router.refresh()
     } catch (err: any) {
-      showToast(err?.message || 'Failed to update tranche status', 'error')
+      showToast(err?.message || (lang === 'fr' ? 'Échec de la mise à jour du statut de la tranche' : 'Failed to update tranche status'), 'error')
     } finally {
       setTrancheActionLoading(null)
     }
@@ -770,15 +780,15 @@ export default function ExpensesClient({
   const handleDrawerCascade = async (bookingId: string, rowId: string) => {
     const raw = collectAmounts[rowId + '-drawer'] || ''
     const amount = Number(raw)
-    if (!amount || amount <= 0) return showToast('Please enter a positive amount to settle', 'info')
+    if (!amount || amount <= 0) return showToast(lang === 'fr' ? 'Veuillez saisir un montant positif' : 'Please enter a positive amount to settle', 'info')
     setLoading(true)
     try {
       await settleBookingTrancheCascade(bookingId, amount)
       setCollectAmounts(prev => ({ ...prev, [rowId + '-drawer']: '' }))
-      showToast(`Successfully cascaded ${amount.toFixed(2)} DT across tranches.`, 'success')
+      showToast(lang === 'fr' ? `${amount.toFixed(2)} DT répartis avec succès sur les tranches.` : `Successfully cascaded ${amount.toFixed(2)} DT across tranches.`, 'success')
       router.refresh()
     } catch (err: any) {
-      showToast(err?.message || 'Failed to cascade settlement', 'error')
+      showToast(err?.message || (lang === 'fr' ? 'Échec de la répartition du règlement' : 'Failed to cascade settlement'), 'error')
     } finally {
       setLoading(false)
     }
@@ -794,49 +804,49 @@ export default function ExpensesClient({
     try {
       await updateExpense(formData)
       setEditingExpense(null)
-      showToast('Expense updated successfully!', 'success')
+      showToast(lang === 'fr' ? 'Dépense mise à jour avec succès !' : 'Expense updated successfully!', 'success')
     } catch (err: any) {
-      showToast(err.message || 'Failed to update expense.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec de la mise à jour de la dépense.' : 'Failed to update expense.'), 'error')
     }
     setLoading(false)
   }
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: 'Delete Expense',
-      message: 'Are you sure you want to permanently delete this expense record?',
-      confirmLabel: 'Yes, Delete',
+      title: lang === 'fr' ? 'Supprimer la Dépense' : 'Delete Expense',
+      message: lang === 'fr' ? 'Êtes-vous sûr de vouloir supprimer définitivement cet enregistrement de dépense ?' : 'Are you sure you want to permanently delete this expense record?',
+      confirmLabel: lang === 'fr' ? 'Oui, Supprimer' : 'Yes, Delete',
       danger: true,
     })
     if (!ok) return
     try {
       await deleteExpense(id)
-      showToast('Expense record deleted.', 'success')
+      showToast(lang === 'fr' ? 'Enregistrement de dépense supprimé.' : 'Expense record deleted.', 'success')
     } catch (err: any) {
-      showToast(err.message || 'Failed to delete expense.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec de la suppression de la dépense.' : 'Failed to delete expense.'), 'error')
     }
   }
 
   const handleClearOutstanding = async (row: LedgerRow) => {
     if (!row.settlementBookingId || !row.settlementLineItemId) {
-      showToast('No outstanding installment selected for settlement.', 'error')
+      showToast(lang === 'fr' ? 'Aucune tranche impayée sélectionnée pour le règlement.' : 'No outstanding installment selected for settlement.', 'error')
       return
     }
     setLoading(true)
     try {
       await clearOutstandingLedgerItem(row.settlementBookingId, row.settlementLineItemId)
       setSettledInstallmentIds(prev => Array.from(new Set([...prev, row.settlementLineItemId!])))
-      showToast('Outstanding liability settled instantly.', 'success')
+      showToast(lang === 'fr' ? 'Engagement impayé réglé instantanément.' : 'Outstanding liability settled instantly.', 'success')
       router.refresh()
     } catch (err: any) {
-      showToast(err.message || 'Failed to mark the debt as collected.', 'error')
+      showToast(err.message || (lang === 'fr' ? 'Échec du marquage de la dette comme recouvrée.' : 'Failed to mark the debt as collected.'), 'error')
     }
     setLoading(false)
   }
 
   const handleMarkClaimSettled = (row: LedgerRow) => {
     setLocallySettledClaims(prev => Array.from(new Set([...prev, row.id])))
-    showToast('Claim line marked collected.', 'success')
+    showToast(lang === 'fr' ? 'Ligne de réclamation marquée comme recouvrée.' : 'Claim line marked collected.', 'success')
   }
 
   // ─── Expense Form ─────────────────────────────────────────────────────────
@@ -859,34 +869,34 @@ export default function ExpensesClient({
     return (
       <form onSubmit={onSubmit} className="modal-form">
         <div className="form-group">
-          <label>Claim / Infraction Type</label>
+          <label>{lang === 'fr' ? 'Type de Réclamation / Infraction' : 'Claim / Infraction Type'}</label>
           <select
             name="infraction_type"
             className="form-input"
             value={infractionType}
             onChange={(e) => setInfractionType(e.target.value)}
           >
-            <option value="">None (Standard Expense)</option>
-            <option value="damage_repair">🔧 Damage Repair</option>
-            <option value="installment_tranche">💳 Installment Tranche</option>
-            <option value="late_return_penalty">⏰ Late Return Penalty</option>
+            <option value="">{lang === 'fr' ? 'Aucun (Dépense Standard)' : 'None (Standard Expense)'}</option>
+            <option value="damage_repair">🔧 {lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'}</option>
+            <option value="installment_tranche">💳 {lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'}</option>
+            <option value="late_return_penalty">⏰ {lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'}</option>
           </select>
         </div>
 
         {!infractionType ? (
           <div className="form-group">
-            <label>Category</label>
+            <label>{lang === 'fr' ? 'Catégorie' : 'Category'}</label>
             <select name="category" required className="form-input" defaultValue={defaultValues?.category || 'fuel'}>
-              <option value="fuel">⛽ Fuel</option>
-              <option value="maintenance">🛠️ Maintenance</option>
-              <option value="insurance">🛡️ Insurance</option>
-              <option value="cleaning">🧹 Cleaning</option>
-              <option value="other">📋 Other</option>
+              <option value="fuel">⛽ {lang === 'fr' ? 'Carburant' : 'Fuel'}</option>
+              <option value="maintenance">🛠️ {lang === 'fr' ? 'Entretien' : 'Maintenance'}</option>
+              <option value="insurance">🛡️ {lang === 'fr' ? 'Assurance' : 'Insurance'}</option>
+              <option value="cleaning">🧹 {lang === 'fr' ? 'Nettoyage' : 'Cleaning'}</option>
+              <option value="other">📋 {lang === 'fr' ? 'Autre' : 'Other'}</option>
             </select>
           </div>
         ) : (
           <div className="form-group">
-            <label>Target Liability Amount (DT)</label>
+            <label>{lang === 'fr' ? 'Montant de la Responsabilité Visée (DT)' : 'Target Liability Amount (DT)'}</label>
             <input
               type="number"
               name="target_liability_amount"
@@ -904,11 +914,11 @@ export default function ExpensesClient({
         )}
 
         <div className="form-group">
-          <label>Description</label>
+          <label>{lang === 'fr' ? 'Description' : 'Description'}</label>
           <input
             type="text"
             name="description"
-            placeholder={infractionType ? "e.g. Broken side mirror claim" : "e.g. Weekly car wash"}
+            placeholder={infractionType ? (lang === 'fr' ? "ex. Rétroviseur cassé" : "e.g. Broken side mirror claim") : (lang === 'fr' ? "ex. Lavage hebdomadaire" : "e.g. Weekly car wash")}
             className="form-input"
             defaultValue={defaultValues?.description || ''}
             required
@@ -918,7 +928,7 @@ export default function ExpensesClient({
         <div className="form-row">
           {!infractionType && (
             <div className="form-group">
-              <label>Amount (DT)</label>
+              <label>{lang === 'fr' ? 'Montant (DT)' : 'Amount (DT)'}</label>
               <input
                 type="number"
                 name="amount"
@@ -933,9 +943,9 @@ export default function ExpensesClient({
             </div>
           )}
           <div className="form-group">
-            <label>Link to Vehicle (Optional)</label>
+            <label>{lang === 'fr' ? 'Lien vers Véhicule (Optionnel)' : 'Link to Vehicle (Optional)'}</label>
             <select name="vehicle_id" className="form-input" defaultValue={defaultValues?.vehicleId || defaultValues?.vehicle_id || ''}>
-              <option value="">-- General Expense --</option>
+              <option value="">{lang === 'fr' ? '-- Dépense Générale --' : '-- General Expense --'}</option>
               {vehicles.map(v => (
                 <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate})</option>
               ))}
@@ -944,9 +954,9 @@ export default function ExpensesClient({
         </div>
         
         <div className="form-group">
-          <label>Link to Client (Required for Claims/Infractions)</label>
+          <label>{lang === 'fr' ? 'Lien vers Client (Requis pour Réclamations/Infractions)' : 'Link to Client (Required for Claims/Infractions)'}</label>
           <select name="client_id" className="form-input" defaultValue={defaultValues?.client_id || ''} required={!!infractionType}>
-            <option value="">-- No Client Linked --</option>
+            <option value="">{lang === 'fr' ? '-- Aucun Client Lié --' : '-- No Client Linked --'}</option>
             {clients.map(c => (
               <option key={c.id} value={c.id}>{c.full_name} ({c.phone || c.cin || 'N/A'})</option>
             ))}
@@ -954,7 +964,7 @@ export default function ExpensesClient({
         </div>
 
         <div className="modal-footer">
-          <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setEditingExpense(null) }}>Cancel</button>
+          <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setEditingExpense(null) }}>{t('common.cancel')}</button>
           <button type="submit" className="btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {loading && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
             <span>{submitLabel}</span>
@@ -965,7 +975,10 @@ export default function ExpensesClient({
   }
 
   const presetLabels: Record<DatePreset, string> = {
-    today: 'Today', week: 'This Week', month: 'This Month', custom: 'Custom Range',
+    today: t('preset.today'),
+    week: t('preset.week'),
+    month: t('preset.month'),
+    custom: t('preset.custom'),
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -976,15 +989,15 @@ export default function ExpensesClient({
       <div className="header-section">
         <div className="header-title-row">
           <div>
-            <h1 className="page-title">Fleet Expenses & Costs</h1>
-            <p className="subtitle">Track all operational spending, repair costs, and vehicle maintenance.</p>
+            <h1 className="page-title">{t('expenses.title')}</h1>
+            <p className="subtitle">{t('expenses.subtitle')}</p>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem' }} className="no-print">
             <button className="btn-secondary" onClick={() => setIsReportOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <FileText size={18} /><span>Export PDF</span>
+              <FileText size={18} /><span>{t('expenses.exportPdf')}</span>
             </button>
             <button className="btn-primary" onClick={() => setIsAddModalOpen(true)}>
-              <Plus size={18} /><span>Log Expense</span>
+              <Plus size={18} /><span>{t('expenses.logExpense')}</span>
             </button>
           </div>
         </div>
@@ -1014,12 +1027,12 @@ export default function ExpensesClient({
 
         {preset === 'custom' && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>From</span>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>{t('preset.from')}</span>
             <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setPreset('custom') }} style={{
                 background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '6px',
               color: '#fff', padding: '0.4rem 0.6rem', fontSize: '0.82rem', colorScheme: 'dark', outline: 'none',
             }} />
-            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>To</span>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(229,193,125,0.5)' }}>{t('preset.to')}</span>
             <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setPreset('custom') }} style={{
                 background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '6px',
               color: '#fff', padding: '0.4rem 0.6rem', fontSize: '0.82rem', colorScheme: 'dark', outline: 'none',
@@ -1045,10 +1058,10 @@ export default function ExpensesClient({
         )}
 
         <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'rgba(229,193,125,0.4)', paddingRight: '0.5rem' }}>
-          {filtered.length} transactions
+          {filtered.length} {t('preset.transactions')}
           {overdueRowCount > 0 && (
             <span style={{ marginLeft: '0.6rem', color: '#f87171', fontWeight: 700 }}>
-              · {overdueRowCount} overdue
+              · {overdueRowCount} {t('preset.overdue')}
             </span>
           )}
         </div>
@@ -1065,13 +1078,13 @@ export default function ExpensesClient({
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#ef4444,transparent)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <TrendingDown size={16} style={{ color: '#ef4444' }} />
-            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>Total Operational Outflow</span>
+            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(239,68,68,0.7)', fontWeight: 700 }}>{t('expenses.totalOperationalOutflow')}</span>
           </div>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#ef4444', letterSpacing: '-0.02em' }}>
             {totalOutflow.toFixed(2)} DT
           </div>
           <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
-            {filtered.length} outflow transactions
+            {lang === 'fr' ? `${filtered.length} dépenses` : `${filtered.length} outflow transactions`}
           </div>
         </div>
 
@@ -1084,13 +1097,13 @@ export default function ExpensesClient({
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg,#f59e0b,transparent)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <AlertCircle size={16} style={{ color: '#f59e0b' }} />
-            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(245, 158, 11, 0.7)', fontWeight: 700 }}>Critical Fleet Liabilities</span>
+            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'rgba(245, 158, 11, 0.7)', fontWeight: 700 }}>{t('expenses.criticalLiabilities')}</span>
           </div>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: 600, color: '#f59e0b', letterSpacing: '-0.02em' }}>
             {filtered.filter(r => ['maintenance', 'insurance'].includes(r.category)).reduce((s, r) => s + r.amount, 0).toFixed(2)} DT
           </div>
           <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}>
-            Repairs & Statutory costs
+            {t('expenses.repairsAndStatutory')}
           </div>
         </div>
       </div>
@@ -1106,11 +1119,11 @@ export default function ExpensesClient({
         scrollbarWidth: 'none',
       }} className="no-print">
         {[
-          { key: 'all', label: 'All Fleet Costs', emoji: '📊', color: 'var(--accent-gold)' },
-          { key: 'maintenance', label: 'Mechanical & Repairs', emoji: '🛠️', color: '#ef4444' },
-          { key: 'statutory', label: 'Statutory Documents', emoji: '🛡️', color: '#38bdf8' },
-          { key: 'fuel', label: 'Fleet Fuel', emoji: '⛽', color: '#f59e0b' },
-          { key: 'administrative', label: 'Administrative & Other', emoji: '📋', color: '#a78bfa' }
+          { key: 'all', label: t('expenses.allFleetCosts'), emoji: '📊', color: 'var(--accent-gold)' },
+          { key: 'maintenance', label: t('expenses.mechanicalRepairs'), emoji: '🛠️', color: '#ef4444' },
+          { key: 'statutory', label: t('expenses.statutoryDocs'), emoji: '🛡️', color: '#38bdf8' },
+          { key: 'fuel', label: t('expenses.fleetFuel'), emoji: '⛽', color: '#f59e0b' },
+          { key: 'administrative', label: t('expenses.administrativeOther'), emoji: '📋', color: '#a78bfa' }
         ].map(item => {
           const active = flowFilter === item.key
           return (
@@ -1150,7 +1163,7 @@ export default function ExpensesClient({
           <Search size={16} style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(229,193,125,0.4)' }} />
           <input
             type="text"
-            placeholder='Search · "overdue" · "due today" · YYYY-MM-DD · client · plate'
+            placeholder={lang === 'fr' ? 'Rechercher · "overdue" · "due today" · AAAA-MM-JJ · client · plaque' : 'Search · "overdue" · "due today" · YYYY-MM-DD · client · plate'}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="form-input"
@@ -1172,9 +1185,9 @@ export default function ExpensesClient({
       {filtered.length === 0 ? (
         <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
           <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
-          <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>No transactions match the active filters.</p>
+          <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 500 }}>{t('expenses.noTransactions')}</p>
           <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.24)' }}>
-            Use the status, date range, or search bar to expose overdue liabilities and contract cash flows.
+            {t('expenses.useFiltersMessage')}
           </p>
         </div>
       ) : (
@@ -1193,11 +1206,10 @@ export default function ExpensesClient({
               const dayRows = groups[dateKey]
               const dailyOutflow = dayRows.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0)
               const dailyInflow = dayRows.filter(r => r.type === 'inflow').reduce((s, r) => s + r.collectedAmount, 0)
-              // "23 mai 2026" in French locale; capitalize first letter for visual weight.
               const localized = (() => {
                 try {
                   const d = new Date(dateKey + 'T00:00:00')
-                  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+                  return d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })
                 } catch { return dateKey }
               })()
 
@@ -1230,7 +1242,7 @@ export default function ExpensesClient({
                         {localized}
                       </span>
                       <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginLeft: '0.25rem' }}>
-                        · {dayRows.length} transaction{dayRows.length > 1 ? 's' : ''}
+                        · {dayRows.length} {dayRows.length > 1 ? t('preset.transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
@@ -1255,7 +1267,7 @@ export default function ExpensesClient({
                           boxShadow: '0 0 14px rgba(239,68,68,0.18), inset 0 0 4px rgba(239,68,68,0.04)',
                         }}>
                           <TrendingDown size={13} />
-                          <span style={{ opacity: 0.85 }}>Total Daily Outflow:</span>
+                          <span style={{ opacity: 0.85 }}>{t('expenses.totalDailyOutflow')}</span>
                           <span>-{dailyOutflow.toFixed(2)} DT</span>
                         </div>
                       )}
@@ -1265,8 +1277,23 @@ export default function ExpensesClient({
                   {/* ── Itemized rows ── */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
                     {dayRows.map((row) => {
+                      const getCategoryLabel = (cat: string) => {
+                        switch (cat) {
+                          case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
+                          case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
+                          case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
+                          case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
+                          case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
+                          case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
+                          case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
+                          case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
+                          case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
+                          default: return lang === 'fr' ? 'Autre' : 'Other'
+                        }
+                      }
+
                       let categoryMeta = CATEGORY_META[row.category] || {
-                        label: getInfractionLabel(row.category),
+                        label: getInfractionLabel(row.category, lang),
                         emoji: row.rawRef === 'claim' ? '⚠️' : '📦',
                         color: '#fbbf24',
                         bg: 'rgba(251,191,36,0.12)',
@@ -1274,13 +1301,17 @@ export default function ExpensesClient({
                       }
                       if (row.rawRef === 'maintenance' || row.category === 'maintenance') {
                         categoryMeta = {
-                          label: 'Maintenance',
+                          label: lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance',
                           emoji: '🛠️',
                           color: '#ef4444',
                           bg: 'rgba(239,68,68,0.1)',
                           border: 'rgba(239,68,68,0.25)',
                         }
                       }
+
+                      const translatedLabel = row.category in CATEGORY_META
+                        ? getCategoryLabel(row.category)
+                        : categoryMeta.label;
 
                       const isDamageClaim =
                         row.category === 'damage_repair' ||
@@ -1352,7 +1383,7 @@ export default function ExpensesClient({
                               </div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>No vehicle linked</span>
+                                <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{lang === 'fr' ? 'Aucun véhicule lié' : 'No vehicle linked'}</span>
                                 <span style={{ fontSize: '0.62rem', color: 'rgba(229,193,125,0.55)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
                                   {row.contractKey}
                                 </span>
@@ -1377,7 +1408,7 @@ export default function ExpensesClient({
                                   marginBottom: '0.4rem',
                                 }}>
                                   <ShieldAlertIcon size={11} />
-                                  <span>Responsible Client</span>
+                                  <span>{lang === 'fr' ? 'Client Responsable' : 'Responsible Client'}</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                                   <div style={{
@@ -1409,7 +1440,7 @@ export default function ExpensesClient({
                                   {row.rawBooking && (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setEditingBooking(row.rawBooking) }}
-                                      title="Open originating incident booking"
+                                      title={lang === 'fr' ? "Ouvrir l'incident lié à la réservation" : "Open originating incident booking"}
                                       style={{
                                         background: 'rgba(229,193,125,0.08)',
                                         border: '1px solid rgba(229,193,125,0.22)',
@@ -1483,7 +1514,7 @@ export default function ExpensesClient({
                               border: `1px solid ${categoryMeta.border}`,
                               whiteSpace: 'nowrap',
                             }}>
-                              {categoryMeta.emoji} {categoryMeta.label}
+                              {categoryMeta.emoji} {translatedLabel}
                             </span>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                               {row.type === 'outflow' ? (
@@ -1497,7 +1528,7 @@ export default function ExpensesClient({
                                   </span>
                                   {row.remainingAmount > 0 && (
                                     <span style={{ fontSize: '0.66rem', color: '#f87171', fontWeight: 700 }}>
-                                      Reste: {row.remainingAmount.toFixed(2)} DT
+                                      {t('bookings.remaining')}: {row.remainingAmount.toFixed(2)} DT
                                     </span>
                                   )}
                                 </>
@@ -1505,8 +1536,8 @@ export default function ExpensesClient({
                             </div>
                             {row.type === 'outflow' && row.rawRef === 'expense' && (
                               <div style={{ display: 'flex', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
-                                <button className="icon-btn" onClick={() => setEditingExpense(row)} title="Edit"><Edit2 size={13} /></button>
-                                <button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))} title="Delete"><Trash2 size={13} /></button>
+                                <button className="icon-btn" onClick={() => setEditingExpense(row)} title={lang === 'fr' ? "Modifier" : "Edit"}><Edit2 size={13} /></button>
+                                <button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))} title={lang === 'fr' ? "Supprimer" : "Delete"}><Trash2 size={13} /></button>
                               </div>
                             )}
                             {row.type === 'inflow' && (
@@ -1516,14 +1547,14 @@ export default function ExpensesClient({
                                   padding: '0.25rem 0.55rem', borderRadius: '999px',
                                   background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)',
                                   color: '#f87171', fontSize: '0.65rem', fontWeight: 700,
-                                }}>UNPAID</div>
+                                }}>{lang === 'fr' ? 'IMPAYÉ' : 'UNPAID'}</div>
                               ) : (
                                 <div style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                                   padding: '0.25rem 0.55rem', borderRadius: '999px',
                                   background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)',
                                   color: '#34d399', fontSize: '0.65rem', fontWeight: 700,
-                                }}>SETTLED</div>
+                                }}>{lang === 'fr' ? 'RÉGLÉ' : 'SETTLED'}</div>
                               )
                             )}
                           </div>
@@ -1543,10 +1574,10 @@ export default function ExpensesClient({
         <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
-              <h2>Log New Expense</h2>
+              <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
               <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
             </div>
-            <ExpenseForm onSubmit={handleAdd} submitLabel="Add Expense" />
+            <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
           </div>
         </div>
       )}
@@ -1555,20 +1586,22 @@ export default function ExpensesClient({
         <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
-              <h2>Edit Expense</h2>
+              <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
               <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
             </div>
-            <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel="Save Changes" />
+            <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
           </div>
         </div>
       )}
 
-      <QuickEditBookingModal
-        booking={editingBooking}
-        isOpen={!!editingBooking}
-        onClose={() => setEditingBooking(null)}
-        vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
-      />
+      {editingBooking && (
+        <QuickEditBookingModal
+          booking={editingBooking}
+          isOpen={!!editingBooking}
+          onClose={() => setEditingBooking(null)}
+          vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
+        />
+      )}
 
       {isReportOpen && (
         <ExpenseReportModal

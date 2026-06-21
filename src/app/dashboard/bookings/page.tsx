@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { getBusinessSettings, syncAndRelateClients } from '@/app/actions'
+import { fetchAllBookings } from '@/app/actions/_shared'
 import BookingsClient from './BookingsClient'
 
 export default async function BookingsPage() {
@@ -18,17 +19,17 @@ export default async function BookingsPage() {
   }
 
   // Fetch bookings with vehicle details, driver profiles, and handover telemetry
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select(`
+  const bookings = await fetchAllBookings(
+    supabase,
+    user.id,
+    `
       *,
       vehicles (brand, model, license_plate),
       installments:booking_installments(*),
       primary_client:clients!client_id(*),
       secondary_client:clients!secondary_client_id(*)
-    `)
-    .eq('owner_id', user.id)
-    .order('created_at', { ascending: false })
+    `
+  )
 
   // Fetch vehicles for the dropdown — include maintenance km fields so the
   // booking form can show oil-change / brake-pads warnings.
@@ -36,6 +37,7 @@ export default async function BookingsPage() {
     .from('vehicles')
     .select('id, brand, model, license_plate, price_per_day, current_km, next_vidange_km, last_vidange_km, next_pads_km, withdrawn_at, color')
     .eq('owner_id', user.id)
+    .is('withdrawn_at', null)
 
   // Fetch clients belonging to this owner for dropdown selection.
   // BookingFormModal hydrates ALL of these into the contract snapshot fields

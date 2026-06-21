@@ -6,11 +6,21 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import styles from './layout.module.css'
+import { LanguageProvider, useLanguage } from '@/lib/i18n'
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <LanguageProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </LanguageProvider>
+  )
+}
+
+function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const { lang, setLang, t } = useLanguage()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [userInitials, setUserInitials] = useState('?')
   const [displayName, setDisplayName] = useState('My Account')
@@ -91,28 +101,27 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   const navGroups = [
     {
-      title: 'Operations',
+      title: t('nav.operations'),
       items: [
-        { name: 'Analytics', href: '/dashboard', icon: BarChart3 },
-        { name: 'My Fleet', href: '/dashboard/fleet', icon: CarFront },
-        { name: 'Bookings', href: '/dashboard/bookings', icon: CalendarClock },
-        { name: 'Clients', href: '/dashboard/clients', icon: Users },
-        // Phase 18 — To-Do Hub
-        { name: 'To-Do Hub', href: '/dashboard/todo', icon: ListChecks },
+        { name: t('nav.analytics'), href: '/dashboard', icon: BarChart3 },
+        { name: t('nav.fleet'), href: '/dashboard/fleet', icon: CarFront },
+        { name: t('nav.bookings'), href: '/dashboard/bookings', icon: CalendarClock },
+        { name: t('nav.clients'), href: '/dashboard/clients', icon: Users },
+        { name: t('nav.todo'), href: '/dashboard/todo', icon: ListChecks },
       ]
     },
     {
-      title: 'Finance & Service',
+      title: t('nav.finance'),
       items: [
-        { name: 'Rental Inflows', href: '/dashboard/revenues', icon: Coins },
-        { name: 'Fleet Expenses', href: '/dashboard/expenses', icon: CircleDollarSign },
+        { name: t('nav.inflows'), href: '/dashboard/revenues', icon: Coins },
+        { name: t('nav.expenses'), href: '/dashboard/expenses', icon: CircleDollarSign },
       ]
     },
     {
-      title: 'Management',
+      title: t('nav.management'),
       items: [
-        { name: 'Settings', href: '/dashboard/settings', icon: Settings },
-        { name: 'Profile', href: '/dashboard/profile', icon: User },
+        { name: t('nav.settings'), href: '/dashboard/settings', icon: Settings },
+        { name: t('nav.profile'), href: '/dashboard/profile', icon: User },
       ]
     }
   ]
@@ -165,7 +174,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
         <div className={styles['sidebar-footer']}>
           <button onClick={handleLogout} className={styles['logout-btn']}>
             <LogOut size={20} />
-            <span>Logout</span>
+            <span>{t('nav.logout')}</span>
           </button>
         </div>
       </aside>
@@ -183,9 +192,63 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
             </button>
             <div className={styles['topbar-info']}>
               <span className={styles['status-indicator']}></span>
-              <span>Live Data Sync</span>
+              <span>{t('nav.liveSync')}</span>
             </div>
           </div>
+
+          {/* Language Selector Button */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'rgba(20, 20, 20, 0.5)',
+            border: '1px solid rgba(229, 193, 125, 0.15)',
+            borderRadius: '30px',
+            padding: '2px',
+            marginLeft: 'auto',
+            marginRight: '1.25rem'
+          }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setLang('fr'); }}
+              style={{
+                padding: '4px 12px',
+                fontSize: '0.75rem',
+                borderRadius: '20px',
+                border: 'none',
+                background: lang === 'fr' ? 'linear-gradient(135deg, #ae9260, #735d38)' : 'transparent',
+                color: lang === 'fr' ? '#ffffff' : 'rgba(255, 255, 255, 0.6)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s ease',
+                fontWeight: lang === 'fr' ? 600 : 400,
+                boxShadow: lang === 'fr' ? '0 2px 8px rgba(174, 146, 96, 0.3)' : 'none'
+              }}
+            >
+              <span>🇫🇷</span> FR
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setLang('en'); }}
+              style={{
+                padding: '4px 12px',
+                fontSize: '0.75rem',
+                borderRadius: '20px',
+                border: 'none',
+                background: lang === 'en' ? 'linear-gradient(135deg, #ae9260, #735d38)' : 'transparent',
+                color: lang === 'en' ? '#ffffff' : 'rgba(255, 255, 255, 0.6)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s ease',
+                fontWeight: lang === 'en' ? 600 : 400,
+                boxShadow: lang === 'en' ? '0 2px 8px rgba(174, 146, 96, 0.3)' : 'none'
+              }}
+            >
+              <span>🇬🇧</span> EN
+            </button>
+          </div>
+
           <div
             ref={profileRef}
             className={`${styles['topbar-profile']} ${isProfileDropdownOpen ? styles['active'] : ''}`}
@@ -230,11 +293,11 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                 <div className={styles['dropdown-menu']}>
                   <Link href="/dashboard/profile" className={styles['dropdown-item']}>
                     <User size={16} />
-                    <span>My Profile</span>
+                    <span>{t('nav.myProfile')}</span>
                   </Link>
                   <Link href="/dashboard/settings" className={styles['dropdown-item']}>
                     <Settings size={16} />
-                    <span>Business Settings</span>
+                    <span>{t('nav.businessSettings')}</span>
                   </Link>
                 </div>
 
@@ -243,7 +306,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                 <div className={styles['dropdown-footer']}>
                   <button onClick={handleLogout} className={styles['dropdown-logout-btn']}>
                     <LogOut size={16} />
-                    <span>Logout</span>
+                    <span>{t('nav.logout')}</span>
                   </button>
                 </div>
               </div>
@@ -272,26 +335,26 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               transformOrigin: 'bottom right',
               animation: 'scaleUp 0.2s ease-out'
             }}>
-              <div style={{ fontSize: '0.8rem', color: '#ae9260', fontWeight: 700, paddingBottom: '0.4rem', borderBottom: '1px solid rgba(229,193,125,0.15)', marginBottom: '0.25rem', fontFamily: 'var(--font-heading)' }}>QUICK ACTIONS</div>
+              <div style={{ fontSize: '0.8rem', color: '#ae9260', fontWeight: 700, paddingBottom: '0.4rem', borderBottom: '1px solid rgba(229,193,125,0.15)', marginBottom: '0.25rem', fontFamily: 'var(--font-heading)' }}>{t('quick.title')}</div>
 
               <Link href="/dashboard/bookings?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
                 <CalendarClock size={16} style={{ color: '#ae9260' }} />
-                <span>New Booking</span>
+                <span>{t('quick.newBooking')}</span>
               </Link>
 
               <Link href="/dashboard/fleet?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
                 <CarFront size={16} style={{ color: '#ae9260' }} />
-                <span>Add Vehicle</span>
+                <span>{t('quick.addVehicle')}</span>
               </Link>
 
               <Link href="/dashboard/clients?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
                 <Users size={16} style={{ color: '#ae9260' }} />
-                <span>Register Client</span>
+                <span>{t('quick.registerClient')}</span>
               </Link>
 
               <Link href="/dashboard/expenses?openAdd=true" onClick={() => setIsQuickActionsOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#ffffff', textDecoration: 'none', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.88rem', transition: 'background 0.2s' }} className="quick-action-link">
                 <CircleDollarSign size={16} style={{ color: '#ae9260' }} />
-                <span>Log Expense</span>
+                <span>{t('quick.logExpense')}</span>
               </Link>
             </div>
           )}

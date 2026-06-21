@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Calendar, Plus, CheckCircle, XCircle, Receipt, FileText, Edit, Search, ShieldCheck, UserPlus, AlertOctagon, Plane, Hotel, MapPin } from 'lucide-react'
+import { Calendar, Plus, CheckCircle, XCircle, Receipt, FileText, Edit, Search, ShieldCheck, UserPlus, AlertOctagon, Plane, Hotel, MapPin, X } from 'lucide-react'
 import { updateBookingStatus, addCoDriverToBooking } from '@/app/actions'
 import { Booking, Vehicle, Client, BusinessSettings } from '@/types'
 import { useToast } from '@/components/Toast'
@@ -10,6 +10,27 @@ import { Badge } from '@/components/Badge'
 import BookingFormModal from './components/BookingFormModal'
 import BookingInvoiceModal from './components/BookingInvoiceModal'
 import BookingAgreementModal from './components/BookingAgreementModal'
+import { useLanguage } from '@/lib/i18n'
+import Fuse from 'fuse.js'
+
+function normalizeText(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function isNonNameQuery(query: string): boolean {
+  const trimmed = query.trim()
+  if (!trimmed) return true
+  // Contains any digit (matches phone, CIN, passport, dates, numbers)
+  if (/\d/.test(trimmed)) return true
+  // Contains "TN" or "tn" (matches plates)
+  if (trimmed.toLowerCase().includes('tn')) return true
+  return false
+}
 
 export default function BookingsClient({ 
   initialBookings, 
@@ -28,6 +49,13 @@ export default function BookingsClient({
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null)
   const [loading, setLoading] = useState(false)
   const { showToast } = useToast()
+  const { t, lang } = useLanguage()
+
+  const getStatusLabel = (status: string) => {
+    const key = `status.${status.toLowerCase()}` as any
+    const label = t(key)
+    return label === key ? status : label
+  }
 
   const searchParams = useSearchParams()
   useEffect(() => {
@@ -38,6 +66,22 @@ export default function BookingsClient({
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('')
+  const [smartSearchEnabled, setSmartSearchEnabled] = useState(false)
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [showDropdown, setShowDropdown] = useState(true)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
   const [statusFilter, setStatusFilter] = useState('All')
   const [vehicleFilter, setVehicleFilter] = useState('All')
   const [dateFrom, setDateFrom] = useState('')
@@ -51,6 +95,17 @@ export default function BookingsClient({
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, statusFilter, vehicleFilter, dateFrom, dateTo])
+
+  // Debounce searchQuery to debouncedSearchQuery (150ms delay)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 150)
+
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [searchQuery])
 
   // Modals for Invoices and Agreements
   const [selectedInvoice, setSelectedInvoice] = useState<Booking | null>(null)
@@ -106,56 +161,227 @@ export default function BookingsClient({
     setIsAddingCoDriver(false)
   }
 
-  // Filter logic
-  const filteredBookings = initialBookings.filter((booking) => {
-    const searchLower = searchQuery.toLowerCase()
+  const bookingsForFuzzySearch = useMemo(() => {
+    return initialBookings.filter((booking) => {
+      const matchesStatus = statusFilter === 'All' || booking.status?.toLowerCase() === statusFilter.toLowerCase()
+      const matchesVehicle = vehicleFilter === 'All' || booking.vehicle_id === vehicleFilter
+      const matchesDateFrom = !dateFrom || booking.start_date >= dateFrom
+      const matchesDateTo = !dateTo || booking.start_date <= dateTo
+      return matchesStatus && matchesVehicle && matchesDateFrom && matchesDateTo
+    })
+  }, [initialBookings, statusFilter, vehicleFilter, dateFrom, dateTo])
 
-    const primary = booking.primary_client || {
-      full_name: booking.client_name,
-      phone: booking.client_phone,
-      cin: booking.client_cin_passport,
-      license_number: booking.client_license_number
+  const fuzzyIndexData = useMemo(() => {
+    return bookingsForFuzzySearch.map((booking) => {
+      const primary = booking.primary_client || {
+        full_name: booking.client_name
+      }
+      const secondary = booking.secondary_client
+      return {
+        booking,
+        search_client_name: normalizeText(booking.client_name || ''),
+        search_primary_name: normalizeText(primary.full_name || ''),
+        search_secondary_name: normalizeText(secondary?.full_name || '')
+      }
+    })
+  }, [bookingsForFuzzySearch])
+
+  // Memoized Fuse.js instance
+  const fuseInstance = useMemo(() => {
+    return new Fuse(fuzzyIndexData, {
+      keys: ['search_client_name', 'search_primary_name', 'search_secondary_name'],
+      threshold: 0.40,
+      includeScore: true,
+      minMatchCharLength: 3
+    })
+  }, [fuzzyIndexData])
+
+  // Execute fuzzy name suggestions search
+  const fuzzySuggestions = useMemo(() => {
+    if (!smartSearchEnabled) return []
+    
+    // Check query length after normalization, not before
+    const normQuery = normalizeText(debouncedSearchQuery)
+    if (normQuery.length < 3) return []
+
+    // Detect non-name queries (contains numbers or "TN" plate formats)
+    if (isNonNameQuery(debouncedSearchQuery)) return []
+
+    const results = fuseInstance.search(normQuery)
+
+    // Calculate match percentage and filter items (threshold >= 60%)
+    const mapped = results.map((res) => {
+      const matchPercent = Math.round((1 - (res.score ?? 1)) * 100)
+      
+      // Determine if it is an exact match (e.g. query exactly matches one of the normalized fields)
+      const isExactMatch = 
+        res.item.search_client_name === normQuery ||
+        res.item.search_primary_name === normQuery ||
+        res.item.search_secondary_name === normQuery
+
+      return {
+        booking: res.item.booking,
+        search_client_name: res.item.search_client_name,
+        search_primary_name: res.item.search_primary_name,
+        search_secondary_name: res.item.search_secondary_name,
+        matchPercent,
+        isExactMatch
+      }
+    }).filter(item => item.matchPercent >= 60)
+
+    // Sort suggestions:
+    // 1. exact normalized name match first
+    // 2. matchPercent descending
+    // 3. booking start date descending
+    const sorted = [...mapped].sort((a, b) => {
+      if (a.isExactMatch && !b.isExactMatch) return -1
+      if (!a.isExactMatch && b.isExactMatch) return 1
+      
+      if (b.matchPercent !== a.matchPercent) {
+        return b.matchPercent - a.matchPercent
+      }
+      
+      const ca = a.booking.created_at || ''
+      const cb = b.booking.created_at || ''
+      if (ca !== cb) return cb.localeCompare(ca)
+
+      const dateA = a.booking.start_date || ''
+      const dateB = b.booking.start_date || ''
+      return dateB.localeCompare(dateA)
+    })
+
+    // Deduplicate suggestions by booking.id before slicing to max 8 results
+    const seen = new Set<string>()
+    const deduplicated: typeof sorted = []
+    for (const item of sorted) {
+      if (!seen.has(item.booking.id)) {
+        seen.add(item.booking.id)
+        deduplicated.push(item)
+      }
     }
-    const secondary = booking.secondary_client
 
-    const matchesSearch = 
-      (primary.full_name?.toLowerCase() || '').includes(searchLower) ||
-      (primary.phone?.toLowerCase() || '').includes(searchLower) ||
-      (primary.cin?.toLowerCase() || '').includes(searchLower) ||
-      (primary.license_number?.toLowerCase() || '').includes(searchLower) ||
-      (secondary?.full_name?.toLowerCase() || '').includes(searchLower) ||
-      (secondary?.phone?.toLowerCase() || '').includes(searchLower) ||
-      (secondary?.cin?.toLowerCase() || '').includes(searchLower) ||
-      (secondary?.license_number?.toLowerCase() || '').includes(searchLower) ||
-      (booking.vehicles?.brand && `${booking.vehicles.brand} ${booking.vehicles.model}`.toLowerCase().includes(searchLower)) ||
-      booking.id.toLowerCase().includes(searchLower)
+    return deduplicated.slice(0, 8)
+  }, [fuseInstance, debouncedSearchQuery, smartSearchEnabled])
 
-    const matchesStatus = statusFilter === 'All' || booking.status?.toLowerCase() === statusFilter.toLowerCase()
+  // Filter logic — wrapped in useMemo to avoid redundant recalculation on unrelated re-renders (modal open/close, toast, etc.)
+  const filteredBookings = useMemo(() => {
+    const getStrictMatch = (booking: Booking) => {
+      const searchLower = searchQuery.toLowerCase()
+      const primary = booking.primary_client || {
+        full_name: booking.client_name,
+        phone: booking.client_phone,
+        cin: booking.client_cin_passport,
+        license_number: booking.client_license_number
+      }
+      const secondary = booking.secondary_client
 
-    const matchesVehicle = vehicleFilter === 'All' || booking.vehicle_id === vehicleFilter
+      return (
+        (primary.full_name?.toLowerCase() || '').includes(searchLower) ||
+        (primary.phone?.toLowerCase() || '').includes(searchLower) ||
+        (primary.cin?.toLowerCase() || '').includes(searchLower) ||
+        (primary.license_number?.toLowerCase() || '').includes(searchLower) ||
+        (secondary?.full_name?.toLowerCase() || '').includes(searchLower) ||
+        (secondary?.phone?.toLowerCase() || '').includes(searchLower) ||
+        (secondary?.cin?.toLowerCase() || '').includes(searchLower) ||
+        (secondary?.license_number?.toLowerCase() || '').includes(searchLower) ||
+        (booking.vehicles?.brand && `${booking.vehicles.brand} ${booking.vehicles.model}`.toLowerCase().includes(searchLower)) ||
+        booking.id.toLowerCase().includes(searchLower)
+      )
+    }
 
-    const matchesDateFrom = !dateFrom || booking.start_date >= dateFrom
-    const matchesDateTo = !dateTo || booking.start_date <= dateTo
+    const normQuery = normalizeText(searchQuery)
+    const isFuzzyActive = smartSearchEnabled && normQuery.length >= 3 && !isNonNameQuery(searchQuery)
 
-    return matchesSearch && matchesStatus && matchesVehicle && matchesDateFrom && matchesDateTo
-  })
+    // Build Set of fuzzy matched booking IDs
+    const fuzzyBookingIds = new Set(
+      isFuzzyActive ? fuzzySuggestions.map(s => s.booking.id) : []
+    )
 
-  // Sort by rental start date descending (recent ones first, then oldest ones)
-  const sortedBookings = [...filteredBookings].sort((a, b) => {
-    const da = a.start_date || ''
-    const db = b.start_date || ''
-    if (da !== db) return db.localeCompare(da)
-    const ca = a.created_at || ''
-    const cb = b.created_at || ''
-    return cb.localeCompare(ca)
-  })
+    return initialBookings.filter((booking) => {
+      // Apply non-text filters
+      const matchesStatus = statusFilter === 'All' || booking.status?.toLowerCase() === statusFilter.toLowerCase()
+      const matchesVehicle = vehicleFilter === 'All' || booking.vehicle_id === vehicleFilter
+      const matchesDateFrom = !dateFrom || booking.start_date >= dateFrom
+      const matchesDateTo = !dateTo || booking.start_date <= dateTo
+
+      if (!matchesStatus || !matchesVehicle || !matchesDateFrom || !matchesDateTo) {
+        return false
+      }
+
+      // If Smart Search is ON and query is a valid name query
+      if (isFuzzyActive) {
+        // Match if it's in fuzzy suggestions OR if it matches strictly (exact/substring)
+        return fuzzyBookingIds.has(booking.id) || getStrictMatch(booking)
+      }
+
+      // Otherwise, strict search
+      return getStrictMatch(booking)
+    })
+  }, [initialBookings, searchQuery, statusFilter, vehicleFilter, dateFrom, dateTo, smartSearchEnabled, fuzzySuggestions])
+
+  // Sort by rental start date descending — also memoized
+  const sortedBookings = useMemo(() => {
+    const normQuery = normalizeText(searchQuery)
+    const isFuzzyActive = smartSearchEnabled && normQuery.length >= 3 && !isNonNameQuery(searchQuery)
+
+    if (isFuzzyActive) {
+      // Build a quick lookup map of bookingId -> fuzzy suggestion metadata
+      const fuzzyMap = new Map<string, { matchPercent: number; isExactMatch: boolean }>()
+      fuzzySuggestions.forEach((s) => {
+        fuzzyMap.set(s.booking.id, {
+          matchPercent: s.matchPercent,
+          isExactMatch: s.isExactMatch
+        })
+      })
+
+      return [...filteredBookings].sort((a, b) => {
+        const fuzzyA = fuzzyMap.get(a.id)
+        const fuzzyB = fuzzyMap.get(b.id)
+
+        // Exact name/strict match priority: If one is an exact match (or not in fuzzy map, which means it matched strictly), it goes first.
+        const isExactA = !fuzzyA || fuzzyA.isExactMatch
+        const isExactB = !fuzzyB || fuzzyB.isExactMatch
+
+        if (isExactA && !isExactB) return -1
+        if (!isExactA && isExactB) return 1
+
+        // Compare matchPercent
+        const percentA = fuzzyA?.matchPercent ?? 100
+        const percentB = fuzzyB?.matchPercent ?? 100
+
+        if (percentB !== percentA) {
+          return percentB - percentA
+        }
+
+        // Default to created_at descending (newest added first)
+        const ca = a.created_at || ''
+        const cb = b.created_at || ''
+        if (ca !== cb) return cb.localeCompare(ca)
+        const da = a.start_date || ''
+        const db = b.start_date || ''
+        return db.localeCompare(da)
+      })
+    }
+
+    // Default sorting (Smart OFF)
+    return [...filteredBookings].sort((a, b) => {
+      const ca = a.created_at || ''
+      const cb = b.created_at || ''
+      if (ca !== cb) return cb.localeCompare(ca)
+      const da = a.start_date || ''
+      const db = b.start_date || ''
+      return db.localeCompare(da)
+    })
+  }, [filteredBookings, searchQuery, smartSearchEnabled, fuzzySuggestions])
 
   const totalItems = sortedBookings.length
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1
-  const paginatedBookings = sortedBookings.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  )
+  const paginatedBookings = useMemo(() => {
+    return sortedBookings.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    )
+  }, [sortedBookings, currentPage, itemsPerPage])
 
   // Helper to map payment status to badge variant
   const getPaymentVariant = (status?: string) => {
@@ -215,38 +441,268 @@ export default function BookingsClient({
       <div className='header-section'>
         <div className="header-title-row">
           <div>
-            <h1 className='page-title'>Bookings</h1>
-            <p className='subtitle'>Manage customer reservations and rental statuses.</p>
+            <h1 className='page-title'>{t('bookings.title')}</h1>
+            <p className='subtitle'>{t('bookings.subtitle')}</p>
           </div>
           <button className="btn-primary" onClick={handleOpenNewModal}>
             <Plus size={18} />
-            <span>New Booking</span>
+            <span>{t('bookings.new')}</span>
           </button>
         </div>
       </div>
 
       {/* Filter / Search Bar */}
-      <div className="control-bar glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', marginBottom: '1.5rem' }}>
+      <div className="control-bar glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', marginBottom: '1.5rem', overflow: 'visible', position: 'relative', zIndex: 50 }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
-          <div style={{ flex: 1, position: 'relative', minWidth: '280px' }}>
+          <div ref={searchContainerRef} style={{ flex: 1, position: 'relative', minWidth: '280px' }}>
             <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="text" 
-              placeholder="Search by name, phone, CIN, license, vehicle, or ID..." 
+              placeholder={t('common.search')} 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setShowDropdown(true)
+              }}
+              onFocus={() => setShowDropdown(true)}
               className="form-input"
-              style={{ width: '100%', paddingLeft: '2.5rem' }}
+              style={{ width: '100%', paddingLeft: '2.5rem', paddingRight: searchQuery ? '2.5rem' : '1rem' }}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('')
+                  setShowDropdown(false)
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '1rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-gold)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  zIndex: 10,
+                  transition: 'all 0.2s ease',
+                }}
+                className="hover-bg-glass"
+                title={lang === 'fr' ? 'Effacer la recherche' : 'Clear search'}
+              >
+                <X size={16} />
+              </button>
+            )}
+
+            {/* Smart Suggestions Dropdown */}
+            {smartSearchEnabled && fuzzySuggestions.length > 0 && showDropdown && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  width: '100%',
+                  background: 'rgba(20, 16, 14, 0.98)',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(229, 193, 125, 0.3)',
+                  borderRadius: '10px',
+                  boxShadow: '0 12px 36px rgba(0,0,0,0.85)',
+                  zIndex: 999,
+                  maxHeight: '380px',
+                  overflowY: 'auto',
+                  padding: '0',
+                }}
+              >
+                {/* Dropdown Header with Dismiss/Close Icon */}
+                <div 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '0.6rem 1rem', 
+                    borderBottom: '1px solid rgba(212, 180, 106, 0.15)',
+                    background: 'rgba(20, 16, 14, 0.98)',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 10,
+                    backdropFilter: 'blur(16px)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {lang === 'fr' ? 'Suggestions de recherche' : 'Search Suggestions'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      setShowDropdown(false)
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--accent-gold)',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '4px',
+                      transition: 'all 0.2s ease',
+                    }}
+                    className="hover-bg-glass"
+                    title={lang === 'fr' ? 'Masquer' : 'Hide'}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div style={{ padding: '0.25rem 0' }}>
+                  {fuzzySuggestions.map(({ booking, matchPercent, isExactMatch }) => {
+                    const primary = booking.primary_client || {
+                      full_name: booking.client_name,
+                      phone: booking.client_phone,
+                    }
+                    const secondary = booking.secondary_client
+                    const vehicle = booking.vehicles
+
+                    // Categorize Match
+                    let categoryLabel = ''
+                    let badgeBg = ''
+                    let badgeColor = ''
+                    let isWeak = false
+
+                    if (isExactMatch) {
+                      categoryLabel = lang === 'fr' ? 'Correspondance exacte' : 'Exact match'
+                      badgeBg = 'rgba(74, 222, 128, 0.15)'
+                      badgeColor = '#4ade80'
+                    } else if (matchPercent >= 85) {
+                      categoryLabel = lang === 'fr' ? 'Correspondance forte' : 'Strong match'
+                      badgeBg = 'rgba(229, 193, 125, 0.15)'
+                      badgeColor = '#E5C17D'
+                    } else if (matchPercent >= 70) {
+                      categoryLabel = lang === 'fr' ? 'Bonne correspondance' : 'Good match'
+                      badgeBg = 'rgba(184, 168, 150, 0.15)'
+                      badgeColor = '#b8a896'
+                    } else {
+                      categoryLabel = lang === 'fr' ? 'Correspondance possible' : 'Possible match'
+                      badgeBg = 'rgba(122, 110, 99, 0.1)'
+                      badgeColor = '#7a6e63'
+                      isWeak = true
+                    }
+
+                    return (
+                      <div
+                        key={booking.id}
+                        onClick={() => {
+                          setSelectedAgreement(booking)
+                          setShowDropdown(false)
+                        }}
+                        className="hover-bg-glass"
+                        style={{
+                          padding: '0.65rem 1rem',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid rgba(212, 180, 106, 0.08)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.25rem',
+                          opacity: isWeak ? 0.75 : 1,
+                          transition: 'all 0.2s ease',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span className="fw-600" style={{ color: '#fff', fontSize: '0.9rem' }}>
+                            {primary.full_name}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '4px',
+                              background: badgeBg,
+                              color: badgeColor,
+                              border: `1px solid ${isWeak ? 'rgba(255,255,255,0.08)' : badgeColor}40`,
+                            }}
+                          >
+                            {categoryLabel} — {matchPercent}%
+                          </span>
+                        </div>
+                        
+                        {secondary && (
+                          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                            {lang === 'fr' ? 'Co-conducteur' : 'Co-driver'}: <span style={{ color: '#ccc' }}>{secondary.full_name}</span>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ color: '#E5C17D', fontWeight: 600 }}>
+                            📅 {booking.start_date ? new Date(booking.start_date).toLocaleDateString('en-GB') : '—'} ➔ {booking.end_date ? new Date(booking.end_date).toLocaleDateString('en-GB') : '—'}
+                          </span>
+                          <span>•</span>
+                          <span>#{booking.id.substring(0, 6).toUpperCase()}</span>
+                          <span>•</span>
+                          <span>{primary.phone || 'No Phone'}</span>
+                          {vehicle && (
+                            <>
+                              <span>•</span>
+                              <span style={{ color: '#fff' }}>{vehicle.brand} {vehicle.model} ({vehicle.license_plate})</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           
+          {/* Smart Name Suggestions Toggle */}
+          <button
+            onClick={() => setSmartSearchEnabled(prev => !prev)}
+            className={`btn-secondary ${smartSearchEnabled ? 'active-gold' : ''}`}
+            style={{
+              padding: '0.6rem 1rem',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              border: smartSearchEnabled ? '1px solid #E5C17D' : '1px solid rgba(255, 255, 255, 0.1)',
+              background: smartSearchEnabled ? 'rgba(229, 193, 125, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+              color: smartSearchEnabled ? '#E5C17D' : 'var(--text-muted)',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: smartSearchEnabled ? '#E5C17D' : 'rgba(255,255,255,0.2)',
+                display: 'inline-block',
+                boxShadow: smartSearchEnabled ? '0 0 8px #E5C17D' : 'none',
+              }}
+            />
+            {lang === 'fr' ? 'Suggestions de noms' : 'Smart Name Suggestions'}
+          </button>
+
           {hasActiveFilters && (
             <button 
               onClick={handleResetFilters} 
               className="btn-secondary" 
               style={{ padding: '0.6rem 1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
             >
-              Reset Filters
+              {t('common.resetFilters')}
             </button>
           )}
         </div>
@@ -254,30 +710,30 @@ export default function BookingsClient({
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
           {/* Status Dropdown */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Status:</label>
+            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('bookings.status')}:</label>
             <select 
               value={statusFilter} 
               onChange={(e) => setStatusFilter(e.target.value)}
               className="form-input"
               style={{ minWidth: '130px', background: 'rgba(0, 0, 0, 0.3)', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', padding: '0.5rem' }}
             >
-              <option value="All">All Statuses</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="pending">Pending</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="All">{t('status.all')}</option>
+              <option value="confirmed">{t('status.confirmed')}</option>
+              <option value="pending">{t('status.pending')}</option>
+              <option value="cancelled">{t('status.cancelled')}</option>
             </select>
           </div>
 
           {/* Vehicle Dropdown */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Vehicle:</label>
+            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('form.brand')}:</label>
             <select 
               value={vehicleFilter} 
               onChange={(e) => setVehicleFilter(e.target.value)}
               className="form-input"
               style={{ minWidth: '160px', background: 'rgba(0, 0, 0, 0.3)', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', padding: '0.5rem' }}
             >
-              <option value="All">All Vehicles</option>
+              <option value="All">{t('bookings.allVehicles')}</option>
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>{v.brand} {v.model}</option>
               ))}
@@ -286,7 +742,7 @@ export default function BookingsClient({
 
           {/* Date Range Picker */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Date From:</label>
+            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('bookings.dateFrom')}:</label>
             <input 
               type="date" 
               value={dateFrom} 
@@ -297,7 +753,7 @@ export default function BookingsClient({
           </div>
 
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Date To:</label>
+            <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('bookings.dateTo')}:</label>
             <input 
               type="date" 
               value={dateTo} 
@@ -314,20 +770,24 @@ export default function BookingsClient({
           <table className="data-table" style={{ width: '100%', minWidth: '1200px' }}>
             <thead>
               <tr>
-                <th style={{ width: '120px' }}>CONTRACT</th>
-                <th style={{ width: '320px' }}>CLIENT & CO-DRIVERS</th>
-                <th style={{ width: '220px' }}>LEGAL DOCS</th>
-                <th style={{ width: '240px' }}>VEHICLE & TELEMETRY</th>
-                <th style={{ width: '160px' }}>RENTAL WINDOW</th>
-                <th style={{ width: '180px' }}>FINANCIALS</th>
-                <th style={{ width: '140px', textAlign: 'right' }}>ACTIONS</th>
+                <th style={{ width: '120px' }}>{t('bookings.contract')}</th>
+                <th style={{ width: '320px' }}>{t('bookings.clientCoDrivers')}</th>
+                <th style={{ width: '220px' }}>{t('bookings.legalDocs')}</th>
+                <th style={{ width: '240px' }}>{t('bookings.vehicleTelemetry')}</th>
+                <th style={{ width: '160px' }}>{t('bookings.rentalWindow')}</th>
+                <th style={{ width: '180px' }}>{t('bookings.financials')}</th>
+                <th style={{ width: '140px', textAlign: 'right' }}>{t('fleet.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {paginatedBookings && paginatedBookings.length > 0 ? (
                 paginatedBookings.map((booking: any) => {
                   const { deltaKm, deltaFuel } = getHandoverTelemetry(booking)
-                  const totalPaid = Number(booking.acompte_paid || 0)
+                  const acomptePaid = Number(booking.acompte_paid || 0)
+                  const paidInstallmentsSum = (booking.installments || [])
+                    .filter((t: any) => t.status === 'paid')
+                    .reduce((acc: number, t: any) => acc + (Number(t.amount) || 0), 0)
+                  const totalPaid = acomptePaid + paidInstallmentsSum
                   const reste = Number(booking.total_amount || 0) - totalPaid
                   const primary = booking.primary_client || { full_name: booking.client_name, phone: booking.client_phone, trust_score: null, cin: booking.client_cin_passport, license_number: booking.client_license_number }
                   const secondary = booking.secondary_client
@@ -339,7 +799,7 @@ export default function BookingsClient({
                     <td style={{ verticalAlign: 'top', paddingTop: '1.25rem' }}>
                       <div className="fw-600" style={{ fontSize: '0.95rem', color: '#fff', marginBottom: '0.25rem' }}>#{booking.id.substring(0, 6).toUpperCase()}</div>
                       <Badge variant={booking.status === 'completed' ? 'success' : booking.status === 'confirmed' ? 'info' : 'warning'}>
-                        {booking.status}
+                        {getStatusLabel(booking.status)}
                       </Badge>
                     </td>
 
@@ -348,7 +808,7 @@ export default function BookingsClient({
                       {/* Top: Primary Driver */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                         <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(229,193,125,0.15)', border: '1px solid rgba(229,193,125,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#E5C17D', fontWeight: 600, fontSize: '0.85rem' }}>
-                          {getInitials(primary.full_name)}
+                           {getInitials(primary.full_name)}
                         </div>
                         <div style={{ flex: 1 }}>
                           <div className="fw-500" style={{ color: '#fff', fontSize: '0.95rem' }}>{primary.full_name}</div>
@@ -369,7 +829,7 @@ export default function BookingsClient({
                               gap: '0.25rem',
                               animation: 'pulseAlert 2s infinite'
                             }}>
-                              🚨 PRIMARY RISK - REPOSSESSION FLAG
+                              {t('dri.primaryRisk')}
                             </div>
                           ) : (
                             <span style={{
@@ -382,7 +842,7 @@ export default function BookingsClient({
                               border: '1px solid',
                               borderColor: primary.trust_score === null || primary.trust_score === undefined ? 'rgba(255,255,255,0.1)' : primary.trust_score >= 80 ? 'rgba(16,185,129,0.3)' : primary.trust_score >= 60 ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.3)',
                             }}>
-                              {primary.trust_score === null || primary.trust_score === undefined ? 'Unrated' : primary.trust_score >= 80 ? `Excellent (${primary.trust_score.toFixed(1)} DRI)` : primary.trust_score >= 60 ? `Standard (${primary.trust_score.toFixed(1)} DRI)` : `Watch (${primary.trust_score.toFixed(1)} DRI)`}
+                              {primary.trust_score === null || primary.trust_score === undefined ? t('dri.unrated') : primary.trust_score >= 80 ? `${t('dri.excellent')} (${primary.trust_score.toFixed(1)} DRI)` : primary.trust_score >= 60 ? `${t('dri.standard')} (${primary.trust_score.toFixed(1)} DRI)` : `${t('dri.watch')} (${primary.trust_score.toFixed(1)} DRI)`}
                             </span>
                           )}
                         </div>
@@ -398,7 +858,7 @@ export default function BookingsClient({
                             {getInitials(secondary.full_name)}
                           </div>
                           <div style={{ flex: 1 }}>
-                            <div className="fw-500" style={{ color: '#ccc', fontSize: '0.9rem' }}>{secondary.full_name} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>(Co-Driver)</span></div>
+                            <div className="fw-500" style={{ color: '#ccc', fontSize: '0.9rem' }}>{secondary.full_name} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>({t('bookings.coDriver')})</span></div>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
                               {secondary.phone || 'No Phone'}
                             </div>
@@ -416,7 +876,7 @@ export default function BookingsClient({
                                 gap: '0.25rem',
                                 animation: 'pulseAlert 2s infinite'
                               }}>
-                                🚨 CO-DRIVER RISK - INVALID INS
+                                {t('dri.codriverRisk')}
                               </div>
                             ) : (
                               <span style={{
@@ -429,7 +889,7 @@ export default function BookingsClient({
                                 border: '1px solid',
                                 borderColor: secondary.trust_score === null || secondary.trust_score === undefined ? 'rgba(255,255,255,0.1)' : secondary.trust_score >= 80 ? 'rgba(16,185,129,0.3)' : secondary.trust_score >= 60 ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.3)',
                               }}>
-                                {secondary.trust_score === null || secondary.trust_score === undefined ? 'Unrated' : secondary.trust_score >= 80 ? `Excellent (${secondary.trust_score.toFixed(1)} DRI)` : secondary.trust_score >= 60 ? `Standard (${secondary.trust_score.toFixed(1)} DRI)` : `Watch (${secondary.trust_score.toFixed(1)} DRI)`}
+                                {secondary.trust_score === null || secondary.trust_score === undefined ? t('dri.unrated') : secondary.trust_score >= 80 ? `${t('dri.excellent')} (${secondary.trust_score.toFixed(1)} DRI)` : secondary.trust_score >= 60 ? `${t('dri.standard')} (${secondary.trust_score.toFixed(1)} DRI)` : `${t('dri.watch')} (${secondary.trust_score.toFixed(1)} DRI)`}
                               </span>
                             )}
                           </div>
@@ -453,7 +913,7 @@ export default function BookingsClient({
                               <input 
                                 type="text"
                                 autoFocus
-                                placeholder="Search CIN/Passport or Name..."
+                                placeholder={t('common.search')}
                                 value={coDriverSearchQuery}
                                 onChange={(e) => setCoDriverSearchQuery(e.target.value)}
                                 className="form-input text-xs"
@@ -472,12 +932,12 @@ export default function BookingsClient({
                                   </div>
                                 ))}
                                 {filteredClients.length === 0 && (
-                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem', textAlign: 'center' }}>No clients found.</div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem', textAlign: 'center' }}>{t('common.noData')}</div>
                                 )}
                               </div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
-                                <button className="text-muted text-xs hover-bg-glass px-2 py-1 rounded" onClick={() => setActiveCoDriverSearch(null)}>Cancel</button>
-                                <button className="text-gold text-xs fw-500 hover-bg-glass px-2 py-1 rounded" onClick={() => { handleOpenNewModal(); setActiveCoDriverSearch(null) }}>[ ➕ Quick Create ]</button>
+                                <button className="text-muted text-xs hover-bg-glass px-2 py-1 rounded" onClick={() => setActiveCoDriverSearch(null)}>{t('common.cancel')}</button>
+                                <button className="text-gold text-xs fw-500 hover-bg-glass px-2 py-1 rounded" onClick={() => { handleOpenNewModal(); setActiveCoDriverSearch(null) }}>[ ➕ {t('clients.new')} ]</button>
                               </div>
                             </div>
                           ) : (
@@ -500,7 +960,7 @@ export default function BookingsClient({
                               }}
                               className="hover-bg-glass"
                             >
-                              <Plus size={14} /> Add Co-Driver
+                              <Plus size={14} /> {t('bookings.addCoDriver')}
                             </button>
                           )}
                         </div>
@@ -547,8 +1007,8 @@ export default function BookingsClient({
                         {booking.vehicles?.brand} {booking.vehicles?.model}
                       </div>
                       <div style={{ fontSize: '0.8rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        {deltaKm !== null && <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{deltaKm} km driven</span>}
-                        {deltaFuel !== null && <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{deltaFuel} Tank</span>}
+                        {deltaKm !== null && <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{deltaKm} {t('fleet.kmDriven')}</span>}
+                        {deltaFuel !== null && <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{deltaFuel} {t('fleet.tank')}</span>}
                       </div>
                     </td>
 
@@ -562,7 +1022,7 @@ export default function BookingsClient({
                         <span style={{ color: 'var(--text-muted)', margin: '0 8px' }}>→</span>
                         {new Date(booking.end_date).toLocaleDateString('en-GB')}
                       </div>
-                      <Badge variant="default">{getDaysDiff(booking.start_date, booking.end_date)} days</Badge>
+                      <Badge variant="default">{getDaysDiff(booking.start_date, booking.end_date)} {t('bookings.days')}</Badge>
 
                       {/* Phase 17a — Optional off-site Handover badge. Renders nothing
                           when handover_location is null/empty so the column stays compact. */}
@@ -588,7 +1048,7 @@ export default function BookingsClient({
                           : ''
                         return (
                           <div
-                            title={`Handover · ${loc}${hhmm ? ' @ ' + hhmm : ''}`}
+                            title={`${t('fleet.handover')} · ${loc}${hhmm ? ' @ ' + hhmm : ''}`}
                             style={{
                               display: 'flex',
                               flexDirection: 'column',
@@ -622,45 +1082,53 @@ export default function BookingsClient({
                     <td style={{ verticalAlign: 'top', paddingTop: '1.25rem' }}>
                       <div style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--text-muted)' }}>Total:</span>
-                        <span style={{ color: '#fff', fontWeight: 600 }}>{booking.total_amount} DT</span>
+                        <span style={{ color: '#fff', fontWeight: 600 }}>{Number(booking.total_amount || 0).toFixed(2)} DT</span>
                       </div>
-                      <div style={{ fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Paid:</span>
-                        <span style={{ color: '#4ade80' }}>{totalPaid} DT</span>
+                      <div style={{ fontSize: '0.8rem', marginBottom: '0.15rem', display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>{t('bookings.acompte')}:</span>
+                        <span style={{ color: '#4ade80' }}>{acomptePaid.toFixed(2)} DT</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', marginBottom: '0.15rem', display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>{t('bookings.installmentsPaid')}:</span>
+                        <span style={{ color: paidInstallmentsSum > 0 ? '#4ade80' : 'var(--text-muted)' }}>{paidInstallmentsSum.toFixed(2)} DT</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.06)', paddingTop: '0.2rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>{t('bookings.totalPaid')}:</span>
+                        <span style={{ color: '#4ade80', fontWeight: 600 }}>{totalPaid.toFixed(2)} DT</span>
                       </div>
                       <div style={{ 
                         fontSize: '0.9rem', 
                         display: 'flex', 
                         justifyContent: 'space-between', 
                         paddingTop: '0.4rem',
-                        borderTop: '1px solid rgba(255,255,255,0.05)',
+                        borderTop: '1px solid rgba(255,255,255,0.08)',
                         fontWeight: 600,
                         color: reste > 0 ? '#f87171' : '#4ade80'
                       }}>
-                        <span>Reste:</span>
-                        <span>{reste} DT</span>
+                        <span>{t('bookings.remaining')}:</span>
+                        <span>{reste.toFixed(2)} DT</span>
                       </div>
                     </td>
 
                     {/* COL 7: ACTIONS */}
                     <td style={{ verticalAlign: 'top', paddingTop: '1.25rem', textAlign: 'right' }}>
                       <div className="action-buttons" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <button className="icon-btn text-amber" title="View Invoice / Receipt" onClick={() => setSelectedInvoice(booking)}>
+                        <button className="icon-btn text-amber" title={t('bookings.invoice')} onClick={() => setSelectedInvoice(booking)}>
                           <Receipt size={16} />
                         </button>
-                        <button className="icon-btn text-gold" title="Generate Agreement" onClick={() => setSelectedAgreement(booking)}>
+                        <button className="icon-btn text-gold" title={t('bookings.agreement')} onClick={() => setSelectedAgreement(booking)}>
                           <FileText size={16} />
                         </button>
-                        <button className="icon-btn text-info" title="Edit Booking" onClick={() => handleOpenEditModal(booking)}>
+                        <button className="icon-btn text-info" title={t('common.edit')} onClick={() => handleOpenEditModal(booking)}>
                           <Edit size={16} />
                         </button>
                         {booking.status !== 'confirmed' && (
-                          <button className="icon-btn text-success" title="Approve" onClick={() => handleStatusChange(booking.id, 'confirmed')} disabled={loading}>
+                          <button className="icon-btn text-success" title={t('common.confirm')} onClick={() => handleStatusChange(booking.id, 'confirmed')} disabled={loading}>
                             <CheckCircle size={16} />
                           </button>
                         )}
                         {booking.status !== 'cancelled' && (
-                          <button className="icon-btn text-danger" title="Cancel" onClick={() => handleStatusChange(booking.id, 'cancelled')} disabled={loading}>
+                          <button className="icon-btn text-danger" title={t('common.cancel')} onClick={() => handleStatusChange(booking.id, 'cancelled')} disabled={loading}>
                             <XCircle size={16} />
                           </button>
                         )}
@@ -686,9 +1154,9 @@ export default function BookingsClient({
                         backdropFilter: 'blur(10px)'
                       }}>
                         <Calendar size={40} style={{ color: '#e5c17d', opacity: 0.8 }} />
-                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: '#fff', letterSpacing: '0.3px' }}>No bookings found</h3>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: '#fff', letterSpacing: '0.3px' }}>{t('bookings.noBookings')}</h3>
                         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5', textAlign: 'center' }}>
-                          Manage your active reservations, invoices, and customer agreements by adding a new booking.
+                          {t('bookings.manageReservations')}
                         </p>
                       </div>
                     </div>
@@ -703,14 +1171,14 @@ export default function BookingsClient({
         {totalPages > 1 && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '1rem 1.25rem', marginTop: '1rem', borderRadius: '12px',
+            padding: '0.85rem 1.25rem', marginTop: '1rem', borderRadius: '12px',
             background: 'rgba(38, 30, 24, 0.4)', border: '1px solid var(--border-color)',
-            flexWrap: 'wrap', gap: '0.75rem'
+            flexWrap: 'wrap', gap: '0.75rem', width: '100%', boxSizing: 'border-box',
           }} className="glass-panel">
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Showing <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(totalItems, currentPage * itemsPerPage)}</span> of <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> bookings
+              {t('common.showing')} <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(totalItems, currentPage * itemsPerPage)}</span> {t('common.of')} <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> {t('common.bookings')}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1, justifyContent: 'center' }}>
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
@@ -724,10 +1192,16 @@ export default function BookingsClient({
                 }}
                 className="hover-bg-glass"
               >
-                Previous
+                {t('common.previous')}
               </button>
-              {Array.from({ length: totalPages }).map((_, idx) => {
-                const p = idx + 1
+              {Array.from({ length: Math.min(9, totalPages) }, (_, idx) => {
+                let p = idx + 1;
+                if (currentPage > 5 && totalPages > 9) {
+                  p = currentPage - 5 + idx;
+                  if (p + (8 - idx) > totalPages) {
+                    p = totalPages - 8 + idx;
+                  }
+                }
                 const active = currentPage === p
                 return (
                   <button
@@ -761,201 +1235,49 @@ export default function BookingsClient({
                 }}
                 className="hover-bg-glass"
               >
-                Next
+                {t('common.next')}
               </button>
             </div>
           </div>
         )}
       </div>
 
-      <BookingFormModal
-        isOpen={isFormOpen}
-        editingBooking={editingBooking}
-        vehicles={vehicles}
-        clients={clients}
-        initialBookings={initialBookings}
-        vehicleLegalDocs={vehicleLegalDocs}
-        onClose={() => setIsFormOpen(false)}
-      />
+      {isFormOpen && (
+        <BookingFormModal
+          isOpen={isFormOpen}
+          editingBooking={editingBooking}
+          vehicles={vehicles}
+          clients={clients}
+          initialBookings={initialBookings}
+          vehicleLegalDocs={vehicleLegalDocs}
+          onClose={() => setIsFormOpen(false)}
+        />
+      )}
 
-      <BookingInvoiceModal
-        booking={selectedInvoice}
-        businessSettings={businessSettings}
-        onClose={() => setSelectedInvoice(null)}
-      />
+      {selectedInvoice && (
+        <BookingInvoiceModal
+          booking={selectedInvoice}
+          businessSettings={businessSettings}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
 
-      <BookingAgreementModal
-        booking={selectedAgreement}
-        businessSettings={businessSettings}
-        onClose={() => setSelectedAgreement(null)}
-      />
+      {selectedAgreement && (
+        <BookingAgreementModal
+          booking={selectedAgreement}
+          businessSettings={businessSettings}
+          onClose={() => setSelectedAgreement(null)}
+        />
+      )}
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @media print {
-          /* Hide background layout elements, sidebar, topbar, sidebar-overlay, buttons, header */
-          .sidebar,
-          .topbar,
-          .sidebar-overlay,
-          .dashboard-page > .header-section,
-          .dashboard-page > .content-grid,
-          .no-print,
-          .no-print *,
-          .modal-header button,
-          .modal-footer button,
-          button {
-            display: none !important;
-          }
-
-          /* Keep layout wrappers visible but flat and white */
-          .layout-container,
-          .main-content,
-          .content-area,
-          .dashboard-page {
-            display: block !important;
-            background: #ffffff !important;
-            background-image: none !important;
-            box-shadow: none !important;
-            border: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            min-height: 0 !important;
-            height: auto !important;
-          }
-
-          html, body {
-            background: #ffffff !important;
-            color: #000000 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            height: auto !important;
-            overflow: visible !important;
-          }
-
-          @page {
-            size: A4 portrait;
-            margin: 8mm 12mm 8mm 12mm !important;
-          }
-
-          /* Display ONLY the active printable container */
-          .print-agreement-container,
-          .print-invoice-container {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-            box-shadow: none !important;
-            border: none !important;
-            display: block !important;
-            z-index: 99999 !important;
-          }
-
-          /* Ensure target modals render in full white flat printable layouts */
-          .print-agreement-container .modal-content,
-          .print-invoice-container .modal-content {
-            background: #ffffff !important;
-            color: #000000 !important;
-            box-shadow: none !important;
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            max-width: 100% !important;
-            width: 100% !important;
-            max-height: none !important;
-            height: auto !important;
-            overflow: visible !important;
-            display: block !important;
-          }
-
-          .print-content {
-            width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            display: block !important;
-            color: #000000 !important;
-            font-size: 11.5px !important;
-            line-height: 1.35 !important;
-          }
-
-          /* Force all printed header elements to print cleanly in dark charcoal/black */
-          h1, h2, h3, h4, h5, h6 {
-            color: #0f172a !important;
-            margin-top: 0.25rem !important;
-            margin-bottom: 0.25rem !important;
-          }
-
-          p, span, td, div {
-            color: #1e293b !important;
-          }
-
-          strong {
-            color: #000000 !important;
-            font-weight: bold !important;
-          }
-
-          /* Ensure borders look crisp and high contrast in black and white */
-          div, table, td, th {
-            border-color: #94a3b8 !important;
-          }
-
-          /* Beautiful standard margins and layout specifically to fit 1 single page nicely */
-          .print-content h1 {
-            font-size: 1.4rem !important;
-            margin-bottom: 0.25rem !important;
-          }
-          
-          .print-content p {
-            margin-bottom: 0.6rem !important;
-            font-size: 0.8rem !important;
-            line-height: 1.35 !important;
-          }
-
-          .print-content .grid-layout,
-          .print-content > div {
-            margin-bottom: 0.75rem !important;
-            gap: 0.75rem !important;
-          }
-
-          .print-content table td {
-            padding: 0.25rem 0 !important;
-            font-size: 0.78rem !important;
-          }
-
-          .print-content h3 {
-            font-size: 0.8rem !important;
-            margin-bottom: 0.4rem !important;
-            padding-bottom: 0.25rem !important;
-          }
-
-          .print-content ul {
-            gap: 0.25rem !important;
-            margin-bottom: 0.6rem !important;
-          }
-
-          .print-content ul li {
-            font-size: 0.78rem !important;
-            line-height: 1.3 !important;
-          }
-
-          .print-content .signatures-row {
-            margin-top: 2rem !important;
-            gap: 3rem !important;
-          }
-
-          .print-content .signature-box {
-            height: 28px !important;
-          }
-        }
-
         @keyframes pulseAlert {
           0% { opacity: 1; }
           50% { opacity: 0.5; box-shadow: 0 0 12px rgba(239, 68, 68, 0.4); }
           100% { opacity: 1; }
+        }
+        .hover-bg-glass:hover {
+          background: rgba(229, 193, 125, 0.08) !important;
         }
       ` }} />
     </div>

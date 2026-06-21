@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import { Car, ArrowUpRight, ArrowDownLeft, AlertTriangle, Calendar, CheckCircle } from 'lucide-react'
 import styles from '../dashboard.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface TodayOperationsProps {
   allBookings: any[]
 }
 
 export default function TodayOperations({ allBookings = [] }: TodayOperationsProps) {
+  const { t, lang } = useLanguage()
   const todayObj = new Date()
   const year = todayObj.getFullYear()
   const monthStr = String(todayObj.getMonth() + 1).padStart(2, '0')
@@ -95,13 +97,13 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
           display: 'flex', flexDirection: 'column', gap: '0.5rem'
         }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Primary Driver</span>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.primaryDriver')}</span>
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>{primaryName}</span>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>📞 {pPhone} | 🛡️ {pScore} DRI</span>
           </div>
           {hasSecondary && (
             <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Co-Driver</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.coDriver')}</span>
               <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>{secondaryName}</span>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>📞 {sPhone} | 🛡️ {sScore} DRI</span>
             </div>
@@ -115,12 +117,12 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
     <div className={`glass-panel ${styles['operations-widget']}`} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.5rem', marginBottom: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600, color: 'var(--accent-gold)' }}>🔔 Today's Operations</h3>
-          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Real-time overview of active departures, arrivals, and overdue handovers</p>
+          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600, color: 'var(--accent-gold)' }}>{t('dashboard.opsTitle')}</h3>
+          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{t('dashboard.opsSubtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8rem', background: 'rgba(255,255,255,0.03)', padding: '0.35rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
           <Calendar size={13} style={{ color: 'var(--accent-gold)', alignSelf: 'center' }} />
-          <span>{todayObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
+          <span>{todayObj.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
         </div>
       </div>
 
@@ -130,7 +132,7 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <ArrowUpRight size={16} />
-              Departures Today
+              {t('dashboard.departuresToday')}
             </span>
             <span style={{ fontSize: '0.8rem', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>{departures.length}</span>
           </div>
@@ -145,14 +147,14 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b.vehicles?.brand} {b.vehicles?.model}</span>
                   </div>
                   <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Until:</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('dashboard.until')}</span>
                     <span style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 500 }}>{b.end_date}</span>
                   </div>
                 </div>
               ))
             ) : (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1.5rem 0' }}>
-                No departures scheduled today.
+                {t('dashboard.noDepartures')}
               </div>
             )}
           </div>
@@ -163,7 +165,7 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#4ade80', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <ArrowDownLeft size={16} />
-              Returns Today
+              {t('dashboard.returnsToday')}
             </span>
             <span style={{ fontSize: '0.8rem', background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>{returns.length}</span>
           </div>
@@ -178,14 +180,14 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{b.vehicles?.brand} {b.vehicles?.model}</span>
                   </div>
                   <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>From:</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('dashboard.from')}</span>
                     <span style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 500 }}>{b.start_date}</span>
                   </div>
                 </div>
               ))
             ) : (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1.5rem 0' }}>
-                No returns scheduled today.
+                {t('dashboard.noReturns')}
               </div>
             )}
           </div>
@@ -196,7 +198,7 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f87171', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <AlertTriangle size={15} />
-              Overdue Returns
+              {t('dashboard.overdueReturns')}
             </span>
             <span style={{ fontSize: '0.8rem', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>{overdue.length}</span>
           </div>
@@ -212,16 +214,16 @@ export default function TodayOperations({ allBookings = [] }: TodayOperationsPro
                   </div>
                   <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                     <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 600 }}>
-                      +{getDaysOverdue(b.end_date)}d Late
+                      +{getDaysOverdue(b.end_date)}d {t('dashboard.late')}
                     </span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Due: {b.end_date}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{t('dashboard.due')} {b.end_date}</span>
                   </div>
                 </div>
               ))
             ) : (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1.25rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
                 <CheckCircle size={20} style={{ color: '#4ade80', marginBottom: '0.15rem' }} />
-                <span>All vehicles returned on time!</span>
+                <span>{t('dashboard.allReturnedOnTime')}</span>
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
 import styles from '../history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface VehicleItem {
   id: string
@@ -24,6 +25,7 @@ export default function MatriculeSearchBar({ vehiclesList, currentLicensePlate }
   const [query, setQuery] = useState(currentLicensePlate || '')
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const { lang } = useLanguage()
 
   // Filter vehicles based on query
   const filteredVehicles = vehiclesList.filter((v) => {
@@ -62,7 +64,7 @@ export default function MatriculeSearchBar({ vehiclesList, currentLicensePlate }
         <input
           type="text"
           className={styles['command-bar-input']}
-          placeholder="TYPE LICENSE PLATE (MATRICULE) OR VEHICLE NAME TO SEARCH..."
+          placeholder={lang === 'fr' ? "SAISIR MATRICULE OU NOM DU VÉHICULE POUR RECHERCHER..." : "TYPE LICENSE PLATE (MATRICULE) OR VEHICLE NAME TO SEARCH..."}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
@@ -70,7 +72,9 @@ export default function MatriculeSearchBar({ vehiclesList, currentLicensePlate }
           }}
           onFocus={() => setIsOpen(true)}
         />
-        <span className={styles['command-bar-hint']}>Press Esc to close</span>
+        <span className={styles['command-bar-hint']}>
+          {lang === 'fr' ? 'Appuyez sur Échap pour fermer' : 'Press Esc to close'}
+        </span>
       </div>
 
       {isOpen && filteredVehicles.length > 0 && (
@@ -82,7 +86,7 @@ export default function MatriculeSearchBar({ vehiclesList, currentLicensePlate }
               onClick={() => handleSelect(v.id, v.license_plate || '')}
             >
               <div className={styles['dd-plate']}>
-                {v.license_plate || 'NO PLATE'}
+                {v.license_plate || (lang === 'fr' ? 'SANS PLAQUE' : 'NO PLATE')}
               </div>
               <div>
                 <div className={styles['dd-name']}>{v.brand} {v.model}</div>

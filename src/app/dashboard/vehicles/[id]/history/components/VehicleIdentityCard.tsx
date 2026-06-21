@@ -2,6 +2,7 @@
 
 import { Car } from 'lucide-react'
 import styles from '../history.module.css'
+import { useLanguage } from '@/lib/i18n'
 
 interface Vehicle {
   id: string
@@ -22,6 +23,8 @@ interface VehicleIdentityCardProps {
 }
 
 export default function VehicleIdentityCard({ vehicle, totalRentals, totalRevenue }: VehicleIdentityCardProps) {
+  const { lang } = useLanguage()
+
   // Use first image if available
   const imageUrl = vehicle.images && vehicle.images.length > 0 ? vehicle.images[0] : null
 
@@ -46,25 +49,29 @@ export default function VehicleIdentityCard({ vehicle, totalRentals, totalRevenu
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
           <div className={styles['identity-plate']}>
-            {vehicle.license_plate || 'NO PLATE'}
+            {vehicle.license_plate || (lang === 'fr' ? 'SANS PLAQUE' : 'NO PLATE')}
           </div>
           
           <div className={styles['identity-tags']}>
             {vehicle.year && <span className={styles['identity-tag']}>{vehicle.year}</span>}
             {vehicle.color && <span className={styles['identity-tag']}>{vehicle.color}</span>}
-            <span className={styles['identity-tag']}>{vehicle.price_per_day} DT/Day</span>
+            <span className={styles['identity-tag']}>
+              {vehicle.price_per_day} {lang === 'fr' ? 'DT/Jour' : 'DT/Day'}
+            </span>
           </div>
         </div>
       </div>
 
       <div className={styles['identity-kpis']}>
         <div className={styles['kpi-item']}>
-          <div className={styles['kpi-label']}>Total Revenue</div>
+          <div className={styles['kpi-label']}>{lang === 'fr' ? 'Revenu Total' : 'Total Revenue'}</div>
           <div className={styles['kpi-value']}>{totalRevenue.toLocaleString()} DT</div>
         </div>
         <div className={styles['kpi-item']}>
-          <div className={styles['kpi-label']}>Completed Bookings</div>
-          <div className={styles['kpi-value']} style={{ fontSize: '1.15rem' }}>{totalRentals} rentals</div>
+          <div className={styles['kpi-label']}>{lang === 'fr' ? 'Réservations Complétées' : 'Completed Bookings'}</div>
+          <div className={styles['kpi-value']} style={{ fontSize: '1.15rem' }}>
+            {totalRentals} {lang === 'fr' ? 'locations' : 'rentals'}
+          </div>
         </div>
       </div>
     </div>
