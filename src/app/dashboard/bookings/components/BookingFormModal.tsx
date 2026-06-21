@@ -1782,7 +1782,7 @@ export default function BookingFormModal({
           {/* ── FOOTER ── */}
           <div className="modal-footer" style={{ borderTop: '1px solid rgba(229,193,125,0.12)', paddingTop: '1rem', marginTop: '0.5rem', position: 'sticky', bottom: '-1px', background: 'linear-gradient(155deg, #18130f, #110e0c)', paddingBottom: '10px', zIndex: 10, marginInline: '-10px', paddingInline: '10px' }}>
             <button type="button" className="btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
-            <button type="submit" className="btn-primary" disabled={loading || !!conflictInfo || isBlacklisted}>
+            <button type="submit" className="btn-primary" disabled={loading || !!conflictInfo}>
               {loading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="loading-spinner"></span>
