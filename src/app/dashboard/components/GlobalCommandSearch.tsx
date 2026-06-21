@@ -252,6 +252,14 @@ export default function GlobalCommandSearch({
     setCurrentPage(1)
   }, [textQuery, interceptDate, returnFrom, returnTo, activeAlertFilter, smartSearchEnabled])
 
+  // Smooth scroll to top of search results on active filter or page change
+  useEffect(() => {
+    const searchElement = document.querySelector('.omni-search-bar')
+    if (searchElement) {
+      searchElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [activeAlertFilter, currentPage])
+
   const isActive = textQuery.trim() !== '' || interceptDate !== '' || returnFrom !== '' || returnTo !== '' || activeAlertFilter !== null
   const isFineMode = textQuery.trim() !== '' || interceptDate !== '' || returnFrom !== '' || returnTo !== ''
 
