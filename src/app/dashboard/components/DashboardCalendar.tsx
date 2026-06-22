@@ -291,6 +291,7 @@ export default function DashboardCalendar({
             <input 
               type="date" 
               value={inquiryStartDate} 
+              max={inquiryEndDate || undefined}
               onChange={e => {
                 const val = e.target.value
                 setInquiryStartDate(val)
@@ -320,6 +321,7 @@ export default function DashboardCalendar({
             <input 
               type="date" 
               value={inquiryEndDate} 
+              min={inquiryStartDate || undefined}
               onChange={e => {
                 const val = e.target.value
                 setInquiryEndDate(val)
