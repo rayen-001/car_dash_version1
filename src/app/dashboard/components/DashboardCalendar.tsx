@@ -206,17 +206,47 @@ export default function DashboardCalendar({
 
   return (
     <div className={`${styles['calendar-section']} glass-panel`} style={{ padding: '1.75rem' }}>
-      <div className={styles['calendar-header-panel']} style={{ marginBottom: '2rem' }}>
-        <div className={styles['calendar-title-group']}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #fff, #c5a059)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Vehicle Availability Calendar
-          </h3>
-          <p className={styles['subtitle']} style={{ color: 'rgba(255, 255, 255, 0.45)', marginTop: '0.25rem' }}>
-            Select a vehicle to inspect fully available (empty) days and active rental sessions
-          </p>
+      <div className={styles['calendar-header-panel']} style={{ 
+        marginBottom: '2rem',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: '1.25rem',
+        paddingBottom: '1.5rem'
+      }}>
+        {/* Top Row: Title/Subtitle and Month Navigator */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          flexWrap: 'wrap', 
+          gap: '1rem' 
+        }}>
+          <div className={styles['calendar-title-group']}>
+            <h3 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #fff, #c5a059)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
+              Vehicle Availability Calendar
+            </h3>
+            <p className={styles['subtitle']} style={{ color: 'rgba(255, 255, 255, 0.45)', marginTop: '0.25rem', margin: 0 }}>
+              Select a vehicle to inspect fully available (empty) days and active rental sessions
+            </p>
+          </div>
+
+          {/* Month Navigator Controls (Top Right aligned) */}
+          <div className={styles['month-navigator']} style={{ margin: 0 }}>
+            <button onClick={handlePrevMonth} className={styles['nav-btn']} aria-label="Previous Month">◀</button>
+            <span className={styles['current-date-label']}>{monthNames[currentMonth]} {currentYear}</span>
+            <button onClick={handleNextMonth} className={styles['nav-btn']} aria-label="Next Month">▶</button>
+          </div>
         </div>
 
-        <div className={styles['calendar-actions']} style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '1.25rem' }}>
+        {/* Bottom Row: Filters (Vehicle Dropdown and Inquiry Range) */}
+        <div className={styles['calendar-actions']} style={{ 
+          display: 'flex', 
+          gap: '1.25rem', 
+          alignItems: 'center', 
+          flexWrap: 'wrap', 
+          marginTop: 0 
+        }}>
           {/* Vehicle Selector Dropdown */}
           <div className={styles['selector-wrapper']} style={{ position: 'relative' }}>
             <label htmlFor="vehicle-filter" className="sr-only">Filter by Vehicle</label>
@@ -262,8 +292,22 @@ export default function DashboardCalendar({
               type="date" 
               value={inquiryStartDate} 
               onChange={e => {
-                setInquiryStartDate(e.target.value)
+                const val = e.target.value
+                setInquiryStartDate(val)
                 setHighlightVehicleId(null)
+                if (val) {
+                  const parts = val.split('-')
+                  if (parts.length === 3) {
+                    const year = parseInt(parts[0], 10)
+                    const month = parseInt(parts[1], 10) - 1
+                    const day = parseInt(parts[2], 10)
+                    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                      setCurrentMonth(month)
+                      setCurrentYear(year)
+                      setSelectedDay(day)
+                    }
+                  }
+                }
               }} 
               style={{
                 background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '20px',
@@ -277,8 +321,22 @@ export default function DashboardCalendar({
               type="date" 
               value={inquiryEndDate} 
               onChange={e => {
-                setInquiryEndDate(e.target.value)
+                const val = e.target.value
+                setInquiryEndDate(val)
                 setHighlightVehicleId(null)
+                if (val) {
+                  const parts = val.split('-')
+                  if (parts.length === 3) {
+                    const year = parseInt(parts[0], 10)
+                    const month = parseInt(parts[1], 10) - 1
+                    const day = parseInt(parts[2], 10)
+                    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                      setCurrentMonth(month)
+                      setCurrentYear(year)
+                      setSelectedDay(day)
+                    }
+                  }
+                }
               }} 
               style={{
                 background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(229,193,125,0.2)', borderRadius: '20px',
@@ -293,6 +351,10 @@ export default function DashboardCalendar({
                   setInquiryStartDate('')
                   setInquiryEndDate('')
                   setHighlightVehicleId(null)
+                  const today = new Date()
+                  setCurrentMonth(today.getMonth())
+                  setCurrentYear(today.getFullYear())
+                  setSelectedDay(today.getDate())
                 }}
                 style={{
                   background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171',
@@ -305,13 +367,6 @@ export default function DashboardCalendar({
                 <X size={14} />
               </button>
             )}
-          </div>
-
-          {/* Month Navigator Controls */}
-          <div className={styles['month-navigator']} style={{ marginLeft: 'auto' }}>
-            <button onClick={handlePrevMonth} className={styles['nav-btn']} aria-label="Previous Month">◀</button>
-            <span className={styles['current-date-label']}>{monthNames[currentMonth]} {currentYear}</span>
-            <button onClick={handleNextMonth} className={styles['nav-btn']} aria-label="Next Month">▶</button>
           </div>
         </div>
       </div>
