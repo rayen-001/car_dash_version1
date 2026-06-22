@@ -5,7 +5,7 @@ import styles from './dashboard.module.css'
 import DashboardStats from './components/DashboardStats'
 import DashboardCalendar from './components/DashboardCalendar'
 import DashboardCharts from './components/DashboardCharts'
-import TodayOperations from './components/TodayOperations'
+
 import AlertStrip from './components/AlertStrip'
 import GlobalCommandSearch from './components/GlobalCommandSearch'
 import FleetPerformanceMatrix from './components/FleetPerformanceMatrix'
@@ -93,7 +93,82 @@ export default function DashboardClient({
     return Array.from(yearsSet).sort((a, b) => b - a)
   }, [allBookings])
 
-  // dynamicStats removed to keep stats card at current year
+  const dynamicStats = useMemo(() => {
+    let revenueYTD = 0
+    let expensesYTD = 0
+
+    const targetYear = selectedYear
+
+    allBookings.forEach((booking) => {
+      const status = (booking.status || '').toLowerCase()
+      const isConfirmed = status === 'confirmed'
+      const isCompleted = status === 'completed'
+
+      if (isConfirmed || isCompleted) {
+        const totalAmount = Number(booking.total_amount) || 0
+        const acomptePaid = Number(booking.acompte_paid) || 0
+        let paidInstallments = 0
+
+        if (booking.installments && Array.isArray(booking.installments)) {
+          booking.installments.forEach((inst: any) => {
+            if (inst.status === 'paid') {
+              paidInstallments += Number(inst.amount) || 0
+            }
+          })
+        }
+
+        const acompteDateStr = booking.acompte_paid_date || booking.created_at
+        const acompteYear = acompteDateStr ? new Date(acompteDateStr).getFullYear() : 0
+        if (acompteYear === targetYear && acomptePaid > 0) {
+          revenueYTD += acomptePaid
+        }
+
+        if (booking.installments && Array.isArray(booking.installments)) {
+          booking.installments.forEach((inst: any) => {
+            if (inst.status === 'paid') {
+              const instAmt = Number(inst.amount) || 0
+              const instDateStr = inst.paid_date || inst.due_date
+              const instYear = instDateStr ? new Date(instDateStr).getFullYear() : 0
+              if (instYear === targetYear) {
+                revenueYTD += instAmt
+              }
+            }
+          })
+        }
+      }
+    })
+
+    expenses.forEach((e) => {
+      const eDateStr = e.created_at
+      const eYear = eDateStr ? new Date(eDateStr).getFullYear() : 0
+      const isClaim = ['damage_repair', 'installment_tranche', 'late_return_penalty'].includes(e.category)
+      if (!isClaim && eYear === targetYear) {
+        expensesYTD += Number(e.amount) || 0
+      }
+    })
+
+    maintenance.forEach((m) => {
+      const mDateStr = m.service_date || m.created_at
+      const mYear = mDateStr ? new Date(mDateStr).getFullYear() : 0
+      if (mYear === targetYear) {
+        expensesYTD += Number(m.cost) || 0
+      }
+    })
+
+    const netProfitYTD = revenueYTD - expensesYTD
+
+    return {
+      revenueYTD,
+      expensesYTD,
+      netProfitYTD,
+      fleetSize: stats.fleetSize,
+      activeRentals: stats.activeRentals,
+      utilizationRate: stats.utilizationRate,
+      outstandingLiabilities: stats.outstandingLiabilities,
+      riskSignalsCount: stats.riskSignalsCount,
+      targetYear: selectedYear
+    }
+  }, [allBookings, expenses, maintenance, selectedYear, stats])
 
   // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
   const localToday = new Date()
@@ -197,121 +272,13 @@ export default function DashboardClient({
         setActiveAlertFilter={setActiveAlertFilter}
       />
 
-      {/* ── DAILY SHIFT RECONCILIATION LEDGER WIDGET (Premium Glassmorphic) ── */}
-      <div className="glass-panel" style={{
-        padding: '1.75rem 2rem',
-        background: 'rgba(10, 8, 7, 0.85)',
-        border: '1px solid rgba(229, 193, 125, 0.15)',
-        borderRadius: '16px',
-        boxShadow: '0 15px 35px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.95)',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Top & Bottom Glowing Golden Caps matching stat-card standard */}
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
-          background: 'linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%)',
-          boxShadow: '0 0 15px var(--accent-gold-hover)', opacity: 0.75
-        }} />
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px',
-          background: 'linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%)',
-          boxShadow: '0 0 15px var(--accent-gold-hover)', opacity: 0.75
-        }} />
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid rgba(229,193,125,0.08)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: 10,
-              background: 'linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold-deep) 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(229,193,125,0.2)'
-            }}>
-              <Landmark size={18} style={{ color: '#1a1410' }} />
-            </div>
-            <div>
-              <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
-                {t('dashboard.reconciliationLedger')}
-              </h3>
-              <span style={{ fontSize: '0.75rem', color: 'rgba(229, 193, 125, 0.6)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {t('dashboard.reconciliationSubtitle')}
-              </span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(229,193,125,0.1)' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
-            <span style={{ fontSize: '0.8rem', color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-              {t('dashboard.auditDate')}: {localToday.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
-          {/* Daily Cash Intake (Inflow) */}
-          <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.12)', padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(16, 185, 129, 0.7)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {t('dashboard.dailyIntake')}
-              </span>
-              <span style={{ color: '#10b981', display: 'flex', alignItems: 'center' }}><ArrowUpRight size={14} /></span>
-            </div>
-            <strong style={{ fontSize: '1.75rem', fontFamily: 'var(--font-heading)', color: '#10b981', letterSpacing: '-0.02em', fontWeight: 600 }}>
-              + {dailyCashIntake.toFixed(2)} DT
-            </strong>
-            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-              {t('dashboard.dailyIntakeDesc')}
-            </span>
-          </div>
-
-          {/* Daily Expenses (Outflow) */}
-          <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.12)', padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(239, 68, 68, 0.7)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {t('dashboard.dailyExpenses')}
-              </span>
-              <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center' }}><ArrowDownRight size={14} /></span>
-            </div>
-            <strong style={{ fontSize: '1.75rem', fontFamily: 'var(--font-heading)', color: '#ef4444', letterSpacing: '-0.02em', fontWeight: 600 }}>
-              - {totalDailyExpenses.toFixed(2)} DT
-            </strong>
-            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>
-              {t('dashboard.dailyExpensesDesc')}
-            </span>
-          </div>
-
-          {/* Expected Drawer Balance (Net Cash Position) */}
-          <div style={{
-            background: 'rgba(229, 193, 125, 0.04)',
-            border: '1px dashed rgba(229, 193, 125, 0.3)',
-            padding: '1.25rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.4rem'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                {t('dashboard.netExpectedCash')}
-              </span>
-              <span style={{ color: 'var(--accent-gold)', display: 'flex', alignItems: 'center' }}><ShieldCheck size={14} /></span>
-            </div>
-            <strong style={{ fontSize: '1.85rem', fontFamily: 'var(--font-heading)', color: '#fff', textShadow: '0 0 15px rgba(229, 193, 125, 0.25)', letterSpacing: '-0.03em', fontWeight: 800 }}>
-              {netCashPosition.toFixed(2)} DT
-            </strong>
-            <span style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 500 }}>
-              {t('dashboard.netExpectedCashDesc')}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Cards Row */}
-      <DashboardStats stats={stats} />
-
-      <TodayOperations allBookings={allBookings} />
-
-      {/* ── ANALYTICS SECTION HEADER with Year Selector ── */}
+      {/* ── FINANCIAL HUB SECTION HEADER with Year Selector ── */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: '2rem',
-        marginBottom: '1rem',
+        marginTop: '0.5rem',
+        marginBottom: '1.25rem',
         borderBottom: '1px solid rgba(229,193,125,0.1)',
         paddingBottom: '0.75rem',
         flexWrap: 'wrap',
@@ -328,7 +295,7 @@ export default function DashboardClient({
           alignItems: 'center',
           gap: '0.5rem'
         }}>
-          📈 {lang === 'fr' ? 'Analyses & Performances Financières' : 'Financial Analytics & Performance'}
+          📊 {lang === 'fr' ? 'Analyses & Performances Financières' : 'Financial Analytics & Performance'}
         </h2>
 
         {/* Premium Year Selector Dropdown */}
@@ -364,6 +331,108 @@ export default function DashboardClient({
               </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      {/* ── FINANCIAL HUB MAIN GRID ── */}
+      <div className={styles['main-grid']} style={{ marginBottom: '1rem' }}>
+        {/* Left Column: Stats Cards */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <DashboardStats stats={dynamicStats} />
+        </div>
+
+        {/* Right Column: Daily Shift Reconciliation Ledger */}
+        <div className="glass-panel" style={{
+          padding: '1.5rem',
+          background: 'rgba(10, 8, 7, 0.85)',
+          border: '1px solid rgba(229, 193, 125, 0.15)',
+          borderRadius: '16px',
+          boxShadow: '0 15px 35px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.95)',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem'
+        }}>
+          {/* Top & Bottom Glowing Golden Caps */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+            background: 'linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%)',
+            boxShadow: '0 0 15px var(--accent-gold-hover)', opacity: 0.75
+          }} />
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px',
+            background: 'linear-gradient(90deg, transparent 10%, var(--accent-gold-hover) 50%, transparent 90%)',
+            boxShadow: '0 0 15px var(--accent-gold-hover)', opacity: 0.75
+          }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid rgba(229,193,125,0.08)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: 'linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold-deep) 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(229,193,125,0.2)'
+              }}>
+                <Landmark size={15} style={{ color: '#1a1410' }} />
+              </div>
+              <div>
+                <h4 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '1rem', fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>
+                  {t('dashboard.reconciliationLedger')}
+                </h4>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255,255,255,0.03)', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(229,193,125,0.1)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }} />
+              <span style={{ fontSize: '0.7rem', color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
+                {localToday.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short' })}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, justifyContent: 'center' }}>
+            {/* Daily Cash Intake (Inflow) */}
+            <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.12)', padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'rgba(16, 185, 129, 0.7)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {t('dashboard.dailyIntake')}
+                </span>
+                <span style={{ color: '#10b981', display: 'flex', alignItems: 'center' }}><ArrowUpRight size={12} /></span>
+              </div>
+              <strong style={{ fontSize: '1.4rem', fontFamily: 'var(--font-heading)', color: '#10b981', letterSpacing: '-0.02em', fontWeight: 600 }}>
+                + {dailyCashIntake.toFixed(2)} DT
+              </strong>
+            </div>
+
+            {/* Daily Expenses (Outflow) */}
+            <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.12)', padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'rgba(239, 68, 68, 0.7)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {t('dashboard.dailyExpenses')}
+                </span>
+                <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center' }}><ArrowDownRight size={12} /></span>
+              </div>
+              <strong style={{ fontSize: '1.4rem', fontFamily: 'var(--font-heading)', color: '#ef4444', letterSpacing: '-0.02em', fontWeight: 600 }}>
+                - {totalDailyExpenses.toFixed(2)} DT
+              </strong>
+            </div>
+
+            {/* Expected Drawer Balance (Net Cash Position) */}
+            <div style={{
+              background: 'rgba(229, 193, 125, 0.04)',
+              border: '1px dashed rgba(229, 193, 125, 0.3)',
+              padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.2rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {t('dashboard.netExpectedCash')}
+                </span>
+                <span style={{ color: 'var(--accent-gold)', display: 'flex', alignItems: 'center' }}><ShieldCheck size={12} /></span>
+              </div>
+              <strong style={{ fontSize: '1.5rem', fontFamily: 'var(--font-heading)', color: '#fff', textShadow: '0 0 15px rgba(229, 193, 125, 0.25)', letterSpacing: '-0.03em', fontWeight: 800 }}>
+                {netCashPosition.toFixed(2)} DT
+              </strong>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -31,23 +31,21 @@ export default function AlertStrip({
     const todayStr = `${yStr}-${mStr}-${dStr}`
     const todayObj = localToday
 
-    // 1. Overdue Returns (Past end_date, not completed/cancelled)
-    const overdueBookings = allBookings.filter(b => {
-      if (b.status === 'completed' || b.status === 'cancelled') return false
-      return b.end_date < todayStr
+    // 1. Pickups Today (Cars Out Today)
+    const pickupsToday = allBookings.filter(b => {
+      if (b.status === 'cancelled') return false
+      return b.start_date === todayStr
     })
-    
-    if (overdueBookings.length > 0) {
-      activeAlerts.push({
-        id: 'overdue',
-        type: 'danger',
-        icon: <AlertTriangle size={18} />,
-        title: lang === 'fr' ? 'Retours en Retard' : 'Overdue Returns',
-        message: lang === 'fr'
-          ? `${overdueBookings.length} véhicule(s) en retard de restitution.`
-          : `${overdueBookings.length} vehicle(s) are overdue for return.`
-      })
-    }
+
+    activeAlerts.push({
+      id: 'pickups-today',
+      type: 'pickups',
+      icon: <CarFront size={18} />,
+      title: lang === 'fr' ? "Départs Aujourd'hui" : 'Pickups Today',
+      message: lang === 'fr'
+        ? `${pickupsToday.length} véhicule(s) à récupérer aujourd'hui.`
+        : `${pickupsToday.length} vehicle(s) going out today.`
+    })
 
     // 2. Returns Today
     const returnsToday = allBookings.filter(b => {
@@ -65,20 +63,20 @@ export default function AlertStrip({
         : `${returnsToday.length} vehicle(s) arriving back today.`
     })
 
-    // 2.5 Pickups Today (Cars Out Today)
-    const pickupsToday = allBookings.filter(b => {
-      if (b.status === 'cancelled') return false
-      return b.start_date === todayStr
+    // 3. Overdue Returns (Past end_date, not completed/cancelled)
+    const overdueBookings = allBookings.filter(b => {
+      if (b.status === 'completed' || b.status === 'cancelled') return false
+      return b.end_date < todayStr
     })
 
     activeAlerts.push({
-      id: 'pickups-today',
-      type: 'pickups',
-      icon: <CarFront size={18} />,
-      title: lang === 'fr' ? "Départs Aujourd'hui" : 'Pickups Today',
+      id: 'overdue',
+      type: 'danger',
+      icon: <AlertTriangle size={18} />,
+      title: lang === 'fr' ? 'Retours en Retard' : 'Overdue Returns',
       message: lang === 'fr'
-        ? `${pickupsToday.length} véhicule(s) à récupérer aujourd'hui.`
-        : `${pickupsToday.length} vehicle(s) going out today.`
+        ? `${overdueBookings.length} véhicule(s) en retard de restitution.`
+        : `${overdueBookings.length} vehicle(s) are overdue for return.`
     })
 
     // 3. Pending Payments / Reste > 0
