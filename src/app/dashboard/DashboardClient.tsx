@@ -9,7 +9,7 @@ import DashboardCharts from './components/DashboardCharts'
 import AlertStrip from './components/AlertStrip'
 import GlobalCommandSearch from './components/GlobalCommandSearch'
 import FleetPerformanceMatrix from './components/FleetPerformanceMatrix'
-import { Landmark, ArrowDownRight, ArrowUpRight, ShieldCheck } from 'lucide-react'
+import { Landmark, ArrowDownRight, ArrowUpRight, ShieldCheck, TrendingUp } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n'
 
 interface DashboardClientProps {
@@ -296,19 +296,25 @@ export default function DashboardClient({
         flexWrap: 'wrap',
         gap: '1rem'
       }}>
-        <h2 style={{
-          margin: 0,
-          fontFamily: 'var(--font-heading)',
-          fontSize: '1.25rem',
-          fontWeight: 600,
-          color: '#fff',
-          letterSpacing: '-0.01em',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem'
-        }}>
-          📊 {lang === 'fr' ? 'Analyses & Performances Financières' : 'Financial Analytics & Performance'}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'linear-gradient(135deg, var(--accent-gold-hover) 0%, var(--accent-gold-deep) 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(229,193,125,0.2)'
+          }}>
+            <TrendingUp size={16} style={{ color: '#1a1410' }} />
+          </div>
+          <h2 style={{
+            margin: 0,
+            fontFamily: 'var(--font-heading)',
+            fontSize: '1.25rem',
+            fontWeight: 600,
+            color: '#fff',
+            letterSpacing: '-0.01em'
+          }}>
+            {lang === 'fr' ? 'Analyses & Performances Financières' : 'Financial Analytics & Performance'}
+          </h2>
+        </div>
 
         {/* Premium Year Selector Dropdown */}
         <div className="no-print" style={{ zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
