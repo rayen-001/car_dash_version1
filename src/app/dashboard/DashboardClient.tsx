@@ -171,35 +171,47 @@ export default function DashboardClient({
   }, [allBookings, expenses, maintenance, selectedYear, stats])
 
   // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
-  const localToday = new Date()
-  const yStr = localToday.getFullYear()
-  const mStr = String(localToday.getMonth() + 1).padStart(2, '0')
-  const dStr = String(localToday.getDate()).padStart(2, '0')
-  const todayDateString = `${yStr}-${mStr}-${dStr}`
+  const [ledgerDateStr, setLedgerDateStr] = useState<string>(() => {
+    const today = new Date()
+    const yStr = today.getFullYear()
+    const mStr = String(today.getMonth() + 1).padStart(2, '0')
+    const dStr = String(today.getDate()).padStart(2, '0')
+    return `${yStr}-${mStr}-${dStr}`
+  })
 
-  const matchToday = (dateField?: string) => {
+  const matchLedgerDate = (dateField?: string) => {
     if (!dateField) return false
-    if (dateField.startsWith(todayDateString)) return true
+    if (dateField.startsWith(ledgerDateStr)) return true
+    
     const d = new Date(dateField)
-    return (
-      d.getFullYear() === localToday.getFullYear() &&
-      (d.getMonth() + 1) === (localToday.getMonth() + 1) &&
-      d.getDate() === localToday.getDate()
-    )
+    if (isNaN(d.getTime())) return false
+
+    const parts = ledgerDateStr.split('-')
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      const dy = parseInt(parts[2], 10)
+      return (
+        d.getFullYear() === y &&
+        (d.getMonth() + 1) === m &&
+        d.getDate() === dy
+      )
+    }
+    return false
   }
 
-  // Daily Cash Intake (strictly collected upfront deposit collections paid today)
+  // Daily Cash Intake (strictly collected upfront deposit collections paid on selected date)
   const dailyCashIntake = allBookings
-    .filter(b => matchToday(b.created_at))
+    .filter(b => matchLedgerDate(b.created_at))
     .reduce((sum, b) => sum + (Number(b.acompte_paid) || 0), 0)
 
-  // Daily Expenses (strictly cash/bank outflows committed today)
+  // Daily Expenses (strictly cash/bank outflows committed on selected date)
   const dailyExpensesOutflow = expenses
-    .filter(e => matchToday(e.created_at))
+    .filter(e => matchLedgerDate(e.created_at))
     .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
   const dailyMaintenanceOutflow = maintenance
-    .filter(m => matchToday(m.service_date) || matchToday(m.created_at))
+    .filter(m => matchLedgerDate(m.service_date) || matchLedgerDate(m.created_at))
     .reduce((sum, m) => sum + (Number(m.cost) || 0), 0)
 
   const totalDailyExpenses = dailyExpensesOutflow + dailyMaintenanceOutflow
@@ -381,11 +393,45 @@ export default function DashboardClient({
                 </h4>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(255,255,255,0.03)', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(229,193,125,0.1)' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }} />
-              <span style={{ fontSize: '0.7rem', color: '#fff', fontFamily: 'monospace', fontWeight: 600 }}>
-                {localToday.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short' })}
-              </span>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.35rem', 
+              background: 'rgba(255,255,255,0.03)', 
+              padding: '0.25rem 0.5rem', 
+              borderRadius: '6px', 
+              border: '1px solid rgba(229,193,125,0.15)',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(229,193,125,0.4)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(229,193,125,0.15)'
+            }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981', flexShrink: 0 }} />
+              <input 
+                type="date"
+                value={ledgerDateStr}
+                onChange={(e) => setLedgerDateStr(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#fff',
+                  fontFamily: 'monospace',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  margin: 0,
+                  width: '95px',
+                  colorScheme: 'dark'
+                }}
+              />
             </div>
           </div>
 
