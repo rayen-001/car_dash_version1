@@ -93,82 +93,7 @@ export default function DashboardClient({
     return Array.from(yearsSet).sort((a, b) => b - a)
   }, [allBookings])
 
-  const dynamicStats = useMemo(() => {
-    let revenueYTD = 0
-    let expensesYTD = 0
-
-    const targetYear = selectedYear
-
-    allBookings.forEach((booking) => {
-      const status = (booking.status || '').toLowerCase()
-      const isConfirmed = status === 'confirmed'
-      const isCompleted = status === 'completed'
-
-      if (isConfirmed || isCompleted) {
-        const totalAmount = Number(booking.total_amount) || 0
-        const acomptePaid = Number(booking.acompte_paid) || 0
-        let paidInstallments = 0
-
-        if (booking.installments && Array.isArray(booking.installments)) {
-          booking.installments.forEach((inst: any) => {
-            if (inst.status === 'paid') {
-              paidInstallments += Number(inst.amount) || 0
-            }
-          })
-        }
-
-        const acompteDateStr = booking.acompte_paid_date || booking.created_at
-        const acompteYear = acompteDateStr ? new Date(acompteDateStr).getFullYear() : 0
-        if (acompteYear === targetYear && acomptePaid > 0) {
-          revenueYTD += acomptePaid
-        }
-
-        if (booking.installments && Array.isArray(booking.installments)) {
-          booking.installments.forEach((inst: any) => {
-            if (inst.status === 'paid') {
-              const instAmt = Number(inst.amount) || 0
-              const instDateStr = inst.paid_date || inst.due_date
-              const instYear = instDateStr ? new Date(instDateStr).getFullYear() : 0
-              if (instYear === targetYear) {
-                revenueYTD += instAmt
-              }
-            }
-          })
-        }
-      }
-    })
-
-    expenses.forEach((e) => {
-      const eDateStr = e.created_at
-      const eYear = eDateStr ? new Date(eDateStr).getFullYear() : 0
-      const isClaim = ['damage_repair', 'installment_tranche', 'late_return_penalty'].includes(e.category)
-      if (!isClaim && eYear === targetYear) {
-        expensesYTD += Number(e.amount) || 0
-      }
-    })
-
-    maintenance.forEach((m) => {
-      const mDateStr = m.service_date || m.created_at
-      const mYear = mDateStr ? new Date(mDateStr).getFullYear() : 0
-      if (mYear === targetYear) {
-        expensesYTD += Number(m.cost) || 0
-      }
-    })
-
-    const netProfitYTD = revenueYTD - expensesYTD
-
-    return {
-      revenueYTD,
-      expensesYTD,
-      netProfitYTD,
-      fleetSize: stats.fleetSize,
-      activeRentals: stats.activeRentals,
-      utilizationRate: stats.utilizationRate,
-      outstandingLiabilities: stats.outstandingLiabilities,
-      riskSignalsCount: stats.riskSignalsCount,
-      targetYear: selectedYear
-    }
-  }, [allBookings, expenses, maintenance, selectedYear, stats])
+  // dynamicStats removed to keep stats card at current year
 
   // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
   const localToday = new Date()
@@ -207,54 +132,9 @@ export default function DashboardClient({
 
   return (
     <div className={styles['owner-dashboard']}>
-      <div className={styles['header-section']} style={{ 
-        position: 'relative', 
-        overflow: 'visible',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        flexWrap: 'wrap',
-        gap: '1rem'
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <h1 className={styles['page-title']}>{t('dashboard.title')}</h1>
-          <p className={styles['subtitle']}>{t('dashboard.subtitle')}</p>
-        </div>
-
-        {/* Premium Year Selector Dropdown */}
-        <div className="no-print" style={{ zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-          <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>
-            {lang === 'fr' ? 'Année :' : 'Year :'}
-          </span>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            style={{
-              background: 'rgba(20, 16, 14, 0.95)',
-              border: '1px solid rgba(229, 193, 125, 0.3)',
-              borderRadius: '8px',
-              color: '#fff',
-              padding: '0.4rem 2rem 0.4rem 0.8rem',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              outline: 'none',
-              transition: 'all 0.2s',
-              appearance: 'none',
-              backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23E5C17D%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 0.8rem top 50%',
-              backgroundSize: '0.65rem auto',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
-            }}
-          >
-            {availableYears.map(yr => (
-              <option key={yr} value={yr} style={{ background: '#111', color: '#fff' }}>
-                {yr}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className={styles['header-section']} style={{ position: 'relative', overflow: 'visible' }}>
+        <h1 className={styles['page-title']}>{t('dashboard.title')}</h1>
+        <p className={styles['subtitle']}>{t('dashboard.subtitle')}</p>
 
         {/* Beautiful Dotted Gold World Map Watermark matching reference photo */}
         <svg className={styles['world-map-watermark']} viewBox="0 0 1000 400" fill="none" xmlns="http://www.w3.org/2000/svg" style={{
@@ -421,9 +301,71 @@ export default function DashboardClient({
       </div>
 
       {/* Stats Cards Row */}
-      <DashboardStats stats={dynamicStats} />
+      <DashboardStats stats={stats} />
 
       <TodayOperations allBookings={allBookings} />
+
+      {/* ── ANALYTICS SECTION HEADER with Year Selector ── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: '2rem',
+        marginBottom: '1rem',
+        borderBottom: '1px solid rgba(229,193,125,0.1)',
+        paddingBottom: '0.75rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <h2 style={{
+          margin: 0,
+          fontFamily: 'var(--font-heading)',
+          fontSize: '1.25rem',
+          fontWeight: 600,
+          color: '#fff',
+          letterSpacing: '-0.01em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          📈 {lang === 'fr' ? 'Analyses & Performances Financières' : 'Financial Analytics & Performance'}
+        </h2>
+
+        {/* Premium Year Selector Dropdown */}
+        <div className="no-print" style={{ zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>
+            {lang === 'fr' ? 'Année :' : 'Year :'}
+          </span>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            style={{
+              background: 'rgba(20, 16, 14, 0.95)',
+              border: '1px solid rgba(229, 193, 125, 0.3)',
+              borderRadius: '8px',
+              color: '#fff',
+              padding: '0.4rem 2rem 0.4rem 0.8rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              outline: 'none',
+              transition: 'all 0.2s',
+              appearance: 'none',
+              backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23E5C17D%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 0.8rem top 50%',
+              backgroundSize: '0.65rem auto',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+            }}
+          >
+            {availableYears.map(yr => (
+              <option key={yr} value={yr} style={{ background: '#111', color: '#fff' }}>
+                {yr}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <DashboardCharts recentBookings={recentBookings} allBookings={allBookings} expenses={expenses} maintenance={maintenance} selectedYear={selectedYear} />
 
