@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useLanguage } from '@/lib/i18n'
 import {
   AreaChart,
   Area,
@@ -26,6 +27,7 @@ export default function DashboardCharts({
   maintenance?: any[],
   selectedYear: number
 }) {
+  const { t } = useLanguage()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -109,19 +111,23 @@ export default function DashboardCharts({
 
   const pieData = useMemo(() => {
     let confirmed = 0
+    let completed = 0
     let pending = 0
     let cancelled = 0
     allBookings.forEach(b => {
-      if (b.status === 'confirmed' || b.status === 'completed') confirmed++
-      else if (b.status === 'pending') pending++
-      else if (b.status === 'cancelled') cancelled++
+      const status = (b.status || '').toLowerCase()
+      if (status === 'confirmed') confirmed++
+      else if (status === 'completed') completed++
+      else if (status === 'pending') pending++
+      else if (status === 'cancelled') cancelled++
     })
     return [
-      { name: 'Confirmed', value: confirmed, color: '#C5A059' },
-      { name: 'Pending', value: pending, color: '#8A6D35' },
-      { name: 'Cancelled', value: cancelled, color: '#33291C' }
+      { name: t('status.completed'), value: completed, color: '#10b981' },
+      { name: t('status.confirmed'), value: confirmed, color: '#C5A059' },
+      { name: t('status.pending'), value: pending, color: '#8A6D35' },
+      { name: t('status.cancelled'), value: cancelled, color: '#33291C' }
     ].filter(d => d.value > 0)
-  }, [allBookings])
+  }, [allBookings, t])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>

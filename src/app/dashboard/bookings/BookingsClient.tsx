@@ -719,6 +719,7 @@ export default function BookingsClient({
             >
               <option value="All">{t('status.all')}</option>
               <option value="confirmed">{t('status.confirmed')}</option>
+              <option value="completed">{t('status.completed')}</option>
               <option value="pending">{t('status.pending')}</option>
               <option value="cancelled">{t('status.cancelled')}</option>
             </select>
