@@ -109,17 +109,49 @@ export default function DashboardCharts({
     return null
   }
 
+  const CustomPieTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const entry = payload[0]
+      return (
+        <div className="glass-panel" style={{
+          background: 'rgba(10, 8, 7, 0.95)',
+          border: '1px solid rgba(229, 193, 125, 0.2)',
+          padding: '10px 14px',
+          borderRadius: '12px',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.8)'
+        }}>
+          <p style={{ margin: '0 0 6px 0', color: '#E5C17D', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            {t('bookingForm.bookingStatus') || 'Booking Status'}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1.5rem', alignItems: 'center' }}>
+            <span style={{ color: entry.payload.color, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: entry.payload.color }} />
+              {entry.name}:
+            </span>
+            <strong style={{ color: '#fff', fontSize: '0.9rem', fontFamily: 'monospace' }}>
+              {entry.value.toLocaleString()} {t('nav.bookings') || 'Bookings'}
+            </strong>
+          </div>
+        </div>
+      )
+    }
+    return null
+  }
+
   const pieData = useMemo(() => {
     let confirmed = 0
     let completed = 0
     let pending = 0
     let cancelled = 0
     allBookings.forEach(b => {
-      const status = (b.status || '').toLowerCase()
-      if (status === 'confirmed') confirmed++
-      else if (status === 'completed') completed++
-      else if (status === 'pending') pending++
-      else if (status === 'cancelled') cancelled++
+      const bDateStr = b.start_date || b.created_at
+      if (bDateStr && bDateStr.startsWith(currentYearPrefix)) {
+        const status = (b.status || '').toLowerCase()
+        if (status === 'confirmed') confirmed++
+        else if (status === 'completed') completed++
+        else if (status === 'pending') pending++
+        else if (status === 'cancelled') cancelled++
+      }
     })
     return [
       { name: t('status.completed'), value: completed, color: '#10b981' },
@@ -127,7 +159,7 @@ export default function DashboardCharts({
       { name: t('status.pending'), value: pending, color: '#8A6D35' },
       { name: t('status.cancelled'), value: cancelled, color: '#33291C' }
     ].filter(d => d.value > 0)
-  }, [allBookings, t])
+  }, [allBookings, currentYearPrefix, t])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
@@ -214,7 +246,7 @@ export default function DashboardCharts({
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomPieTooltip />} />
                   <Legend
                     verticalAlign="bottom"
                     height={36}
