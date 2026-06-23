@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/supabase/admin'
-import { getAuthedUser, parseCostFromNotes } from './_shared'
+import { getAuthedUser, parseCostFromNotes, normPlate } from './_shared'
 import { syncMaintenanceTodos } from './todos'
 
 export async function addVehicle(formData: FormData) {
@@ -60,6 +60,27 @@ export async function addVehicle(formData: FormData) {
 
   const insurance_start_date = (formData.get('insurance_start_date') as string) || null
 
+  const rawPlate = formData.get('license_plate') as string || ''
+  const plate = normPlate(rawPlate)
+
+  if (plate) {
+    // Check if another vehicle with the same plate exists under this owner
+    const { data: existingVehicle } = await supabase
+      .from('vehicles')
+      .select('id, withdrawn_at')
+      .eq('owner_id', user.id)
+      .eq('license_plate', plate)
+      .maybeSingle()
+
+    if (existingVehicle) {
+      if (existingVehicle.withdrawn_at) {
+        throw new Error("Ce véhicule (immatriculation) est actuellement archivé/retiré dans votre flotte. Veuillez le réactiver au lieu de le recréer.")
+      } else {
+        throw new Error("Ce véhicule (immatriculation) existe déjà dans votre flotte.")
+      }
+    }
+  }
+
   const { data, error } = await supabase
     .from('vehicles')
     .insert({
@@ -70,7 +91,7 @@ export async function addVehicle(formData: FormData) {
       price_per_day,
       availability,
       images: imageUrls,
-      license_plate: (formData.get('license_plate') as string) || null,
+      license_plate: plate || null,
       color: (formData.get('color') as string) || null,
       current_km,
       last_vidange_km,
@@ -200,8 +221,29 @@ export async function updateVehicle(formData: FormData) {
   }
 
   const finalImageUrls = [...keptImages, ...newImageUrls]
-
   const insurance_start_date = (formData.get('insurance_start_date') as string) || null
+
+  const rawPlate = formData.get('license_plate') as string || ''
+  const plate = normPlate(rawPlate)
+
+  if (plate) {
+    // Check if another vehicle with the same plate exists under this owner, excluding current vehicle
+    const { data: existingVehicle } = await supabase
+      .from('vehicles')
+      .select('id, withdrawn_at')
+      .eq('owner_id', user.id)
+      .eq('license_plate', plate)
+      .neq('id', id)
+      .maybeSingle()
+
+    if (existingVehicle) {
+      if (existingVehicle.withdrawn_at) {
+        throw new Error("Ce véhicule (immatriculation) est actuellement archivé/retiré dans votre flotte. Veuillez le réactiver au lieu de le recréer.")
+      } else {
+        throw new Error("Ce véhicule (immatriculation) existe déjà dans votre flotte.")
+      }
+    }
+  }
 
   const { error } = await supabase
     .from('vehicles')
@@ -212,7 +254,7 @@ export async function updateVehicle(formData: FormData) {
       price_per_day,
       availability,
       images: finalImageUrls,
-      license_plate: (formData.get('license_plate') as string) || null,
+      license_plate: plate || null,
       color: (formData.get('color') as string) || null,
       insurance_start_date,
     })

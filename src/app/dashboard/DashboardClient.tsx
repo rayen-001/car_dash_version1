@@ -202,7 +202,7 @@ export default function DashboardClient({
 
   // Daily Cash Intake (strictly collected upfront deposit collections paid on selected date)
   const dailyCashIntake = allBookings
-    .filter(b => matchLedgerDate(b.created_at))
+    .filter(b => matchLedgerDate(b.acompte_paid_date || b.created_at))
     .reduce((sum, b) => sum + (Number(b.acompte_paid) || 0), 0)
 
   // Daily Expenses (strictly cash/bank outflows committed on selected date)

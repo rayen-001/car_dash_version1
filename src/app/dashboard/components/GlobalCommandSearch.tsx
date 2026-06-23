@@ -64,6 +64,7 @@ interface OmniBooking {
   lavage_pickup?: string
   lavage_return?: string
   damage_notes?: string
+  import_raw_data?: any
   actual_return_date?: string
   client_behavior_status?: string | null
   installments?: {
@@ -436,6 +437,14 @@ export default function GlobalCommandSearch({
         filtered = filtered.filter(b => b.installments && b.installments.length > 0)
       } else if (activeAlertFilter === 'latest-250') {
         const sortedAll = [...allBookings].sort((a, b) => {
+          // Sort by Excel csv_line descending (highest line number/most recent first)
+          const lineA = (a.import_raw_data as any)?.csv_line ?? 0
+          const lineB = (b.import_raw_data as any)?.csv_line ?? 0
+          if (lineA !== 0 || lineB !== 0) {
+            return lineB - lineA
+          }
+          
+          // Fallback to created_at for manual/new bookings
           const ca = a.created_at || ''
           const cb = b.created_at || ''
           return cb.localeCompare(ca)

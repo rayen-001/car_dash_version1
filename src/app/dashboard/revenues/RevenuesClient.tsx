@@ -851,7 +851,7 @@ export default function RevenuesClient({
     }
 
     const { from: winFrom, to: winTo } = dateWindow
-    return events.filter(ev => {
+    const filteredEvents = events.filter(ev => {
       const inWindow = flowFilter === 'unpaid'
         ? ev.date <= winTo
         : (ev.date >= winFrom && ev.date <= winTo)
@@ -859,6 +859,15 @@ export default function RevenuesClient({
       if (flowFilter === 'settled') return ev.status === 'paid'
       if (flowFilter === 'unpaid') return ev.status !== 'paid'
       return true
+    })
+
+    // Sort by event date descending, then by createdAt descending to ensure strict newest-first chronological order
+    return filteredEvents.sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date)
+      if (dateCompare !== 0) return dateCompare
+      const createdCompare = (b.createdAt || '').localeCompare(a.createdAt || '')
+      if (createdCompare !== 0) return createdCompare
+      return b.id.localeCompare(a.id)
     })
   }, [allRows, searchQuery, typeFilter, flowFilter, dateWindow, TODAY])
 

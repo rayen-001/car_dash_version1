@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { calculateTrustScore } from '@/lib/trustScore'
-import { getAuthedUser, getTodayYMD } from './_shared'
+import { getAuthedUser, getTodayYMD, normPlate, normCIN, normPermis, normPhone } from './_shared'
 import { syncVehicleMaxOdometer } from './vehicles'
 
 // ─── Trust Score ─────────────────────────────────────────────────────────────
@@ -40,6 +40,125 @@ export async function recalculateClientTrustScore(clientId: string) {
     .update({ trust_score: trustScore })
     .eq('id', clientId)
     .eq('owner_id', user.id)
+}
+
+function isNamePreserved(existingName: string | null | undefined, newName: string): boolean {
+  if (!existingName) return true
+  const cleanExisting = existingName.trim().toUpperCase()
+  return cleanExisting === '' || cleanExisting === 'UNKNOWN' || cleanExisting === 'N/A' || cleanExisting === 'NULL'
+}
+
+async function resolveOrCreateClient(
+  supabase: any,
+  ownerId: string,
+  fullName: string,
+  phoneRaw: string,
+  licenseRaw: string,
+  cinRaw: string,
+  dateNaissance: string | null,
+  cinDelivreLe: string | null,
+  permisNumero: string | null,
+  permisDelivreLe: string | null,
+  address: string | null
+): Promise<string> {
+  const normName = fullName.trim()
+  const phone = normPhone(phoneRaw)
+  const cin = normCIN(cinRaw || permisNumero)
+  const permis = normPermis(permisNumero || licenseRaw)
+
+  const ignoreList = ['N/A', 'NA', 'UNKNOWN', '0', '*', '-']
+
+  // 1. Match by CIN (if present and not a dummy value)
+  const isCinValid = cin && !ignoreList.includes(cin.toUpperCase())
+  if (isCinValid) {
+    const { data: matchedClient } = await supabase
+      .from('clients')
+      .select('id, full_name')
+      .eq('owner_id', ownerId)
+      .eq('cin', cin)
+      .maybeSingle()
+
+    if (matchedClient) {
+      if (isNamePreserved(matchedClient.full_name, normName)) {
+        await supabase
+          .from('clients')
+          .update({ full_name: normName })
+          .eq('id', matchedClient.id)
+      }
+      return matchedClient.id
+    }
+  }
+
+  // 2. Match by Driver License (if present and not a dummy value)
+  const isPermisValid = permis && !ignoreList.includes(permis.toUpperCase())
+  if (isPermisValid) {
+    const { data: matchedClient } = await supabase
+      .from('clients')
+      .select('id, full_name')
+      .eq('owner_id', ownerId)
+      .eq('permis_numero', permis)
+      .maybeSingle()
+
+    if (matchedClient) {
+      if (isNamePreserved(matchedClient.full_name, normName)) {
+        await supabase
+          .from('clients')
+          .update({ full_name: normName })
+          .eq('id', matchedClient.id)
+      }
+      return matchedClient.id
+    }
+  }
+
+  // 3. Match by Phone (if present and not a dummy value)
+  const isPhoneValid = phone && !ignoreList.includes(phone.toUpperCase())
+  if (isPhoneValid) {
+    const { data: matchedClients, error } = await supabase
+      .from('clients')
+      .select('id, full_name')
+      .eq('owner_id', ownerId)
+      .eq('phone', phone)
+
+    if (!error && matchedClients && matchedClients.length > 0) {
+      if (matchedClients.length === 1) {
+        const matchedClient = matchedClients[0]
+        if (isNamePreserved(matchedClient.full_name, normName)) {
+          await supabase
+            .from('clients')
+            .update({ full_name: normName })
+            .eq('id', matchedClient.id)
+        }
+        return matchedClient.id
+      } else {
+        throw new Error("Plusieurs clients ont ce numéro de téléphone. Veuillez sélectionner le client directement depuis la liste déroulante.")
+      }
+    }
+  }
+
+  // 4. No unique matches found: create a new profile (DO NOT match by name-only)
+  const { data: newClient, error: createErr } = await supabase
+    .from('clients')
+    .insert({
+      owner_id: ownerId,
+      full_name: normName,
+      phone: phone || 'N/A',
+      email: null,
+      license_number: permis || 'N/A',
+      cin: cin || null,
+      date_naissance: dateNaissance,
+      cin_delivre_le: cinDelivreLe,
+      permis_numero: permis || null,
+      permis_delivre_le: permisDelivreLe,
+      address: address
+    })
+    .select('id')
+    .single()
+
+  if (createErr || !newClient) {
+    throw new Error('Failed to create new client profile: ' + createErr?.message)
+  }
+
+  return newClient.id
 }
 
 // ─── Booking lifecycle ───────────────────────────────────────────────────────
@@ -112,77 +231,48 @@ export async function addBooking(formData: FormData) {
 
   // Ensure manual secondary client names are related/created in the CRM immediately
   if (!secondary_client_id && secondary_client_name) {
-    const normName = secondary_client_name.trim()
-    const { data: existingClient } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('owner_id', user.id)
-      .ilike('full_name', normName)
-      .maybeSingle()
-
-    if (existingClient) {
-      secondary_client_id = existingClient.id
-    } else {
-      const { data: newClient, error: createErr } = await supabase
-        .from('clients')
-        .insert({
-          owner_id: user.id,
-          full_name: normName,
-          phone: secondary_client_phone || 'N/A',
-          email: null,
-          license_number: secondary_client_license_number || 'N/A',
-          cin: secondary_client_cin_passport || null
-        })
-        .select('id')
-        .single()
-
-      if (!createErr && newClient) {
-        secondary_client_id = newClient.id
-      }
-    }
+    secondary_client_id = await resolveOrCreateClient(
+      supabase,
+      user.id,
+      secondary_client_name,
+      secondary_client_phone,
+      secondary_client_license_number,
+      secondary_client_cin_passport,
+      secondary_client_date_naissance,
+      secondary_client_cin_delivre_le,
+      secondary_client_permis_numero,
+      secondary_client_permis_delivre_le,
+      secondary_client_address
+    )
   }
 
   // Ensure manual primary client names are related/created in the CRM immediately
   if (!client_id && client_name) {
-    const normName = client_name.trim()
-    const { data: existingClient } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('owner_id', user.id)
-      .ilike('full_name', normName)
-      .maybeSingle()
-
-    if (existingClient) {
-      client_id = existingClient.id
-    } else {
-      const { data: newClient, error: createErr } = await supabase
-        .from('clients')
-        .insert({
-          owner_id: user.id,
-          full_name: normName,
-          phone: client_phone || 'N/A',
-          email: null,
-          license_number: client_license_number || 'N/A'
-        })
-        .select('id')
-        .single()
-
-      if (!createErr && newClient) {
-        client_id = newClient.id
-      }
-    }
+    client_id = await resolveOrCreateClient(
+      supabase,
+      user.id,
+      client_name,
+      client_phone,
+      client_license_number,
+      client_cin_passport,
+      client_date_naissance,
+      client_cin_delivre_le,
+      client_permis_numero,
+      client_permis_delivre_le,
+      client_address
+    )
   }
 
   // Two-Way CRM Sync: backfill latest snapshot data into existing client profiles
   if (client_id) {
     const updatePayload: any = {}
-    if (client_phone) updatePayload.phone = client_phone
-    if (client_license_number) updatePayload.license_number = client_license_number
-    if (client_cin_passport) updatePayload.cin = client_cin_passport
+    if (client_phone) updatePayload.phone = normPhone(client_phone)
+    if (client_license_number) updatePayload.license_number = normPermis(client_license_number)
+    if (client_cin_passport) updatePayload.cin = normCIN(client_cin_passport)
     if (client_address) updatePayload.address = client_address
     if (client_date_naissance) updatePayload.date_naissance = client_date_naissance
     if (client_cin_delivre_le) updatePayload.cin_delivre_le = client_cin_delivre_le
-    if (client_permis_numero) updatePayload.permis_numero = client_permis_numero
+    if (client_permis_numero) updatePayload.permis_numero = normPermis(client_permis_numero)
     if (client_permis_delivre_le) updatePayload.permis_delivre_le = client_permis_delivre_le
 
     if (Object.keys(updatePayload).length > 0) {
@@ -192,13 +282,13 @@ export async function addBooking(formData: FormData) {
 
   if (secondary_client_id) {
     const updateSecondaryPayload: any = {}
-    if (secondary_client_phone) updateSecondaryPayload.phone = secondary_client_phone
-    if (secondary_client_license_number) updateSecondaryPayload.license_number = secondary_client_license_number
-    if (secondary_client_cin_passport) updateSecondaryPayload.cin = secondary_client_cin_passport
+    if (secondary_client_phone) updateSecondaryPayload.phone = normPhone(secondary_client_phone)
+    if (secondary_client_license_number) updateSecondaryPayload.license_number = normPermis(secondary_client_license_number)
+    if (secondary_client_cin_passport) updateSecondaryPayload.cin = normCIN(secondary_client_cin_passport)
     if (secondary_client_address) updateSecondaryPayload.address = secondary_client_address
     if (secondary_client_date_naissance) updateSecondaryPayload.date_naissance = secondary_client_date_naissance
     if (secondary_client_cin_delivre_le) updateSecondaryPayload.cin_delivre_le = secondary_client_cin_delivre_le
-    if (secondary_client_permis_numero) updateSecondaryPayload.permis_numero = secondary_client_permis_numero
+    if (secondary_client_permis_numero) updateSecondaryPayload.permis_numero = normPermis(secondary_client_permis_numero)
     if (secondary_client_permis_delivre_le) updateSecondaryPayload.permis_delivre_le = secondary_client_permis_delivre_le
 
     if (Object.keys(updateSecondaryPayload).length > 0) {
@@ -386,76 +476,47 @@ export async function updateBooking(formData: FormData) {
   const secondary_client_permis_delivre_le = (formData.get('secondary_client_permis_delivre_le') as string) || null
 
   if (!secondary_client_id && secondary_client_name) {
-    const normName = secondary_client_name.trim()
-    const { data: existingClient } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('owner_id', user.id)
-      .ilike('full_name', normName)
-      .maybeSingle()
-
-    if (existingClient) {
-      secondary_client_id = existingClient.id
-    } else {
-      const { data: newClient, error: createErr } = await supabase
-        .from('clients')
-        .insert({
-          owner_id: user.id,
-          full_name: normName,
-          phone: secondary_client_phone || 'N/A',
-          email: null,
-          license_number: secondary_client_license_number || 'N/A',
-          cin: secondary_client_cin_passport || null
-        })
-        .select('id')
-        .single()
-
-      if (!createErr && newClient) {
-        secondary_client_id = newClient.id
-      }
-    }
+    secondary_client_id = await resolveOrCreateClient(
+      supabase,
+      user.id,
+      secondary_client_name,
+      secondary_client_phone,
+      secondary_client_license_number,
+      secondary_client_cin_passport,
+      secondary_client_date_naissance,
+      secondary_client_cin_delivre_le,
+      secondary_client_permis_numero,
+      secondary_client_permis_delivre_le,
+      secondary_client_address
+    )
   }
 
   if (!client_id && client_name) {
-    const normName = client_name.trim()
-    const { data: existingClient } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('owner_id', user.id)
-      .ilike('full_name', normName)
-      .maybeSingle()
-
-    if (existingClient) {
-      client_id = existingClient.id
-    } else {
-      const { data: newClient, error: createErr } = await supabase
-        .from('clients')
-        .insert({
-          owner_id: user.id,
-          full_name: normName,
-          phone: client_phone || 'N/A',
-          email: null,
-          license_number: client_license_number || 'N/A'
-        })
-        .select('id')
-        .single()
-
-      if (!createErr && newClient) {
-        client_id = newClient.id
-      }
-    }
+    client_id = await resolveOrCreateClient(
+      supabase,
+      user.id,
+      client_name,
+      client_phone,
+      client_license_number,
+      client_cin_passport,
+      client_date_naissance,
+      client_cin_delivre_le,
+      client_permis_numero,
+      client_permis_delivre_le,
+      client_address
+    )
   }
 
   // Two-Way CRM Sync
   if (client_id) {
     const updatePayload: any = {}
-    if (client_phone) updatePayload.phone = client_phone
-    if (client_license_number) updatePayload.license_number = client_license_number
-    if (client_cin_passport) updatePayload.cin = client_cin_passport
+    if (client_phone) updatePayload.phone = normPhone(client_phone)
+    if (client_license_number) updatePayload.license_number = normPermis(client_license_number)
+    if (client_cin_passport) updatePayload.cin = normCIN(client_cin_passport)
     if (client_address) updatePayload.address = client_address
     if (client_date_naissance) updatePayload.date_naissance = client_date_naissance
     if (client_cin_delivre_le) updatePayload.cin_delivre_le = client_cin_delivre_le
-    if (client_permis_numero) updatePayload.permis_numero = client_permis_numero
+    if (client_permis_numero) updatePayload.permis_numero = normPermis(client_permis_numero)
     if (client_permis_delivre_le) updatePayload.permis_delivre_le = client_permis_delivre_le
 
     if (Object.keys(updatePayload).length > 0) {
@@ -465,13 +526,13 @@ export async function updateBooking(formData: FormData) {
 
   if (secondary_client_id) {
     const updateSecondaryPayload: any = {}
-    if (secondary_client_phone) updateSecondaryPayload.phone = secondary_client_phone
-    if (secondary_client_license_number) updateSecondaryPayload.license_number = secondary_client_license_number
-    if (secondary_client_cin_passport) updateSecondaryPayload.cin = secondary_client_cin_passport
+    if (secondary_client_phone) updateSecondaryPayload.phone = normPhone(secondary_client_phone)
+    if (secondary_client_license_number) updateSecondaryPayload.license_number = normPermis(secondary_client_license_number)
+    if (secondary_client_cin_passport) updateSecondaryPayload.cin = normCIN(secondary_client_cin_passport)
     if (secondary_client_address) updateSecondaryPayload.address = secondary_client_address
     if (secondary_client_date_naissance) updateSecondaryPayload.date_naissance = secondary_client_date_naissance
     if (secondary_client_cin_delivre_le) updateSecondaryPayload.cin_delivre_le = secondary_client_cin_delivre_le
-    if (secondary_client_permis_numero) updateSecondaryPayload.permis_numero = secondary_client_permis_numero
+    if (secondary_client_permis_numero) updateSecondaryPayload.permis_numero = normPermis(secondary_client_permis_numero)
     if (secondary_client_permis_delivre_le) updateSecondaryPayload.permis_delivre_le = secondary_client_permis_delivre_le
 
     if (Object.keys(updateSecondaryPayload).length > 0) {

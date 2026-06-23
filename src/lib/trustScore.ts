@@ -192,8 +192,8 @@ export function calculateTrustScore(bookings: ScoringBooking[], todayStr: string
     trustScore = 0
   }
 
-  // Round to 1 decimal place and clamp between 0 and 100
-  trustScore = Math.max(0, Math.min(100, Math.round(trustScore * 10) / 10))
+  // Round to 1 decimal place and clamp between 0 and 99.9 to prevent database numeric(3,1) overflow on 100.0
+  trustScore = Math.max(0, Math.min(99.9, Math.round(trustScore * 10) / 10))
 
   return {
     trustScore,

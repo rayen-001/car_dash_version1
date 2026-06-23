@@ -25,9 +25,15 @@ interface Installment {
   paid_date?: string | null
 }
 
+
+
+
+
+
 interface LedgerRow {
   id: string
   date: string
+  createdAt: string
   type: 'inflow' | 'outflow'
   category: 'rental_revenue' | 'maintenance' | 'fuel' | 'insurance' | 'cleaning' | 'incident' | 'other' | 'damage_repair' | 'installment_tranche' | 'late_return_penalty'
   description: string
@@ -595,6 +601,7 @@ export default function ExpensesClient({
       rows.push({
         id: `expense-${e.id}`,
         date,
+        createdAt: e.created_at || date || TODAY,
         type: isClaim ? 'inflow' : 'outflow',
         category: (cat in CATEGORY_META ? cat : isClaim ? cat as LedgerRow['category'] : 'other') as LedgerRow['category'],
         description: e.description || (isClaim ? (lang === 'fr' ? `Réclamation ${getInfractionLabel(cat, lang).toLowerCase()}` : `${getInfractionLabel(cat, lang)} claim`) : (lang === 'fr' ? 'Entrée de dépense' : 'Expense entry')),
@@ -625,6 +632,7 @@ export default function ExpensesClient({
       rows.push({
         id: `maintenance-${m.id}`,
         date,
+        createdAt: m.created_at || date || TODAY,
         type: 'outflow',
         category: 'maintenance',
         description: m.description || (lang === 'fr' ? 'Service d\'entretien' : 'Maintenance Service'),
@@ -645,7 +653,12 @@ export default function ExpensesClient({
       })
     }
 
-    return rows.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
+    // Sort by event date descending, then by creation date descending to ensure strict newest-first chronological order
+    return rows.sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date)
+      if (dateCompare !== 0) return dateCompare
+      return b.createdAt.localeCompare(a.createdAt)
+    })
   }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims, lang])
 
   // ── Smart Filter (date string, "overdue", "due today") ────────────────────

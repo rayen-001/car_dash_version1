@@ -6,8 +6,40 @@ import { syncVehicleMaxOdometer } from '@/app/actions/vehicles'
 import { useToast } from '@/components/Toast'
 import { Booking, Vehicle, Client } from '@/types'
 import SearchableCombobox from '@/components/SearchableCombobox'
+import ManualClientNameInput from '@/components/ManualClientNameInput'
 import { useSearchParams } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n'
+
+// ---------------------------------------------------------------------------
+// Normalization helpers for duplicate detection
+// ---------------------------------------------------------------------------
+function normCIN(c: string | null | undefined): string {
+  if (!c) return ''
+  let cleaned = c.trim().replace(/\s/g, '')
+  if (/^\d{7}$/.test(cleaned)) {
+    cleaned = '0' + cleaned
+  }
+  return cleaned
+}
+
+function normPermis(p: string | null | undefined): string {
+  if (!p) return ''
+  let cleaned = p.trim().toUpperCase().replace(/\s/g, '')
+  if (cleaned.startsWith('>')) {
+    cleaned = cleaned.substring(1)
+  }
+  return cleaned
+}
+
+function normPhone(p: string | null | undefined): string {
+  if (!p) return ''
+  const cleaned = p.trim().replace(/\s+/g, '')
+  if (!cleaned) return ''
+  if (/^\d{8}$/.test(cleaned)) {
+    return '+216 ' + cleaned
+  }
+  return cleaned
+}
 
 interface BookingFormModalProps {
   isOpen: boolean
@@ -266,6 +298,40 @@ export default function BookingFormModal({
     const score = clients.find(c => c.id === secondaryClientId)?.trust_score
     return score !== null && score !== undefined && score < 30
   }, [secondaryClientId, clients])
+
+  const duplicateClientCheck = useMemo(() => {
+    if (clientId !== 'manual') return null
+    const ignoreList = ['N/A', 'NA', 'UNKNOWN', '0', '*', '-', '']
+    const nCin = normCIN(clientCinPassport)
+    const nPermis = normPermis(clientPermisNumero || clientLicenseNumber)
+    const nPhone = normPhone(clientPhone)
+    return clients.find(c => {
+      const cCin = normCIN(c.cin || '')
+      const cPermis = normPermis(c.permis_numero || c.license_number || '')
+      const cPhone = normPhone(c.phone || '')
+      if (nCin && !ignoreList.includes(nCin.toUpperCase()) && cCin === nCin) return true
+      if (nPermis && !ignoreList.includes(nPermis.toUpperCase()) && cPermis === nPermis) return true
+      if (nPhone && !ignoreList.includes(nPhone.toUpperCase()) && cPhone === nPhone) return true
+      return false
+    }) || null
+  }, [clientId, clientCinPassport, clientPermisNumero, clientLicenseNumber, clientPhone, clients])
+
+  const duplicateSecondaryClientCheck = useMemo(() => {
+    if (secondaryClientId !== 'manual') return null
+    const ignoreList = ['N/A', 'NA', 'UNKNOWN', '0', '*', '-', '']
+    const nCin = normCIN(secondaryClientCinPassport)
+    const nPermis = normPermis(secondaryClientPermisNumero || secondaryClientLicenseNumber)
+    const nPhone = normPhone(secondaryClientPhone)
+    return clients.find(c => {
+      const cCin = normCIN(c.cin || '')
+      const cPermis = normPermis(c.permis_numero || c.license_number || '')
+      const cPhone = normPhone(c.phone || '')
+      if (nCin && !ignoreList.includes(nCin.toUpperCase()) && cCin === nCin) return true
+      if (nPermis && !ignoreList.includes(nPermis.toUpperCase()) && cPermis === nPermis) return true
+      if (nPhone && !ignoreList.includes(nPhone.toUpperCase()) && cPhone === nPhone) return true
+      return false
+    }) || null
+  }, [secondaryClientId, secondaryClientCinPassport, secondaryClientPermisNumero, secondaryClientLicenseNumber, secondaryClientPhone, clients])
 
   const isBlacklisted = isPrimaryBlacklisted || isSecondaryBlacklisted
 
@@ -693,7 +759,8 @@ export default function BookingFormModal({
                     value: c.id,
                     label: c.full_name,
                     sublabel: c.phone || '',
-                    badge: c.license_number ? `Lic: ${c.license_number}` : ''
+                    badge: c.license_number ? `Lic: ${c.license_number}` : '',
+                    searchKey: [c.cin, c.permis_numero].filter(Boolean).join(' ')
                   }))}
                   value={clientId}
                   onChange={(val, opt) => {
@@ -773,7 +840,8 @@ export default function BookingFormModal({
                     value: c.id,
                     label: c.full_name,
                     sublabel: c.phone || '',
-                    badge: c.license_number ? `Lic: ${c.license_number}` : ''
+                    badge: c.license_number ? `Lic: ${c.license_number}` : '',
+                    searchKey: [c.cin, c.permis_numero].filter(Boolean).join(' ')
                   }))}
                   value={secondaryClientId}
                   onChange={(val, opt) => {
@@ -906,28 +974,48 @@ export default function BookingFormModal({
                 {clientId === 'manual' && (
                   <div className="form-group animate-fade-in" style={{ margin: 0 }}>
                     <label style={labelStyle}>{t('bookingForm.manualNameClient')}</label>
-                    <input
-                      type="text"
+                    <ManualClientNameInput
                       value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
+                      onChange={(val) => setClientName(val)}
+                      onSelectExisting={(c) => {
+                        setClientId(c.id)
+                        setClientName(c.full_name || '')
+                        setClientPhone(c.phone || '')
+                        setClientLicenseNumber(c.license_number || '')
+                        setClientCinPassport(c.cin || '')
+                        setClientAddress(c.address || '')
+                        setClientDateNaissance((c.date_naissance || '').split('T')[0] || '')
+                        setClientCinDelivreLe((c.cin_delivre_le || '').split('T')[0] || '')
+                        setClientPermisNumero(c.permis_numero || '')
+                        setClientPermisDelivreLe((c.permis_delivre_le || '').split('T')[0] || '')
+                      }}
+                      clients={clients}
                       required
-                      placeholder="e.g. Salim Ben Ali"
-                      className="form-input"
-                      style={{ margin: 0 }}
+                      placeholder="ex. Mohamed Ben Ali"
                     />
                   </div>
                 )}
                 {secondaryClientId === 'manual' && (
                   <div className="form-group animate-fade-in" style={{ margin: 0 }}>
                     <label style={labelStyle}>{t('bookingForm.manualNameCoDriver')}</label>
-                    <input
-                      type="text"
+                    <ManualClientNameInput
                       value={secondaryClientName}
-                      onChange={(e) => setSecondaryClientName(e.target.value)}
+                      onChange={(val) => setSecondaryClientName(val)}
+                      onSelectExisting={(c) => {
+                        setSecondaryClientId(c.id)
+                        setSecondaryClientName(c.full_name || '')
+                        setSecondaryClientPhone(c.phone || '')
+                        setSecondaryClientLicenseNumber(c.license_number || '')
+                        setSecondaryClientCinPassport(c.cin || '')
+                        setSecondaryClientAddress(c.address || '')
+                        setSecondaryClientDateNaissance((c.date_naissance || '').split('T')[0] || '')
+                        setSecondaryClientCinDelivreLe((c.cin_delivre_le || '').split('T')[0] || '')
+                        setSecondaryClientPermisNumero(c.permis_numero || '')
+                        setSecondaryClientPermisDelivreLe((c.permis_delivre_le || '').split('T')[0] || '')
+                      }}
+                      clients={clients}
                       required
-                      placeholder="e.g. Amir Ben Ahmed"
-                      className="form-input"
-                      style={{ margin: 0 }}
+                      placeholder="ex. Amir Ben Ahmed"
                     />
                   </div>
                 )}
@@ -1312,6 +1400,64 @@ export default function BookingFormModal({
               </div>
             </div>
 
+            {duplicateClientCheck && (
+              <div style={{
+                marginTop: '1.25rem',
+                padding: '0.85rem',
+                borderRadius: '8px',
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: '#f87171',
+                fontSize: '0.78rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}>
+                  <ShieldAlert size={14} style={{ color: '#ef4444' }} />
+                  <span>{t('bookingForm.duplicateClientDetected')}</span>
+                </div>
+                <div>
+                  {t('bookingForm.duplicateClientDesc')
+                    .replace('{name}', duplicateClientCheck.full_name)
+                    .replace('{cin}', duplicateClientCheck.cin || 'N/A')
+                    .replace('{permis}', duplicateClientCheck.permis_numero || duplicateClientCheck.license_number || 'N/A')
+                    .replace('{phone}', duplicateClientCheck.phone || 'N/A')}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientId(duplicateClientCheck.id)
+                    setClientName(duplicateClientCheck.full_name || '')
+                    setClientPhone(duplicateClientCheck.phone || '')
+                    setClientLicenseNumber(duplicateClientCheck.license_number || '')
+                    setClientCinPassport(duplicateClientCheck.cin || '')
+                    setClientAddress(duplicateClientCheck.address || '')
+                    setClientDateNaissance((duplicateClientCheck.date_naissance || '').split('T')[0] || '')
+                    setClientCinDelivreLe((duplicateClientCheck.cin_delivre_le || '').split('T')[0] || '')
+                    setClientPermisNumero(duplicateClientCheck.permis_numero || '')
+                    setClientPermisDelivreLe((duplicateClientCheck.permis_delivre_le || '').split('T')[0] || '')
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#fff',
+                    padding: '0.3rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)' }}
+                >
+                  {t('bookingForm.duplicateClientAction')}
+                </button>
+              </div>
+            )}
+
             {/* Tunisian Legal Identity — client-level, syncs back to CRM record on save */}
             <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed rgba(229,193,125,0.18)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
@@ -1434,6 +1580,64 @@ export default function BookingFormModal({
                   />
                 </div>
               </div>
+
+              {duplicateSecondaryClientCheck && (
+                <div style={{
+                  marginTop: '1.25rem',
+                  padding: '0.85rem',
+                  borderRadius: '8px',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: '#f87171',
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}>
+                    <ShieldAlert size={14} style={{ color: '#ef4444' }} />
+                    <span>{t('bookingForm.duplicateClientDetected')}</span>
+                  </div>
+                  <div>
+                    {t('bookingForm.duplicateClientDesc')
+                      .replace('{name}', duplicateSecondaryClientCheck.full_name)
+                      .replace('{cin}', duplicateSecondaryClientCheck.cin || 'N/A')
+                      .replace('{permis}', duplicateSecondaryClientCheck.permis_numero || duplicateSecondaryClientCheck.license_number || 'N/A')
+                      .replace('{phone}', duplicateSecondaryClientCheck.phone || 'N/A')}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSecondaryClientId(duplicateSecondaryClientCheck.id)
+                      setSecondaryClientName(duplicateSecondaryClientCheck.full_name || '')
+                      setSecondaryClientPhone(duplicateSecondaryClientCheck.phone || '')
+                      setSecondaryClientLicenseNumber(duplicateSecondaryClientCheck.license_number || '')
+                      setSecondaryClientCinPassport(duplicateSecondaryClientCheck.cin || '')
+                      setSecondaryClientAddress(duplicateSecondaryClientCheck.address || '')
+                      setSecondaryClientDateNaissance((duplicateSecondaryClientCheck.date_naissance || '').split('T')[0] || '')
+                      setSecondaryClientCinDelivreLe((duplicateSecondaryClientCheck.cin_delivre_le || '').split('T')[0] || '')
+                      setSecondaryClientPermisNumero(duplicateSecondaryClientCheck.permis_numero || '')
+                      setSecondaryClientPermisDelivreLe((duplicateSecondaryClientCheck.permis_delivre_le || '').split('T')[0] || '')
+                    }}
+                    style={{
+                      alignSelf: 'flex-start',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      color: '#fff',
+                      padding: '0.3rem 0.75rem',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)' }}
+                  >
+                    {t('bookingForm.duplicateClientAction')}
+                  </button>
+                </div>
+              )}
 
               {/* Co-Driver Tunisian Legal Identity — same round-trip semantics as primary */}
               <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed rgba(229,193,125,0.18)' }}>

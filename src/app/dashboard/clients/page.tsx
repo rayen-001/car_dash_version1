@@ -19,6 +19,7 @@ export default async function ClientsPage() {
 
   // Fetch clients belonging to this owner (handling Postgrest 1000 row limits)
   const clients = []
+  const seenClientIds = new Set<string>()
   let from = 0
   while (true) {
     const { data, error } = await supabase
@@ -26,12 +27,20 @@ export default async function ClientsPage() {
       .select('*')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
       .range(from, from + 999)
     if (error) {
       console.error('Error fetching clients page chunk:', error)
       break
     }
-    if (data) clients.push(...data)
+    if (data) {
+      for (const row of data) {
+        if (!seenClientIds.has(row.id)) {
+          seenClientIds.add(row.id)
+          clients.push(row)
+        }
+      }
+    }
     if (!data || data.length < 1000) break
     from += 1000
   }

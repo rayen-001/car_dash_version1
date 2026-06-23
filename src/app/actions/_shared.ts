@@ -52,6 +52,7 @@ export function parseCostFromNotes(notes: string | null | undefined, defaultCost
  */
 export async function fetchAllBookings(supabase: any, ownerId: string, selectQuery = '*') {
   const bookings: any[] = []
+  const seenIds = new Set<string>()
   let from = 0
   while (true) {
     const { data, error } = await supabase
@@ -59,6 +60,7 @@ export async function fetchAllBookings(supabase: any, ownerId: string, selectQue
       .select(selectQuery)
       .eq('owner_id', ownerId)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
       .range(from, from + 999)
 
     if (error) {
@@ -66,7 +68,12 @@ export async function fetchAllBookings(supabase: any, ownerId: string, selectQue
       break
     }
     if (data) {
-      bookings.push(...data)
+      for (const row of data) {
+        if (!seenIds.has(row.id)) {
+          seenIds.add(row.id)
+          bookings.push(row)
+        }
+      }
     }
     if (!data || data.length < 1000) {
       break
@@ -75,4 +82,42 @@ export async function fetchAllBookings(supabase: any, ownerId: string, selectQue
   }
   return bookings
 }
+
+/** Standardizes license plates (uppercase, remove spaces and dashes) */
+export function normPlate(p: string | null | undefined): string {
+  if (!p) return ''
+  return p.toUpperCase().replace(/[\s\-]/g, '')
+}
+
+/** Standardizes CIN (remove spaces, pad 7-digit to 8-digit) */
+export function normCIN(c: string | null | undefined): string {
+  if (!c) return ''
+  let cleaned = c.trim().replace(/\s/g, '')
+  if (/^\d{7}$/.test(cleaned)) {
+    cleaned = '0' + cleaned
+  }
+  return cleaned
+}
+
+/** Standardizes Driver License number (uppercase, remove spaces and leading '>') */
+export function normPermis(p: string | null | undefined): string {
+  if (!p) return ''
+  let cleaned = p.trim().toUpperCase().replace(/\s/g, '')
+  if (cleaned.startsWith('>')) {
+    cleaned = cleaned.substring(1)
+  }
+  return cleaned
+}
+
+/** Standardizes Phone number (removes spaces, prefixes 8-digit numbers with +216) */
+export function normPhone(p: string | null | undefined): string {
+  if (!p) return ''
+  const cleaned = p.trim().replace(/\s+/g, '')
+  if (!cleaned) return ''
+  if (/^\d{8}$/.test(cleaned)) {
+    return '+216 ' + cleaned
+  }
+  return cleaned
+}
+
 
