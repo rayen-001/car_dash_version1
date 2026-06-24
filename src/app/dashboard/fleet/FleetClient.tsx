@@ -11,7 +11,7 @@ import { Badge } from '@/components/Badge'
 import { createClient } from '@/utils/supabase/client'
 import { useLanguage } from '@/lib/i18n'
 
-export default function FleetClient({ initialVehicles, bookings = [], expenses = [] }: { initialVehicles: any[], bookings?: any[], expenses?: any[] }) {
+export default function FleetClient({ initialVehicles, fleetStats = [], activeRentals = [], bookings = [], expenses = [] }: { initialVehicles: any[], fleetStats?: any[], activeRentals?: any[], bookings?: any[], expenses?: any[] }) {
   const { showToast } = useToast()
   const confirm = useConfirm()
   const router = useRouter()
@@ -1259,8 +1259,17 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
             <tbody>
               {filteredVehicles && currentVehicles.length > 0 ? (
                 currentVehicles.map((car) => {
-                  const carBookings = bookings.filter((b: any) => b.vehicle_id === car.id && b.status !== 'cancelled')
-                  const revenue = carBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)
+                  // Use RPC stats if available, otherwise fall back to client-computed
+                  const rpcStat = fleetStats.find((s: any) => s.vehicle_id === car.id)
+                  const cashRevenue = rpcStat
+                    ? Number(rpcStat.cash_revenue || 0)
+                    : bookings
+                        .filter((b: any) => b.vehicle_id === car.id && b.status !== 'cancelled')
+                        .reduce((sum: number, b: any) => sum + (Number(b.acompte_paid) || 0), 0)
+                  const bookingCount = rpcStat
+                    ? Number(rpcStat.booking_count || 0)
+                    : bookings.filter((b: any) => b.vehicle_id === car.id && b.status !== 'cancelled').length
+                  const revenue = cashRevenue
                   
                   const carExpenses = expenses.filter((e: any) => e.vehicle_id === car.id)
                   const totalExpenses = carExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
@@ -1270,20 +1279,9 @@ export default function FleetClient({ initialVehicles, bookings = [], expenses =
                   const netYieldTextShadow = netYield < 0 ? '0 0 10px rgba(239,68,68,0.5)' : '0 0 8px rgba(229,193,125,0.15)'
                   const netYieldPrefix = netYield >= 0 ? '+' : ''
 
-                  // Calculate on-the-fly rented status using Tunisia sysdate timezone anchor
-                  const isRented = bookings.some(b => 
-                    b.vehicle_id === car.id && 
-                    (b.status === 'confirmed' || b.status === 'completed') && 
-                    b.start_date <= todayStr && 
-                    b.end_date >= todayStr
-                  )
-
-                  const activeBooking = bookings.find(b => 
-                    b.vehicle_id === car.id && 
-                    (b.status === 'confirmed' || b.status === 'completed') && 
-                    b.start_date <= todayStr && 
-                    b.end_date >= todayStr
-                  )
+                  // Use activeRentals (today's confirmed bookings) for rented status
+                  const activeBooking = activeRentals.find((b: any) => b.vehicle_id === car.id)
+                  const isRented = !!activeBooking
 
                   const isVidangeDue = car.current_km !== null && (car.next_vidange_km ? car.current_km >= car.next_vidange_km : (car.last_vidange_km !== null && car.current_km >= car.last_vidange_km + 10000))
                   const isPadsDue = car.current_km !== null && (car.next_pads_km ? car.current_km >= car.next_pads_km : (car.last_pads_km !== null && car.current_km >= car.last_pads_km + 30000))

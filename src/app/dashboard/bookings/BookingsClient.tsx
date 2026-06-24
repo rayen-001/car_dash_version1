@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Calendar, Plus, CheckCircle, XCircle, Receipt, FileText, Edit, Search, ShieldCheck, UserPlus, AlertOctagon, Plane, Hotel, MapPin, X } from 'lucide-react'
+import { Calendar, Plus, CheckCircle, XCircle, Receipt, FileText, Edit, Search, ShieldCheck, UserPlus, AlertOctagon, Plane, Hotel, MapPin, X, Loader2 } from 'lucide-react'
 import { updateBookingStatus, addCoDriverToBooking } from '@/app/actions'
+import { fetchBookingsPageAction } from '@/app/actions/bookings'
 import { Booking, Vehicle, Client, BusinessSettings } from '@/types'
 import { useToast } from '@/components/Toast'
 import { Badge } from '@/components/Badge'
@@ -34,15 +35,19 @@ function isNonNameQuery(query: string): boolean {
 
 export default function BookingsClient({ 
   initialBookings, 
+  initialTotalCount = 0,
+  initialTotalPages = 1,
   vehicles, 
   clients,
   businessSettings,
   vehicleLegalDocs = []
 }: { 
-  initialBookings: Booking[], 
-  vehicles: Vehicle[], 
-  clients: Client[],
-  businessSettings: BusinessSettings,
+  initialBookings: Booking[]
+  initialTotalCount?: number
+  initialTotalPages?: number
+  vehicles: Vehicle[]
+  clients: Client[]
+  businessSettings: BusinessSettings
   vehicleLegalDocs?: any[]
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -63,6 +68,20 @@ export default function BookingsClient({
       setIsFormOpen(true)
     }
   }, [searchParams])
+
+  // ─── Server-side pagination state ────────────────────────────────────────
+  // The server cursor (which batch of 50 rows from the DB) is called serverPage.
+  // Within each batch, the user navigates local pages of 10 rows.
+  const SERVER_PAGE_SIZE = 50
+  const LOCAL_PAGE_SIZE = 10
+
+  const [serverBookings, setServerBookings] = useState<Booking[]>(initialBookings)
+  const [serverTotalCount, setServerTotalCount] = useState(initialTotalCount)
+  const [serverTotalPages, setServerTotalPages] = useState(initialTotalPages)
+  const [serverPage, setServerPage] = useState(1)
+  const [isFetching, setIsFetching] = useState(false)
+  // Timestamp guard: prevents stale responses from overwriting newer ones
+  const lastRequestTs = useRef<number>(0)
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,25 +106,59 @@ export default function BookingsClient({
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  // Pagination states
+  // Local page cursor within the current server batch
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
 
-  // Reset to first page when search query or filters change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery, statusFilter, vehicleFilter, dateFrom, dateTo])
-
-  // Debounce searchQuery to debouncedSearchQuery (150ms delay)
+  // Debounce searchQuery → debouncedSearchQuery (300ms)
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery)
-    }, 150)
-
-    return () => {
-      clearTimeout(handler)
-    }
+    }, 300)
+    return () => clearTimeout(handler)
   }, [searchQuery])
+
+  // Fetch from server whenever filters / server-page change
+  const fetchPage = useCallback(async (page: number, query: string, status: string, vehicle: string, from: string, to: string) => {
+    const ts = Date.now()
+    lastRequestTs.current = ts
+    setIsFetching(true)
+    try {
+      const result = await fetchBookingsPageAction({
+        page,
+        pageSize: SERVER_PAGE_SIZE,
+        searchQuery: query,
+        statusFilter: status,
+        vehicleFilter: vehicle,
+        dateFrom: from || undefined,
+        dateTo: to || undefined,
+      })
+      // Race-condition guard: ignore stale responses
+      if (lastRequestTs.current !== ts) return
+      setServerBookings(result.bookings as Booking[])
+      setServerTotalCount(result.totalCount)
+      setServerTotalPages(result.totalPages)
+    } catch (err: any) {
+      if (lastRequestTs.current !== ts) return
+      showToast(err.message || 'Error loading bookings', 'error')
+    } finally {
+      if (lastRequestTs.current === ts) setIsFetching(false)
+    }
+  }, [showToast])
+
+  // When debounced query or filters change: reset to server page 1 and local page 1
+  useEffect(() => {
+    setServerPage(1)
+    setCurrentPage(1)
+    fetchPage(1, debouncedSearchQuery, statusFilter, vehicleFilter, dateFrom, dateTo)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchQuery, statusFilter, vehicleFilter, dateFrom, dateTo])
+
+  // When server page changes (Next/Prev batch): fetch new batch, keep local page 1
+  useEffect(() => {
+    setCurrentPage(1)
+    fetchPage(serverPage, debouncedSearchQuery, statusFilter, vehicleFilter, dateFrom, dateTo)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverPage])
 
   // Modals for Invoices and Agreements
   const [selectedInvoice, setSelectedInvoice] = useState<Booking | null>(null)
@@ -161,22 +214,13 @@ export default function BookingsClient({
     setIsAddingCoDriver(false)
   }
 
-  const bookingsForFuzzySearch = useMemo(() => {
-    return initialBookings.filter((booking) => {
-      const matchesStatus = statusFilter === 'All' || booking.status?.toLowerCase() === statusFilter.toLowerCase()
-      const matchesVehicle = vehicleFilter === 'All' || booking.vehicle_id === vehicleFilter
-      const matchesDateFrom = !dateFrom || booking.start_date >= dateFrom
-      const matchesDateTo = !dateTo || booking.start_date <= dateTo
-      return matchesStatus && matchesVehicle && matchesDateFrom && matchesDateTo
-    })
-  }, [initialBookings, statusFilter, vehicleFilter, dateFrom, dateTo])
-
+  // ─── Fuzzy search (Smart Name Suggestions) over current server batch ─────
   const fuzzyIndexData = useMemo(() => {
-    return bookingsForFuzzySearch.map((booking) => {
-      const primary = booking.primary_client || {
+    return serverBookings.map((booking) => {
+      const primary = (booking as any).primary_client || {
         full_name: booking.client_name
       }
-      const secondary = booking.secondary_client
+      const secondary = (booking as any).secondary_client
       return {
         booking,
         search_client_name: normalizeText(booking.client_name || ''),
@@ -184,41 +228,30 @@ export default function BookingsClient({
         search_secondary_name: normalizeText(secondary?.full_name || '')
       }
     })
-  }, [bookingsForFuzzySearch])
+  }, [serverBookings])
 
-  // Memoized Fuse.js instance
   const fuseInstance = useMemo(() => {
     return new Fuse(fuzzyIndexData, {
       keys: ['search_client_name', 'search_primary_name', 'search_secondary_name'],
-      threshold: 0.40,
+      threshold: 0.45,
       includeScore: true,
       minMatchCharLength: 3
     })
   }, [fuzzyIndexData])
 
-  // Execute fuzzy name suggestions search
   const fuzzySuggestions = useMemo(() => {
     if (!smartSearchEnabled) return []
-    
-    // Check query length after normalization, not before
     const normQuery = normalizeText(debouncedSearchQuery)
     if (normQuery.length < 3) return []
-
-    // Detect non-name queries (contains numbers or "TN" plate formats)
     if (isNonNameQuery(debouncedSearchQuery)) return []
 
     const results = fuseInstance.search(normQuery)
-
-    // Calculate match percentage and filter items (threshold >= 60%)
     const mapped = results.map((res) => {
       const matchPercent = Math.round((1 - (res.score ?? 1)) * 100)
-      
-      // Determine if it is an exact match (e.g. query exactly matches one of the normalized fields)
-      const isExactMatch = 
+      const isExactMatch =
         res.item.search_client_name === normQuery ||
         res.item.search_primary_name === normQuery ||
         res.item.search_secondary_name === normQuery
-
       return {
         booking: res.item.booking,
         search_client_name: res.item.search_client_name,
@@ -227,30 +260,18 @@ export default function BookingsClient({
         matchPercent,
         isExactMatch
       }
-    }).filter(item => item.matchPercent >= 60)
+    }).filter(item => item.matchPercent >= 20)
 
-    // Sort suggestions:
-    // 1. exact normalized name match first
-    // 2. matchPercent descending
-    // 3. booking start date descending
     const sorted = [...mapped].sort((a, b) => {
       if (a.isExactMatch && !b.isExactMatch) return -1
       if (!a.isExactMatch && b.isExactMatch) return 1
-      
-      if (b.matchPercent !== a.matchPercent) {
-        return b.matchPercent - a.matchPercent
-      }
-      
+      if (b.matchPercent !== a.matchPercent) return b.matchPercent - a.matchPercent
       const ca = a.booking.created_at || ''
       const cb = b.booking.created_at || ''
       if (ca !== cb) return cb.localeCompare(ca)
-
-      const dateA = a.booking.start_date || ''
-      const dateB = b.booking.start_date || ''
-      return dateB.localeCompare(dateA)
+      return (b.booking.start_date || '').localeCompare(a.booking.start_date || '')
     })
 
-    // Deduplicate suggestions by booking.id before slicing to max 8 results
     const seen = new Set<string>()
     const deduplicated: typeof sorted = []
     for (const item of sorted) {
@@ -259,129 +280,64 @@ export default function BookingsClient({
         deduplicated.push(item)
       }
     }
-
     return deduplicated.slice(0, 8)
   }, [fuseInstance, debouncedSearchQuery, smartSearchEnabled])
 
-  // Filter logic — wrapped in useMemo to avoid redundant recalculation on unrelated re-renders (modal open/close, toast, etc.)
-  const filteredBookings = useMemo(() => {
-    const getStrictMatch = (booking: Booking) => {
-      const searchLower = searchQuery.toLowerCase()
-      const primary = booking.primary_client || {
-        full_name: booking.client_name,
-        phone: booking.client_phone,
-        cin: booking.client_cin_passport,
-        license_number: booking.client_license_number
-      }
-      const secondary = booking.secondary_client
+  // ─── Local display: paginate the current server batch (10 per local page) ─
+  // The server already applies search+filter; we just slice locally.
+  const totalLocalItems = serverBookings.length
+  const localTotalPages = Math.ceil(totalLocalItems / LOCAL_PAGE_SIZE) || 1
+  const paginatedBookings = useMemo(() => {
+    let sortedList = [...serverBookings]
 
-      return (
-        (primary.full_name?.toLowerCase() || '').includes(searchLower) ||
-        (primary.phone?.toLowerCase() || '').includes(searchLower) ||
-        (primary.cin?.toLowerCase() || '').includes(searchLower) ||
-        (primary.license_number?.toLowerCase() || '').includes(searchLower) ||
-        (secondary?.full_name?.toLowerCase() || '').includes(searchLower) ||
-        (secondary?.phone?.toLowerCase() || '').includes(searchLower) ||
-        (secondary?.cin?.toLowerCase() || '').includes(searchLower) ||
-        (secondary?.license_number?.toLowerCase() || '').includes(searchLower) ||
-        (booking.vehicles?.brand && `${booking.vehicles.brand} ${booking.vehicles.model}`.toLowerCase().includes(searchLower)) ||
-        booking.id.toLowerCase().includes(searchLower)
-      )
-    }
-
-    const normQuery = normalizeText(searchQuery)
-    const isFuzzyActive = smartSearchEnabled && normQuery.length >= 3 && !isNonNameQuery(searchQuery)
-
-    // Build Set of fuzzy matched booking IDs
-    const fuzzyBookingIds = new Set(
-      isFuzzyActive ? fuzzySuggestions.map(s => s.booking.id) : []
-    )
-
-    return initialBookings.filter((booking) => {
-      // Apply non-text filters
-      const matchesStatus = statusFilter === 'All' || booking.status?.toLowerCase() === statusFilter.toLowerCase()
-      const matchesVehicle = vehicleFilter === 'All' || booking.vehicle_id === vehicleFilter
-      const matchesDateFrom = !dateFrom || booking.start_date >= dateFrom
-      const matchesDateTo = !dateTo || booking.start_date <= dateTo
-
-      if (!matchesStatus || !matchesVehicle || !matchesDateFrom || !matchesDateTo) {
-        return false
-      }
-
-      // If Smart Search is ON and query is a valid name query
-      if (isFuzzyActive) {
-        // Match if it's in fuzzy suggestions OR if it matches strictly (exact/substring)
-        return fuzzyBookingIds.has(booking.id) || getStrictMatch(booking)
-      }
-
-      // Otherwise, strict search
-      return getStrictMatch(booking)
-    })
-  }, [initialBookings, searchQuery, statusFilter, vehicleFilter, dateFrom, dateTo, smartSearchEnabled, fuzzySuggestions])
-
-  // Sort by rental start date descending — also memoized
-  const sortedBookings = useMemo(() => {
-    const normQuery = normalizeText(searchQuery)
-    const isFuzzyActive = smartSearchEnabled && normQuery.length >= 3 && !isNonNameQuery(searchQuery)
-
-    if (isFuzzyActive) {
-      // Build a quick lookup map of bookingId -> fuzzy suggestion metadata
-      const fuzzyMap = new Map<string, { matchPercent: number; isExactMatch: boolean }>()
-      fuzzySuggestions.forEach((s) => {
-        fuzzyMap.set(s.booking.id, {
-          matchPercent: s.matchPercent,
-          isExactMatch: s.isExactMatch
+    // If query is a name search, sort the server results by match score
+    if (debouncedSearchQuery.trim().length >= 3 && !isNonNameQuery(debouncedSearchQuery)) {
+      const normQuery = normalizeText(debouncedSearchQuery)
+      
+      const fuseResults = fuseInstance.search(normQuery)
+      const scoresMap = new Map<string, { score: number; isExactMatch: boolean }>()
+      
+      for (const res of fuseResults) {
+        const isExactMatch =
+          res.item.search_client_name === normQuery ||
+          res.item.search_primary_name === normQuery ||
+          res.item.search_secondary_name === normQuery
+        scoresMap.set(res.item.booking.id, {
+          score: res.score ?? 1,
+          isExactMatch
         })
-      })
+      }
 
-      return [...filteredBookings].sort((a, b) => {
-        const fuzzyA = fuzzyMap.get(a.id)
-        const fuzzyB = fuzzyMap.get(b.id)
+      // Sort sortedList using the scoresMap
+      sortedList.sort((a, b) => {
+        const scoreA = scoresMap.get(a.id)
+        const scoreB = scoresMap.get(b.id)
 
-        // Exact name/strict match priority: If one is an exact match (or not in fuzzy map, which means it matched strictly), it goes first.
-        const isExactA = !fuzzyA || fuzzyA.isExactMatch
-        const isExactB = !fuzzyB || fuzzyB.isExactMatch
+        const matchPercentA = scoreA ? Math.round((1 - scoreA.score) * 100) : 0
+        const matchPercentB = scoreB ? Math.round((1 - scoreB.score) * 100) : 0
+        const isExactA = scoreA?.isExactMatch ?? false
+        const isExactB = scoreB?.isExactMatch ?? false
 
         if (isExactA && !isExactB) return -1
         if (!isExactA && isExactB) return 1
 
-        // Compare matchPercent
-        const percentA = fuzzyA?.matchPercent ?? 100
-        const percentB = fuzzyB?.matchPercent ?? 100
-
-        if (percentB !== percentA) {
-          return percentB - percentA
+        if (matchPercentB !== matchPercentA) {
+          return matchPercentB - matchPercentA
         }
 
-        // Default to created_at descending (newest added first)
+        // Fallback to creation date descending
         const ca = a.created_at || ''
         const cb = b.created_at || ''
         if (ca !== cb) return cb.localeCompare(ca)
-        const da = a.start_date || ''
-        const db = b.start_date || ''
-        return db.localeCompare(da)
+        return (b.start_date || '').localeCompare(a.start_date || '')
       })
     }
 
-    // Default sorting (Smart OFF)
-    return [...filteredBookings].sort((a, b) => {
-      const ca = a.created_at || ''
-      const cb = b.created_at || ''
-      if (ca !== cb) return cb.localeCompare(ca)
-      const da = a.start_date || ''
-      const db = b.start_date || ''
-      return db.localeCompare(da)
-    })
-  }, [filteredBookings, searchQuery, smartSearchEnabled, fuzzySuggestions])
-
-  const totalItems = sortedBookings.length
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1
-  const paginatedBookings = useMemo(() => {
-    return sortedBookings.slice(
-      (currentPage - 1) * itemsPerPage,
-      currentPage * itemsPerPage
+    return sortedList.slice(
+      (currentPage - 1) * LOCAL_PAGE_SIZE,
+      currentPage * LOCAL_PAGE_SIZE
     )
-  }, [sortedBookings, currentPage, itemsPerPage])
+  }, [serverBookings, currentPage, smartSearchEnabled, debouncedSearchQuery, fuseInstance])
 
   // Helper to map payment status to badge variant
   const getPaymentVariant = (status?: string) => {
@@ -1169,7 +1125,7 @@ export default function BookingsClient({
         </div>
 
         {/* Pagination Controls */}
-        {totalPages > 1 && (
+        {(localTotalPages > 1 || serverTotalPages > 1) && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0.85rem 1.25rem', marginTop: '1rem', borderRadius: '12px',
@@ -1177,31 +1133,52 @@ export default function BookingsClient({
             flexWrap: 'wrap', gap: '0.75rem', width: '100%', boxSizing: 'border-box',
           }} className="glass-panel">
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {t('common.showing')} <span style={{ color: '#fff', fontWeight: 600 }}>{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(totalItems, currentPage * itemsPerPage)}</span> {t('common.of')} <span style={{ color: '#fff', fontWeight: 600 }}>{totalItems}</span> {t('common.bookings')}
+              {t('common.showing')} <span style={{ color: '#fff', fontWeight: 600 }}>
+                {Math.min(serverTotalCount, (serverPage - 1) * SERVER_PAGE_SIZE + (currentPage - 1) * LOCAL_PAGE_SIZE + 1)}–{Math.min(serverTotalCount, (serverPage - 1) * SERVER_PAGE_SIZE + currentPage * LOCAL_PAGE_SIZE)}
+              </span> {t('common.of')} <span style={{ color: '#fff', fontWeight: 600 }}>{serverTotalCount}</span> {t('common.bookings')}
+              {isFetching && <Loader2 size={14} style={{ marginLeft: '0.5rem', display: 'inline', animation: 'spin 1s linear infinite', color: '#E5C17D', verticalAlign: 'middle' }} />}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1, justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flex: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {/* Previous server batch */}
+              {serverPage > 1 && currentPage === 1 && (
+                <button
+                  onClick={() => setServerPage(prev => Math.max(1, prev - 1))}
+                  disabled={isFetching}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.08)',
+                    color: 'rgba(255,255,255,0.7)', cursor: isFetching ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease',
+                  }}
+                  className="hover-bg-glass"
+                >
+                  « {t('common.previous')}
+                </button>
+              )}
+              {/* Local prev within batch */}
               <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
+                disabled={currentPage === 1 && serverPage === 1}
                 style={{
                   padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
-                  background: 'transparent',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: currentPage === 1 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.15s ease',
+                  background: 'transparent', border: '1px solid rgba(255,255,255,0.08)',
+                  color: currentPage === 1 && serverPage === 1 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                  cursor: currentPage === 1 && serverPage === 1 ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease',
                 }}
                 className="hover-bg-glass"
+                onClick={() => {
+                  if (currentPage > 1) {
+                    setCurrentPage(prev => prev - 1)
+                  } else if (serverPage > 1) {
+                    setServerPage(prev => prev - 1)
+                  }
+                }}
               >
                 {t('common.previous')}
               </button>
-              {Array.from({ length: Math.min(9, totalPages) }, (_, idx) => {
-                let p = idx + 1;
-                if (currentPage > 5 && totalPages > 9) {
-                  p = currentPage - 5 + idx;
-                  if (p + (8 - idx) > totalPages) {
-                    p = totalPages - 8 + idx;
-                  }
+              {Array.from({ length: Math.min(9, localTotalPages) }, (_, idx) => {
+                let p = idx + 1
+                if (currentPage > 5 && localTotalPages > 9) {
+                  p = currentPage - 5 + idx
+                  if (p + (8 - idx) > localTotalPages) p = localTotalPages - 8 + idx
                 }
                 const active = currentPage === p
                 return (
@@ -1214,8 +1191,7 @@ export default function BookingsClient({
                       background: active ? 'rgba(229,193,125,0.12)' : 'transparent',
                       border: `1px solid ${active ? 'rgba(229,193,125,0.45)' : 'rgba(255,255,255,0.08)'}`,
                       color: active ? '#ae9260' : 'rgba(255,255,255,0.7)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
+                      cursor: 'pointer', transition: 'all 0.15s ease',
                     }}
                     className="hover-bg-glass"
                   >
@@ -1223,21 +1199,32 @@ export default function BookingsClient({
                   </button>
                 )
               })}
+              {/* Local next within batch / next server batch */}
               <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => {
+                  if (currentPage < localTotalPages) {
+                    setCurrentPage(prev => prev + 1)
+                  } else if (serverPage < serverTotalPages) {
+                    setServerPage(prev => prev + 1)
+                  }
+                }}
+                disabled={(currentPage === localTotalPages && serverPage === serverTotalPages) || isFetching}
                 style={{
                   padding: '0.4rem 0.75rem', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
-                  background: 'transparent',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: currentPage === totalPages ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.15s ease',
+                  background: 'transparent', border: '1px solid rgba(255,255,255,0.08)',
+                  color: (currentPage === localTotalPages && serverPage === serverTotalPages) || isFetching ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+                  cursor: (currentPage === localTotalPages && serverPage === serverTotalPages) || isFetching ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease',
                 }}
                 className="hover-bg-glass"
               >
                 {t('common.next')}
               </button>
+              {/* Load next server batch indicator */}
+              {serverTotalPages > 1 && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
+                  ({lang === 'fr' ? 'Page' : 'Batch'} {serverPage}/{serverTotalPages})
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -1249,7 +1236,7 @@ export default function BookingsClient({
           editingBooking={editingBooking}
           vehicles={vehicles}
           clients={clients}
-          initialBookings={initialBookings}
+          initialBookings={serverBookings}
           vehicleLegalDocs={vehicleLegalDocs}
           onClose={() => setIsFormOpen(false)}
         />

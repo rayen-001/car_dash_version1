@@ -337,7 +337,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
 
       const fuse = new Fuse(fuzzyIndexData, {
         keys: ['search_name'],
-        threshold: 0.40,
+        threshold: 0.45,
         includeScore: true,
         minMatchCharLength: 3
       })
@@ -345,7 +345,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       const resultsFuse = fuse.search(normQuery)
       resultsFuse.forEach((res) => {
         const matchPercent = Math.round((1 - (res.score ?? 1)) * 100)
-        if (matchPercent >= 60) {
+        if (matchPercent >= 55) {
           const isExactMatch = res.item.search_name === normQuery
           fuzzyClientIds.add(res.item.client.id)
           fuzzyScoreMap.set(res.item.client.id, { matchPercent, isExactMatch })
@@ -372,7 +372,10 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
 
       const matchesStrict = 
         (isDebtQuery && stats.totalOwed > 0) ||
-        client.full_name.toLowerCase().includes(query) ||
+        (() => {
+          const words = query.split(/\s+/).filter(w => w.length >= 1)
+          return words.length > 0 && words.every(w => client.full_name.toLowerCase().includes(w))
+        })() ||
         (client.email || '').toLowerCase().includes(query) ||
         matchPhone ||
         (client.license_number || '').toLowerCase().includes(query) ||

@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Search, User, Sparkles } from 'lucide-react'
 import { Client } from '@/types'
+import Fuse from 'fuse.js'
 
 interface ManualClientNameInputProps {
   value: string
@@ -13,38 +14,6 @@ interface ManualClientNameInputProps {
   className?: string
   style?: React.CSSProperties
   required?: boolean
-}
-
-/** Normalize a string for fuzzy comparison */
-function norm(s: string) {
-  return s.toLowerCase().trim().replace(/\s+/g, ' ')
-}
-
-/** Score how well a client matches a query (0 = no match) */
-function matchScore(client: Client, query: string): number {
-  const q = norm(query)
-  if (q.length < 2) return 0
-
-  const name = norm(client.full_name)
-  const phone = norm(client.phone || '')
-  const cin = norm(client.cin || '')
-  const permis = norm(client.permis_numero || '')
-
-  // Exact name start → highest score
-  if (name.startsWith(q)) return 100
-  // Full name contains query
-  if (name.includes(q)) return 80
-  // Phone/CIN/Permis exact match
-  if (phone.includes(q) || cin.includes(q) || permis.includes(q)) return 70
-  // Word-level name match (any word starts with query token)
-  const queryWords = q.split(' ')
-  const nameWords = name.split(' ')
-  const wordMatch = queryWords.every(qw =>
-    nameWords.some(nw => nw.startsWith(qw))
-  )
-  if (wordMatch) return 60
-
-  return 0
 }
 
 export default function ManualClientNameInput({
@@ -62,15 +31,21 @@ export default function ManualClientNameInput({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Initialize Fuse instance
+  const fuse = useMemo(() => {
+    return new Fuse(clients, {
+      keys: ['full_name', 'phone', 'cin', 'permis_numero', 'license_number'],
+      threshold: 0.45,
+      distance: 100,
+      ignoreLocation: true,
+    })
+  }, [clients])
+
   // Compute suggestions whenever value changes
-  const suggestions = value.trim().length >= 2
-    ? clients
-        .map(c => ({ client: c, score: matchScore(c, value) }))
-        .filter(x => x.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6)
-        .map(x => x.client)
-    : []
+  const suggestions = useMemo(() => {
+    if (value.trim().length < 2) return []
+    return fuse.search(value).slice(0, 6).map(r => r.item)
+  }, [value, fuse])
 
   // Open dropdown when we have suggestions
   useEffect(() => {

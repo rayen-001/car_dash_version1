@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { getBusinessSettings, syncAndRelateClients } from '@/app/actions'
-import { fetchAllBookings } from '@/app/actions/_shared'
+import { fetchBookingsPageAction } from '@/app/actions/bookings'
 import BookingsClient from './BookingsClient'
 
 export default async function BookingsPage() {
@@ -18,18 +18,11 @@ export default async function BookingsPage() {
     console.error('Failed to sync bookings clients:', e)
   }
 
-  // Fetch bookings with vehicle details, driver profiles, and handover telemetry
-  const bookings = await fetchAllBookings(
-    supabase,
-    user.id,
-    `
-      *,
-      vehicles (brand, model, license_plate),
-      installments:booking_installments(*),
-      primary_client:clients!client_id(*),
-      secondary_client:clients!secondary_client_id(*)
-    `
-  )
+  // Fetch bookings (first 50 rows) using the secure server action
+  const initialData = await fetchBookingsPageAction({
+    page: 1,
+    pageSize: 50
+  })
 
   // Fetch vehicles for the dropdown — include maintenance km fields so the
   // booking form can show oil-change / brake-pads warnings.
@@ -61,7 +54,9 @@ export default async function BookingsPage() {
 
   return (
     <BookingsClient 
-      initialBookings={bookings || []} 
+      initialBookings={initialData.bookings} 
+      initialTotalCount={initialData.totalCount}
+      initialTotalPages={initialData.totalPages}
       vehicles={vehicles || []} 
       clients={clients || []}
       businessSettings={settings}

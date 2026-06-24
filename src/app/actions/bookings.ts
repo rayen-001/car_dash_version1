@@ -1266,3 +1266,132 @@ export async function updateBookingHandover(
   // Run central odometer sync AFTER saving handover (owner-scoped & ownership-verified inside)
   await syncVehicleMaxOdometer(vehicleId)
 }
+
+export interface FetchBookingsParams {
+  page: number
+  pageSize: number
+  searchQuery?: string
+  statusFilter?: string
+  vehicleFilter?: string
+  clientFilter?: string
+  dateFrom?: string
+  dateTo?: string
+  sortBy?: string
+  sortDirection?: 'asc' | 'desc'
+}
+
+function sanitizeSearchQuery(q: string | null | undefined): string {
+  if (!q) return ''
+  // Strip out SQL/PostgREST wildcards, quotes, commas, backslashes, and parentheses
+  let cleaned = q.replace(/[%\_\,\\'\"\(\)\[\]\{\}\<\>\,\.\;\:\+\*\?\^\$\|]/g, '')
+  return cleaned.trim().slice(0, 50)
+}
+
+export async function fetchBookingsPageAction(params: FetchBookingsParams) {
+  const { supabase, user } = await getAuthedUser()
+  const page = params.page || 1
+  const pageSize = params.pageSize || 50
+  const offset = (page - 1) * pageSize
+
+  // Start building the query
+  let query = supabase
+    .from('bookings')
+    .select(`
+      *,
+      vehicles(brand, model, license_plate),
+      installments:booking_installments(*),
+      primary_client:clients!client_id(*),
+      secondary_client:clients!secondary_client_id(*)
+    `, { count: 'exact' })
+    .eq('owner_id', user.id)
+
+  // 1. Search Query Filters
+  const rawSearch = params.searchQuery || ''
+  const safeQuery = sanitizeSearchQuery(rawSearch)
+
+  if (safeQuery.length >= 2) {
+    // Option B: Pre-query matching vehicle IDs (by plate, brand, or model)
+    const normalizedPlate = safeQuery.replace(/[\s\-]/g, '').toUpperCase()
+    
+    // Call the database RPC search function
+    const { data: matchedVehicles, error: searchErr } = await supabase
+      .rpc('search_vehicles', { p_query: safeQuery })
+
+    if (searchErr) {
+      console.error('[fetchBookingsPageAction] search_vehicles RPC error:', searchErr.message)
+    }
+
+    const vehicleIds = matchedVehicles?.map((v: any) => v.id) || []
+
+    let orFilter = `client_phone.ilike.%${safeQuery}%,client_cin_passport.ilike.%${safeQuery}%`
+    
+    // For client_name, support multi-word search with smart filtering.
+    // If we have long/distinct words (>= 4 chars), do OR matching on them.
+    // Otherwise, require ALL short words (>= 2 chars) to match (AND) to prevent flooding.
+    const words = safeQuery.split(/\s+/).filter(w => w.length >= 2)
+    const longWords = words.filter(w => w.length >= 4)
+    if (longWords.length > 0) {
+      const nameOrPart = longWords.map(w => `client_name.ilike.%${w}%`).join(',')
+      orFilter += `,${nameOrPart}`
+    } else if (words.length > 1) {
+      const nameAndPart = `and(${words.map(w => `client_name.ilike.%${w}%`).join(',')})`
+      orFilter += `,${nameAndPart}`
+    } else {
+      orFilter += `,client_name.ilike.%${safeQuery}%`
+    }
+
+    if (vehicleIds.length > 0) {
+      orFilter += `,vehicle_id.in.(${vehicleIds.join(',')})`
+    }
+    query = query.or(orFilter)
+  }
+
+  // 2. Status Filter
+  if (params.statusFilter && params.statusFilter.toLowerCase() !== 'all') {
+    query = query.eq('status', params.statusFilter.toLowerCase())
+  }
+
+  // 3. Vehicle Filter
+  if (params.vehicleFilter && params.vehicleFilter.toLowerCase() !== 'all') {
+    query = query.eq('vehicle_id', params.vehicleFilter)
+  }
+
+  // 4. Date range filters
+  if (params.dateFrom) {
+    query = query.gte('start_date', params.dateFrom)
+  }
+  if (params.dateTo) {
+    query = query.lte('end_date', params.dateTo)
+  }
+
+  // 5. Stable sorting — identical to analytics "Dernières 250" logic:
+  //    1st: import_raw_data->csv_line DESC (Excel row number, highest = most recent)
+  //         nullsFirst: true → new manual bookings (no csv_line) appear at the TOP
+  //    2nd: created_at DESC (tiebreaker among manual bookings)
+  //    3rd: id DESC (final tiebreaker)
+  query = query
+    .order('import_raw_data->csv_line', { ascending: false, nullsFirst: true })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+
+  // 6. Pagination limits
+  query = query.range(offset, offset + pageSize - 1)
+
+  const { data, count, error } = await query
+
+  if (error) {
+    console.error('[fetchBookingsPageAction] Error fetching bookings:', error.message)
+    throw new Error(error.message)
+  }
+
+  const totalCount = count || 0
+  const totalPages = Math.ceil(totalCount / pageSize)
+
+  return {
+    bookings: data || [],
+    totalCount,
+    page,
+    pageSize,
+    totalPages
+  }
+}

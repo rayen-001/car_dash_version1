@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Search, X, Check, ChevronDown } from 'lucide-react'
+import Fuse from 'fuse.js'
 
 export interface ComboboxOption {
   value: string
@@ -24,84 +25,6 @@ interface SearchableComboboxProps {
   /** Extra option pinned at top (e.g. "Walk-in client") */
   pinnedOption?: ComboboxOption
 }
-
-// ---------------------------------------------------------------------------
-// Fuzzy matching helpers (module-level, not inside the component)
-// ---------------------------------------------------------------------------
-
-/** Levenshtein edit distance between two strings */
-function levenshtein(a: string, b: string): number {
-  const m = a.length, n = b.length
-  if (m === 0) return n
-  if (n === 0) return m
-  const prev = Array.from({ length: n + 1 }, (_, j) => j)
-  const curr = new Array<number>(n + 1).fill(0)
-  for (let i = 1; i <= m; i++) {
-    curr[0] = i
-    for (let j = 1; j <= n; j++) {
-      curr[j] = a[i - 1] === b[j - 1]
-        ? prev[j - 1]
-        : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1])
-    }
-    prev.splice(0, prev.length, ...curr)
-  }
-  return prev[n]
-}
-
-/** Max allowed edit distance for a word of given length */
-function maxDist(len: number): number {
-  if (len <= 2) return 0   // short: exact only
-  if (len <= 4) return 1   // medium: 1 typo allowed
-  return 2                  // long: 2 typos allowed
-}
-
-/**
- * Returns a match score for `text` against `query`.
- * 0 = no match. Higher = better match.
- */
-function fuzzyScore(text: string, query: string): number {
-  if (!query || !text) return query ? 0 : 1
-  const t = text.toLowerCase().trim()
-  const q = query.toLowerCase().trim()
-  if (!q) return 1
-
-  // Exact substring → best score
-  if (t.includes(q)) return 100
-
-  // Word-level fuzzy: each query word must fuzzy-match at least one target word
-  const qWords = q.split(/\s+/).filter(Boolean)
-  const tWords = t.split(/\s+/).filter(Boolean)
-
-  let totalScore = 0
-  for (const qw of qWords) {
-    let bestWordScore = 0
-    for (const tw of tWords) {
-      if (tw.startsWith(qw)) { bestWordScore = Math.max(bestWordScore, 90); break }
-      if (qw.startsWith(tw)) { bestWordScore = Math.max(bestWordScore, 70); break }
-      const dist = levenshtein(qw, tw)
-      if (dist <= maxDist(qw.length)) {
-        bestWordScore = Math.max(bestWordScore, 60 - dist * 10)
-      }
-    }
-    if (bestWordScore === 0) return 0  // query word found no match → fail
-    totalScore += bestWordScore
-  }
-  return totalScore / qWords.length
-}
-
-function optionMatches(o: ComboboxOption, query: string): boolean {
-  if (!query) return true
-  const fields = [o.label, o.sublabel ?? '', o.badge ?? '', o.searchKey ?? '']
-  return fields.some(f => fuzzyScore(f, query) > 0)
-}
-
-function optionScore(o: ComboboxOption, query: string): number {
-  if (!query) return 0
-  const fields = [o.label, o.sublabel ?? '', o.badge ?? '', o.searchKey ?? '']
-  return Math.max(...fields.map(f => fuzzyScore(f, query)))
-}
-
-// ---------------------------------------------------------------------------
 
 export default function SearchableCombobox({
   options,
@@ -142,11 +65,20 @@ export default function SearchableCombobox({
     }
   }, [open])
 
-  const filtered = query === ''
-    ? options
-    : options
-        .filter(o => optionMatches(o, query))
-        .sort((a, b) => optionScore(b, query) - optionScore(a, query))
+  // Initialize Fuse instance
+  const fuse = useMemo(() => {
+    return new Fuse(options, {
+      keys: ['label', 'sublabel', 'badge', 'searchKey'],
+      threshold: 0.45,
+      distance: 100,
+      ignoreLocation: true,
+    })
+  }, [options])
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return options
+    return fuse.search(query).map(r => r.item)
+  }, [query, options, fuse])
 
   const handleSelect = useCallback((opt: ComboboxOption) => {
     onChange(opt.value, opt)

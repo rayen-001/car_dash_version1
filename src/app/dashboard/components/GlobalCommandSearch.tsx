@@ -500,7 +500,7 @@ export default function GlobalCommandSearch({
 
       const fuse = new Fuse(fuzzyIndexData, {
         keys: ['search_client_name', 'search_primary_name', 'search_secondary_name'],
-        threshold: 0.40,
+        threshold: 0.45,
         includeScore: true,
         minMatchCharLength: 3
       })
@@ -508,7 +508,7 @@ export default function GlobalCommandSearch({
       const resultsFuse = fuse.search(normQuery)
       resultsFuse.forEach((res) => {
         const matchPercent = Math.round((1 - (res.score ?? 1)) * 100)
-        if (matchPercent >= 60) {
+        if (matchPercent >= 55) {
           const isExactMatch = 
             res.item.search_client_name === normQuery ||
             res.item.search_primary_name === normQuery ||
@@ -528,7 +528,12 @@ export default function GlobalCommandSearch({
         const matchPlate = booking.vehicles?.license_plate?.toLowerCase()?.includes(q) ?? false
         const matchBrand = booking.vehicles?.brand?.toLowerCase()?.includes(q)         ?? false
         const matchModel = booking.vehicles?.model?.toLowerCase()?.includes(q)         ?? false
-        const matchName  = booking.primary_client?.full_name?.toLowerCase()?.includes(q)      ?? false
+        const nameWords = q.split(/\s+/).filter(w => w.length >= 1)
+        const matchName = nameWords.length > 0 && nameWords.every(word => 
+          booking.primary_client?.full_name?.toLowerCase()?.includes(word) ||
+          booking.client_name?.toLowerCase()?.includes(word) ||
+          booking.secondary_client?.full_name?.toLowerCase()?.includes(word)
+        )
         const matchCin   = booking.primary_client?.license_number?.toLowerCase()?.includes(q) ?? false
 
         const normalizedStoredPhone = normalizePhone(booking.primary_client?.phone)
