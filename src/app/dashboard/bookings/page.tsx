@@ -32,17 +32,28 @@ export default async function BookingsPage() {
     .eq('owner_id', user.id)
     .is('withdrawn_at', null)
 
-  // Fetch clients belonging to this owner for dropdown selection.
-  // BookingFormModal hydrates ALL of these into the contract snapshot fields
-  // (and the Tunisian Legal Identity block) when an existing client is picked.
-  // upsertBooking writes everything back to the CRM record on save — full
-  // round-trip. If a column is missing here the hydration silently falls
-  // through to '' and the user sees empty inputs even when CRM has data.
-  const { data: clients } = await supabase
-    .from('clients')
-    .select('id, full_name, phone, trust_score, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le')
-    .eq('owner_id', user.id)
-    .order('full_name')
+  // Fetch ALL clients belonging to this owner for dropdown selection.
+  // IMPORTANT: PostgREST has a hard default limit of 1000 rows per request.
+  // With 1000+ clients, a plain .select() silently truncates the list —
+  // clients in the second half of the alphabet simply disappear from the
+  // dropdown. We paginate in chunks of 1000 until we have everything.
+  const allClients: any[] = []
+  let clientFrom = 0
+  while (true) {
+    const { data: clientChunk, error: clientErr } = await supabase
+      .from('clients')
+      .select('id, full_name, phone, trust_score, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le')
+      .eq('owner_id', user.id)
+      .order('full_name')
+      .range(clientFrom, clientFrom + 999)
+    if (clientErr) {
+      console.error('Error fetching clients chunk:', clientErr.message)
+      break
+    }
+    if (clientChunk) allClients.push(...clientChunk)
+    if (!clientChunk || clientChunk.length < 1000) break
+    clientFrom += 1000
+  }
 
   // Fetch vehicle legal documents for expiry collision warnings
   const { data: vehicleLegalDocs } = await supabase
@@ -58,7 +69,7 @@ export default async function BookingsPage() {
       initialTotalCount={initialData.totalCount}
       initialTotalPages={initialData.totalPages}
       vehicles={vehicles || []} 
-      clients={clients || []}
+      clients={allClients}
       businessSettings={settings}
       vehicleLegalDocs={vehicleLegalDocs || []}
     />
