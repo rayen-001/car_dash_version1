@@ -83,6 +83,82 @@ export async function fetchAllBookings(supabase: any, ownerId: string, selectQue
   return bookings
 }
 
+let clientsHasArchivedAt: boolean | null = null
+
+async function checkClientsArchivedAt(supabase: any) {
+  if (clientsHasArchivedAt !== null) return clientsHasArchivedAt
+  try {
+    const { error } = await supabase
+      .from('clients')
+      .select('archived_at')
+      .limit(1)
+    clientsHasArchivedAt = !error
+  } catch {
+    clientsHasArchivedAt = false
+  }
+  return clientsHasArchivedAt
+}
+
+/**
+ * Fetches all clients belonging to the active tenant by handling Postgrest 1000 row limits.
+ * We fetch sequentially in chunks of 1000 rows.
+ * Stable ordering: full_name ASC, id ASC by default.
+ * Every client fetch must be scoped by owner_id.
+ */
+export async function fetchAllClients(
+  supabase: any,
+  ownerId: string,
+  selectQuery = 'id, full_name, phone, cin, license_number',
+  orderOptions: { column: string; ascending: boolean }[] = [{ column: 'full_name', ascending: true }],
+  activeOnly = false
+) {
+  const clients: any[] = []
+  const seenIds = new Set<string>()
+  let from = 0
+
+  const hasArchivedAt = activeOnly ? await checkClientsArchivedAt(supabase) : false
+
+  while (true) {
+    let query = supabase
+      .from('clients')
+      .select(selectQuery)
+      .eq('owner_id', ownerId)
+
+    if (hasArchivedAt) {
+      query = query.is('archived_at', null)
+    }
+
+    // Apply orders
+    for (const opt of orderOptions) {
+      query = query.order(opt.column, { ascending: opt.ascending })
+    }
+    // Always add a secondary unique order for stable pagination if it's not the primary sort column
+    if (!orderOptions.some(opt => opt.column === 'id')) {
+      query = query.order('id', { ascending: true })
+    }
+
+    const { data, error } = await query.range(from, from + 999)
+
+    if (error) {
+      console.error('[fetchAllClients] error fetching page chunk:', error.message)
+      break
+    }
+    if (data) {
+      for (const row of data) {
+        if (!seenIds.has(row.id)) {
+          seenIds.add(row.id)
+          clients.push(row)
+        }
+      }
+    }
+    if (!data || data.length < 1000) {
+      break
+    }
+    from += 1000
+  }
+  return clients
+}
+
 /** Standardizes license plates (uppercase, remove spaces and dashes) */
 export function normPlate(p: string | null | undefined): string {
   if (!p) return ''

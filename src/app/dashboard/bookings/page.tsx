@@ -2,6 +2,7 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { getBusinessSettings, syncAndRelateClients } from '@/app/actions'
 import { fetchBookingsPageAction } from '@/app/actions/bookings'
+import { fetchAllClients } from '@/app/actions/_shared'
 import BookingsClient from './BookingsClient'
 
 export default async function BookingsPage() {
@@ -33,27 +34,13 @@ export default async function BookingsPage() {
     .is('withdrawn_at', null)
 
   // Fetch ALL clients belonging to this owner for dropdown selection.
-  // IMPORTANT: PostgREST has a hard default limit of 1000 rows per request.
-  // With 1000+ clients, a plain .select() silently truncates the list —
-  // clients in the second half of the alphabet simply disappear from the
-  // dropdown. We paginate in chunks of 1000 until we have everything.
-  const allClients: any[] = []
-  let clientFrom = 0
-  while (true) {
-    const { data: clientChunk, error: clientErr } = await supabase
-      .from('clients')
-      .select('id, full_name, phone, trust_score, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le')
-      .eq('owner_id', user.id)
-      .order('full_name')
-      .range(clientFrom, clientFrom + 999)
-    if (clientErr) {
-      console.error('Error fetching clients chunk:', clientErr.message)
-      break
-    }
-    if (clientChunk) allClients.push(...clientChunk)
-    if (!clientChunk || clientChunk.length < 1000) break
-    clientFrom += 1000
-  }
+  const allClients = await fetchAllClients(
+    supabase,
+    user.id,
+    'id, full_name, phone, trust_score, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le',
+    [{ column: 'full_name', ascending: true }],
+    true // activeOnly = true
+  )
 
   // Fetch vehicle legal documents for expiry collision warnings
   const { data: vehicleLegalDocs } = await supabase

@@ -48,11 +48,13 @@ export default function ManualClientNameInput({
     const q = value.trim()
     if (q.length < 2) return []
 
-    // ── Pass 1: fast case-insensitive substring scan ──────────────────────
-    // Guarantees exact name matches are always returned even when Fuse
-    // fuzzy scoring would penalise multi-word long names.
+    // ── Pass 1: fast case-insensitive multi-word scan ─────────────────────
+    // Splits the query into separate words and requires that each word matches.
+    // This allows typing non-adjacent words (e.g. "Mohamed Ali" matches "Mohamed Ben Ali").
     const qLower = q.toLowerCase()
-    const substringMatches = clients.filter(c => {
+    const words = qLower.split(/\s+/).filter(w => w.length >= 1)
+
+    const wordMatches = clients.filter(c => {
       const searchable = [
         c.full_name,
         c.phone,
@@ -63,12 +65,12 @@ export default function ManualClientNameInput({
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-      return searchable.includes(qLower)
+      return words.every(w => searchable.includes(w))
     })
 
-    if (substringMatches.length > 0) {
+    if (wordMatches.length > 0) {
       // Sort: full_name that starts with the query comes first
-      return substringMatches
+      return wordMatches
         .sort((a, b) => {
           const aStarts = (a.full_name || '').toLowerCase().startsWith(qLower) ? 0 : 1
           const bStarts = (b.full_name || '').toLowerCase().startsWith(qLower) ? 0 : 1

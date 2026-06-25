@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { syncAndRelateClients } from '@/app/actions'
-import { fetchAllBookings } from '@/app/actions/_shared'
+import { fetchAllBookings, fetchAllClients } from '@/app/actions/_shared'
 import ClientsClient from './ClientsClient'
 
 export default async function ClientsPage() {
@@ -17,33 +17,14 @@ export default async function ClientsPage() {
     console.error('Failed to sync clients:', e)
   }
 
-  // Fetch clients belonging to this owner (handling Postgrest 1000 row limits)
-  const clients = []
-  const seenClientIds = new Set<string>()
-  let from = 0
-  while (true) {
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: true })
-      .range(from, from + 999)
-    if (error) {
-      console.error('Error fetching clients page chunk:', error)
-      break
-    }
-    if (data) {
-      for (const row of data) {
-        if (!seenClientIds.has(row.id)) {
-          seenClientIds.add(row.id)
-          clients.push(row)
-        }
-      }
-    }
-    if (!data || data.length < 1000) break
-    from += 1000
-  }
+  // Fetch clients belonging to this owner (handling Postgrest 1000 row limits, stable ordering)
+  const clients = await fetchAllClients(
+    supabase,
+    user.id,
+    '*',
+    [{ column: 'created_at', ascending: false }],
+    false // activeOnly = false (load all clients for the main CRM page)
+  )
 
   // Fetch all bookings for this owner with nested vehicles and installments to build high-fidelity intelligence ledger
   const bookings = await fetchAllBookings(

@@ -1,20 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getAuthedUser, normCIN, normPermis, normPhone } from './_shared'
+import { getAuthedUser, normCIN, normPermis, normPhone, fetchAllClients } from './_shared'
 import { recalculateClientTrustScore } from './bookings'
 
 export async function getClients() {
   const { supabase, user } = await getAuthedUser()
-
-  const { data, error } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('owner_id', user.id)
-    .order('created_at', { ascending: false })
-
-  if (error) throw new Error(error.message)
-  return data || []
+  return fetchAllClients(supabase, user.id, '*', [{ column: 'created_at', ascending: false }])
 }
 
 export async function addClient(formData: FormData) {

@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { getBusinessSettings } from '@/app/actions'
-import { fetchAllBookings } from '@/app/actions/_shared'
+import { fetchAllBookings, fetchAllClients } from '@/app/actions/_shared'
 import ExpensesClient from './ExpensesClient'
 
 export default async function ExpensesPage() {
@@ -32,11 +32,13 @@ export default async function ExpensesPage() {
       .select('vehicle_id, doc_type, expiry_date')
       .eq('owner_id', user.id)
       .eq('doc_type', 'assurance'),
-    supabase
-      .from('clients')
-      .select('id, full_name, cin, phone')
-      .eq('owner_id', user.id)
-      .order('full_name', { ascending: true }),
+    fetchAllClients(
+      supabase,
+      user.id,
+      'id, full_name, cin, phone',
+      [{ column: 'full_name', ascending: true }],
+      true // activeOnly = true (only active clients in the expenses selector)
+    ),
     getBusinessSettings(),
   ])
 
@@ -62,7 +64,7 @@ export default async function ExpensesPage() {
       initialMaintenance={maintenanceRes.data || []}
       initialBookings={activeBookings}
       vehicles={vehiclesRes.data || []}
-      clients={clientsRes.data || []}
+      clients={clientsRes}
       businessSettings={settings}
       legalDocs={legalDocsRes.data || []}
     />

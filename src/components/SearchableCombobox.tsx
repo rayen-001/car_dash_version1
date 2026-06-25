@@ -81,21 +81,23 @@ export default function SearchableCombobox({
     const q = query.trim()
     if (!q) return options
 
-    // ── Pass 1: fast case-insensitive substring scan ────────────────────────
-    // This guarantees that typing the exact name always returns a result,
-    // even when Fuse fuzzy scoring would miss it due to threshold limits.
+    // ── Pass 1: fast case-insensitive multi-word scan ───────────────────────
+    // Splits the query into separate words and requires that each word matches.
+    // This allows typing non-adjacent words (e.g. "Mohamed Ali" matches "Mohamed Ben Ali").
     const qLower = q.toLowerCase()
-    const substringMatches = options.filter(o => {
+    const words = qLower.split(/\s+/).filter(w => w.length >= 1)
+
+    const wordMatches = options.filter(o => {
       const searchable = [o.label, o.sublabel, o.badge, o.searchKey]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-      return searchable.includes(qLower)
+      return words.every(w => searchable.includes(w))
     })
 
-    if (substringMatches.length > 0) {
+    if (wordMatches.length > 0) {
       // Sort: entries whose label *starts with* the query come first
-      return substringMatches.sort((a, b) => {
+      return wordMatches.sort((a, b) => {
         const aStarts = (a.label || '').toLowerCase().startsWith(qLower) ? 0 : 1
         const bStarts = (b.label || '').toLowerCase().startsWith(qLower) ? 0 : 1
         return aStarts - bStarts
