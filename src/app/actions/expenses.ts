@@ -4,22 +4,21 @@ import { revalidatePath } from 'next/cache'
 import { getAuthedUser } from './_shared'
 
 /**
- * Anonymous-expense rule (Option A): client_id is MANDATORY for transactional
- * categories (the metric is meaningless without a counterparty), and OPTIONAL
- * for asset-overhead categories (the metric is vehicle/fleet-scoped).
+ * Client is REQUIRED only for real claim/infraction types.
+ * All standard expense categories (fuel, cleaning, loyer, eau, etc.) are
+ * client-optional — the user may link a client for context, but it is never
+ * enforced server-side for dépenses générales.
  */
 const CLIENT_REQUIRED_CATEGORIES: ReadonlySet<string> = new Set([
   'damage_repair',
   'installment_tranche',
   'late_return_penalty',
-  'fuel',
-  'cleaning',
 ])
 
 function assertClientBindingForCategory(category: string, clientId: string | null) {
   if (CLIENT_REQUIRED_CATEGORIES.has(category) && !clientId) {
     throw new Error(
-      `Category "${category}" requires a client to be selected (no anonymous transactional metrics permitted).`
+      `Category "${category}" requires a client to be selected.`
     )
   }
 }

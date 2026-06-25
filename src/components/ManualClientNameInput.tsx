@@ -31,21 +31,55 @@ export default function ManualClientNameInput({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Initialize Fuse instance
+  // Initialize Fuse instance for typo-tolerant fallback
   const fuse = useMemo(() => {
     return new Fuse(clients, {
       keys: ['full_name', 'phone', 'cin', 'permis_numero', 'license_number'],
-      threshold: 0.45,
-      distance: 100,
+      threshold: 0.35,
+      distance: 200,
       ignoreLocation: true,
+      minMatchCharLength: 2,
+      includeScore: true,
     })
   }, [clients])
 
   // Compute suggestions whenever value changes
   const suggestions = useMemo(() => {
-    if (value.trim().length < 2) return []
-    return fuse.search(value).slice(0, 6).map(r => r.item)
-  }, [value, fuse])
+    const q = value.trim()
+    if (q.length < 2) return []
+
+    // ── Pass 1: fast case-insensitive substring scan ──────────────────────
+    // Guarantees exact name matches are always returned even when Fuse
+    // fuzzy scoring would penalise multi-word long names.
+    const qLower = q.toLowerCase()
+    const substringMatches = clients.filter(c => {
+      const searchable = [
+        c.full_name,
+        c.phone,
+        c.cin,
+        (c as any).permis_numero,
+        c.license_number,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return searchable.includes(qLower)
+    })
+
+    if (substringMatches.length > 0) {
+      // Sort: full_name that starts with the query comes first
+      return substringMatches
+        .sort((a, b) => {
+          const aStarts = (a.full_name || '').toLowerCase().startsWith(qLower) ? 0 : 1
+          const bStarts = (b.full_name || '').toLowerCase().startsWith(qLower) ? 0 : 1
+          return aStarts - bStarts
+        })
+        .slice(0, 8)
+    }
+
+    // ── Pass 2: Fuse fuzzy fallback (catches typos) ───────────────────────
+    return fuse.search(q).slice(0, 8).map(r => r.item)
+  }, [value, clients, fuse])
 
   // Open dropdown when we have suggestions
   useEffect(() => {

@@ -65,19 +65,45 @@ export default function SearchableCombobox({
     }
   }, [open])
 
-  // Initialize Fuse instance
+  // Initialize Fuse instance for fuzzy fallback
   const fuse = useMemo(() => {
     return new Fuse(options, {
       keys: ['label', 'sublabel', 'badge', 'searchKey'],
-      threshold: 0.45,
-      distance: 100,
+      threshold: 0.35,
+      distance: 200,
       ignoreLocation: true,
+      minMatchCharLength: 2,
+      includeScore: true,
     })
   }, [options])
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return options
-    return fuse.search(query).map(r => r.item)
+    const q = query.trim()
+    if (!q) return options
+
+    // ── Pass 1: fast case-insensitive substring scan ────────────────────────
+    // This guarantees that typing the exact name always returns a result,
+    // even when Fuse fuzzy scoring would miss it due to threshold limits.
+    const qLower = q.toLowerCase()
+    const substringMatches = options.filter(o => {
+      const searchable = [o.label, o.sublabel, o.badge, o.searchKey]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return searchable.includes(qLower)
+    })
+
+    if (substringMatches.length > 0) {
+      // Sort: entries whose label *starts with* the query come first
+      return substringMatches.sort((a, b) => {
+        const aStarts = (a.label || '').toLowerCase().startsWith(qLower) ? 0 : 1
+        const bStarts = (b.label || '').toLowerCase().startsWith(qLower) ? 0 : 1
+        return aStarts - bStarts
+      })
+    }
+
+    // ── Pass 2: Fuse fuzzy search (catches typos / partial matches) ─────────
+    return fuse.search(q).map(r => r.item)
   }, [query, options, fuse])
 
   const handleSelect = useCallback((opt: ComboboxOption) => {

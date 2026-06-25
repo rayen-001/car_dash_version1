@@ -14,6 +14,7 @@ import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/compone
 import { BusinessSettings } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
 import { useLanguage } from '@/lib/i18n'
+import ModalPortal from '@/components/ModalPortal'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ interface LedgerRow {
   date: string
   createdAt: string
   type: 'inflow' | 'outflow'
-  category: 'rental_revenue' | 'maintenance' | 'fuel' | 'insurance' | 'cleaning' | 'incident' | 'other' | 'damage_repair' | 'installment_tranche' | 'late_return_penalty'
+  category: 'rental_revenue' | 'maintenance' | 'fuel' | 'insurance' | 'cleaning' | 'incident' | 'other' | 'damage_repair' | 'installment_tranche' | 'late_return_penalty' | 'loyer' | 'electricite' | 'eau' | 'connexion' | 'gps_puce' | 'salaires'
   description: string
   entity: string
   vehicleLabel: string
@@ -60,7 +61,7 @@ interface LedgerRow {
   clients?: any
 }
 
-type DatePreset = 'today' | 'week' | 'month' | 'custom'
+type DatePreset = 'today' | 'week' | 'month' | 'all' | 'custom'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -406,7 +407,17 @@ const CATEGORY_META: Record<string, { label: string; emoji: string; color: strin
   insurance:      { label: 'Insurance',           emoji: '🛡️', color: '#38bdf8', bg: 'rgba(56,189,248,0.12)',  border: 'rgba(56,189,248,0.3)' },
   cleaning:       { label: 'Cleaning',            emoji: '🧹', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.3)' },
   incident:       { label: 'Incident Indemnity',  emoji: '💥', color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.3)' },
+  // General overhead categories
+  loyer:          { label: 'Loyer / Bureau',      emoji: '🏠', color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.3)' },
+  electricite:    { label: 'Électricité',         emoji: '⚡', color: '#facc15', bg: 'rgba(250,204,21,0.12)',  border: 'rgba(250,204,21,0.3)' },
+  eau:            { label: 'Eau',                 emoji: '💧', color: '#22d3ee', bg: 'rgba(34,211,238,0.12)',  border: 'rgba(34,211,238,0.3)' },
+  connexion:      { label: 'Connexion / Internet',emoji: '📡', color: '#34d399', bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.3)' },
+  gps_puce:       { label: 'GPS / Puce',          emoji: '🛰️', color: '#818cf8', bg: 'rgba(129,140,248,0.10)', border: 'rgba(129,140,248,0.25)' },
+  salaires:       { label: 'Salaires / Personnel',emoji: '👤', color: '#f472b6', bg: 'rgba(244,114,182,0.12)', border: 'rgba(244,114,182,0.3)' },
   other:          { label: 'Other',               emoji: '📋', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.3)' },
+  damage_repair:       { label: 'Réparation Dégâts',   emoji: '🔧', color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.3)' },
+  installment_tranche: { label: 'Tranche Paiement',    emoji: '💳', color: '#10b981', bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.3)' },
+  late_return_penalty: { label: 'Pénalité Retard',     emoji: '⏰', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',   border: 'rgba(245,158,11,0.3)' },
 }
 
 // ─── Installment Roadmap Sub-Panel ────────────────────────────────────────────
@@ -495,6 +506,7 @@ interface ExpenseInput {
   amount?: number | string
   vehicles?: any
   client_phone?: string
+  clients?: any
 }
 
 interface MaintenanceInput {
@@ -536,13 +548,13 @@ export default function ExpensesClient({
   const [settledInstallmentIds, setSettledInstallmentIds] = useState<string[]>([])
   const [locallySettledClaims, setLocallySettledClaims] = useState<string[]>([])
   const [collectAmounts, setCollectAmounts] = useState<Record<string, string>>({})
-  const [flowFilter, setFlowFilter]         = useState<'all' | 'maintenance' | 'statutory' | 'fuel' | 'administrative'>('all')
+  const [flowFilter, setFlowFilter]         = useState<string>('all')
   const [expandedRowId, setExpandedRowId]   = useState<string | null>(null)
   const [trancheActionLoading, setTrancheActionLoading] = useState<string | null>(null)
   const router = useRouter()
 
   // ── Temporal Filter ───────────────────────────────────────────────────────
-  const [preset, setPreset]       = useState<DatePreset>('month')
+  const [preset, setPreset]       = useState<DatePreset>('all')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]   = useState('')
 
@@ -569,6 +581,9 @@ export default function ExpensesClient({
       const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
       return { from, to: TODAY }
     }
+    if (preset === 'all') {
+      return { from: '2000-01-01', to: '2999-12-31' }
+    }
     return { from: customFrom || '2000-01-01', to: customTo || TODAY }
   }, [preset, customFrom, customTo, TODAY])
 
@@ -583,7 +598,6 @@ export default function ExpensesClient({
       const date = isoDate(e.created_at)
       const cat = e.category as string
       const isClaim = ['damage_repair', 'installment_tranche', 'late_return_penalty'].includes(cat)
-      if (isClaim) continue;
       const plate = buildPlateLabel(e.vehicles as any)
       const modelLabel = buildVehicleLabel(e.vehicles as any)
       const amount = Number(e.amount) || 0
@@ -591,6 +605,10 @@ export default function ExpensesClient({
       const isClaimSettled = locallySettledClaims.includes(`expense-${e.id}`)
       const collectedAmount = isClaim ? (isClaimSettled ? amount : 0) : amount
       const remainingAmount = isClaim ? (isClaimSettled ? 0 : amount) : 0
+
+      // Resolve client from the clients prop (FK join is not available in schema cache)
+      const clientId = (e as any).client_id as string | null | undefined
+      const resolvedClient = clientId ? clients.find(c => c.id === clientId) ?? null : null
 
       // Map pure vendor entity context
       let vendorEntity = e.description || 'Administrative Clearing'
@@ -620,6 +638,7 @@ export default function ExpensesClient({
         driverDocsLabel: '',
         claimType: isClaim ? cat as LedgerRow['claimType'] : undefined,
         vehicleId: (e as any).vehicle_id || '',
+        clients: resolvedClient,
       })
     }
 
@@ -661,6 +680,43 @@ export default function ExpensesClient({
     })
   }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims, lang])
 
+  // ── Category Counts (based on active date/type/search query, but not category filter) ──
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    const { from, to } = dateWindow
+    const q = searchQuery.trim().toLowerCase()
+    const isOverdueQuery  = q === 'overdue'
+    const isDueTodayQuery = q === 'due today' || q === 'duetoday'
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/
+    const isDueDateSearch = datePattern.test(q)
+
+    allRows.forEach(row => {
+      const inWindow = row.date >= from && row.date <= to
+      const typeMatch = typeFilter === 'all' || row.type === typeFilter
+
+      let smartMatch = true
+      if (isOverdueQuery) {
+        smartMatch = row.hasOverdue || row.remainingAmount > 0
+      } else if (isDueTodayQuery) {
+        smartMatch = row.installments.some(t => t.status === 'unpaid' && t.due_date === TODAY)
+      } else if (isDueDateSearch) {
+        smartMatch = row.installments.some(t => t.due_date === q)
+      } else {
+        smartMatch = !q ||
+          row.description.toLowerCase().includes(q) ||
+          row.entity.toLowerCase().includes(q) ||
+          row.vehicleLabel.toLowerCase().includes(q) ||
+          row.licensePlate.toLowerCase().includes(q) ||
+          row.installments.some(t => t.due_date.includes(q))
+      }
+
+      if (inWindow && typeMatch && smartMatch) {
+        counts[row.category] = (counts[row.category] || 0) + 1
+      }
+    })
+    return counts
+  }, [allRows, dateWindow, typeFilter, searchQuery, TODAY])
+
   // ── Smart Filter (date string, "overdue", "due today") ────────────────────
   const filtered = useMemo(() => {
     const { from, to } = dateWindow
@@ -669,7 +725,6 @@ export default function ExpensesClient({
     // Parse smart search keywords
     const isOverdueQuery  = q === 'overdue'
     const isDueTodayQuery = q === 'due today' || q === 'duetoday'
-    // Detect YYYY-MM-DD date pattern
     const datePattern = /^\d{4}-\d{2}-\d{2}$/
     const isDueDateSearch = datePattern.test(q)
 
@@ -677,19 +732,8 @@ export default function ExpensesClient({
       const inWindow = row.date >= from && row.date <= to
       const typeMatch = typeFilter === 'all' || row.type === typeFilter
 
-      // Flow filter match
-      let flowMatch = true
-      if (flowFilter !== 'all') {
-        if (flowFilter === 'maintenance') {
-          flowMatch = row.category === 'maintenance'
-        } else if (flowFilter === 'statutory') {
-          flowMatch = row.category === 'insurance'
-        } else if (flowFilter === 'fuel') {
-          flowMatch = row.category === 'fuel'
-        } else if (flowFilter === 'administrative') {
-          flowMatch = !['maintenance', 'insurance', 'fuel'].includes(row.category)
-        }
-      }
+      // Category filter match
+      const flowMatch = flowFilter === 'all' || row.category === flowFilter
 
       if (!flowMatch) return false
 
@@ -703,7 +747,6 @@ export default function ExpensesClient({
         )
       }
       if (isDueDateSearch) {
-        // Match rows whose installment due dates contain this date
         const hasMatchingTranche = row.installments.some(t => t.due_date === q)
         if (hasMatchingTranche) return inWindow && typeMatch
       }
@@ -900,11 +943,23 @@ export default function ExpensesClient({
           <div className="form-group">
             <label>{lang === 'fr' ? 'Catégorie' : 'Category'}</label>
             <select name="category" required className="form-input" defaultValue={defaultValues?.category || 'fuel'}>
-              <option value="fuel">⛽ {lang === 'fr' ? 'Carburant' : 'Fuel'}</option>
-              <option value="maintenance">🛠️ {lang === 'fr' ? 'Entretien' : 'Maintenance'}</option>
-              <option value="insurance">🛡️ {lang === 'fr' ? 'Assurance' : 'Insurance'}</option>
-              <option value="cleaning">🧹 {lang === 'fr' ? 'Nettoyage' : 'Cleaning'}</option>
-              <option value="other">📋 {lang === 'fr' ? 'Autre' : 'Other'}</option>
+              <optgroup label={lang === 'fr' ? '🚗 Véhicules' : '🚗 Vehicle'}>
+                <option value="fuel">⛽ {lang === 'fr' ? 'Carburant' : 'Fuel'}</option>
+                <option value="maintenance">🛠️ {lang === 'fr' ? 'Entretien' : 'Maintenance'}</option>
+                <option value="insurance">🛡️ {lang === 'fr' ? 'Assurance' : 'Insurance'}</option>
+                <option value="cleaning">🧹 {lang === 'fr' ? 'Nettoyage' : 'Cleaning'}</option>
+              </optgroup>
+              <optgroup label={lang === 'fr' ? '🏢 Charges Générales' : '🏢 General Overhead'}>
+                <option value="loyer">🏠 {lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'}</option>
+                <option value="electricite">⚡ {lang === 'fr' ? 'Électricité' : 'Electricity'}</option>
+                <option value="eau">💧 {lang === 'fr' ? 'Eau' : 'Water'}</option>
+                <option value="connexion">📡 {lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'}</option>
+                <option value="gps_puce">🛰️ {lang === 'fr' ? 'GPS / Puce Téléphone' : 'GPS / SIM Card'}</option>
+                <option value="salaires">👤 {lang === 'fr' ? 'Salaires / Personnel' : 'Salaries / Staff'}</option>
+              </optgroup>
+              <optgroup label={lang === 'fr' ? '📋 Divers' : '📋 Miscellaneous'}>
+                <option value="other">📋 {lang === 'fr' ? 'Autre' : 'Other'}</option>
+              </optgroup>
             </select>
           </div>
         ) : (
@@ -967,13 +1022,22 @@ export default function ExpensesClient({
         </div>
         
         <div className="form-group">
-          <label>{lang === 'fr' ? 'Lien vers Client (Requis pour Réclamations/Infractions)' : 'Link to Client (Required for Claims/Infractions)'}</label>
+          <label>
+            {infractionType
+              ? (lang === 'fr' ? 'Lien vers Client (Requis)' : 'Link to Client (Required)')
+              : (lang === 'fr' ? 'Lien vers Client (Optionnel)' : 'Link to Client (Optional)')}
+          </label>
           <select name="client_id" className="form-input" defaultValue={defaultValues?.client_id || ''} required={!!infractionType}>
             <option value="">{lang === 'fr' ? '-- Aucun Client Lié --' : '-- No Client Linked --'}</option>
             {clients.map(c => (
               <option key={c.id} value={c.id}>{c.full_name} ({c.phone || c.cin || 'N/A'})</option>
             ))}
           </select>
+          {!infractionType && (
+            <span style={{ fontSize: '0.72rem', color: 'rgba(229,193,125,0.4)', marginTop: '0.25rem', display: 'block' }}>
+              {lang === 'fr' ? 'Optionnel — lier un client si la dépense lui est associée' : 'Optional — link a client if this expense is associated with one'}
+            </span>
+          )}
         </div>
 
         <div className="modal-footer">
@@ -991,6 +1055,7 @@ export default function ExpensesClient({
     today: t('preset.today'),
     week: t('preset.week'),
     month: t('preset.month'),
+    all: lang === 'fr' ? 'Tout Voir' : 'All Time',
     custom: t('preset.custom'),
   }
 
@@ -1026,7 +1091,7 @@ export default function ExpensesClient({
         marginBottom: '1.5rem',
         flexWrap: 'wrap',
       }}>
-        {(['today', 'week', 'month', 'custom'] as DatePreset[]).map(p => (
+        {(['today', 'week', 'month', 'all', 'custom'] as DatePreset[]).map(p => (
           <button key={p} onClick={() => setPreset(p)} style={{
             padding: '0.55rem 1.2rem', borderRadius: '8px', border: '1px solid',
             borderColor: preset === p ? 'rgba(229,193,125,0.4)' : 'transparent',
@@ -1132,17 +1197,28 @@ export default function ExpensesClient({
         scrollbarWidth: 'none',
       }} className="no-print">
         {[
-          { key: 'all', label: t('expenses.allFleetCosts'), emoji: '📊', color: 'var(--accent-gold)' },
-          { key: 'maintenance', label: t('expenses.mechanicalRepairs'), emoji: '🛠️', color: '#ef4444' },
-          { key: 'statutory', label: t('expenses.statutoryDocs'), emoji: '🛡️', color: '#38bdf8' },
-          { key: 'fuel', label: t('expenses.fleetFuel'), emoji: '⛽', color: '#f59e0b' },
-          { key: 'administrative', label: t('expenses.administrativeOther'), emoji: '📋', color: '#a78bfa' }
+          { key: 'all', label: lang === 'fr' ? 'Toutes les Dépenses' : 'All Expenses', emoji: '📊', color: 'var(--accent-gold)' },
+          { key: 'fuel', label: lang === 'fr' ? 'Carburant' : 'Fuel', emoji: '⛽', color: '#f59e0b' },
+          { key: 'maintenance', label: lang === 'fr' ? 'Entretien' : 'Maintenance', emoji: '🛠️', color: '#ef4444' },
+          { key: 'insurance', label: lang === 'fr' ? 'Assurance' : 'Insurance', emoji: '🛡️', color: '#38bdf8' },
+          { key: 'cleaning', label: lang === 'fr' ? 'Nettoyage' : 'Cleaning', emoji: '🧹', color: '#a78bfa' },
+          { key: 'loyer', label: lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office', emoji: '🏠', color: '#fb923c' },
+          { key: 'electricite', label: lang === 'fr' ? 'Électricité' : 'Electricity', emoji: '⚡', color: '#facc15' },
+          { key: 'eau', label: lang === 'fr' ? 'Eau' : 'Water', emoji: '💧', color: '#22d3ee' },
+          { key: 'connexion', label: lang === 'fr' ? 'Connexion / Internet' : 'Internet', emoji: '📡', color: '#34d399' },
+          { key: 'gps_puce', label: lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM', emoji: '🛰️', color: '#818cf8' },
+          { key: 'salaires', label: lang === 'fr' ? 'Salaires' : 'Salaries', emoji: '👤', color: '#f472b6' },
+          { key: 'damage_repair', label: lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair', emoji: '🔧', color: '#ef4444' },
+          { key: 'installment_tranche', label: lang === 'fr' ? 'Tranche Paiement' : 'Tranche Payment', emoji: '💳', color: '#10b981' },
+          { key: 'late_return_penalty', label: lang === 'fr' ? 'Pénalité Retard' : 'Late Return Penalty', emoji: '⏰', color: '#f59e0b' },
+          { key: 'other', label: lang === 'fr' ? 'Autre' : 'Other', emoji: '📋', color: '#94a3b8' }
         ].map(item => {
           const active = flowFilter === item.key
+          const count = item.key === 'all' ? filtered.length : (categoryCounts[item.key] || 0)
           return (
             <button
               key={item.key}
-              onClick={() => setFlowFilter(item.key as any)}
+              onClick={() => setFlowFilter(item.key)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1163,7 +1239,7 @@ export default function ExpensesClient({
               }}
             >
               <span>{item.emoji}</span>
-              <span>{item.label}</span>
+              <span>{item.label} ({count})</span>
             </button>
           )
         })}
@@ -1171,7 +1247,6 @@ export default function ExpensesClient({
 
       {/* ── Search Bar ── */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
-
         <div style={{ flex: 1, position: 'relative', minWidth: '240px' }}>
           <Search size={16} style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(229,193,125,0.4)' }} />
           <input
@@ -1189,12 +1264,8 @@ export default function ExpensesClient({
             >×</button>
           )}
         </div>
-        </div>
+      </div>
 
-      {/* ── Daily Chronological Ledger (Phase 17b) ────────────────────────── */}
-      {/* Operational outflows aggregated into per-day glassmorphic containers
-          ("daily squares") with contextual liability blocks linking damage_repair
-          rows directly to the responsible client. */}
       {filtered.length === 0 ? (
         <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 1rem', color: 'rgba(229,193,125,0.35)', marginBottom: '2rem', borderRadius: '14px' }}>
           <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.75rem' }}>📊</span>
@@ -1206,38 +1277,98 @@ export default function ExpensesClient({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
           {(() => {
-            // Group by ISO date (YYYY-MM-DD) so the keys sort naturally.
+            // Group by Category
             const groups: Record<string, typeof filtered> = {}
             filtered.forEach(row => {
-              const key = isoDate(row.date) || row.date.split('T')[0]
+              const key = row.category || 'other'
               if (!groups[key]) groups[key] = []
               groups[key].push(row)
             })
-            const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
 
-            return sortedKeys.map((dateKey) => {
-              const dayRows = groups[dateKey]
-              const dailyOutflow = dayRows.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0)
-              const dailyInflow = dayRows.filter(r => r.type === 'inflow').reduce((s, r) => s + r.collectedAmount, 0)
-              const localized = (() => {
-                try {
-                  const d = new Date(dateKey + 'T00:00:00')
-                  return d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })
-                } catch { return dateKey }
-              })()
+            // Sort categories alphabetically by their localized label
+            const sortedKeys = Object.keys(groups).sort((a, b) => {
+              const getCategoryLabel = (cat: string) => {
+                switch (cat) {
+                  case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
+                  case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
+                  case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
+                  case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
+                  case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
+                  case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
+                  case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
+                  case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
+                  case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
+                  case 'loyer': return lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'
+                  case 'electricite': return lang === 'fr' ? 'Électricité' : 'Electricity'
+                  case 'eau': return lang === 'fr' ? 'Eau' : 'Water'
+                  case 'connexion': return lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'
+                  case 'gps_puce': return lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM'
+                  case 'salaires': return lang === 'fr' ? 'Salaires' : 'Salaries'
+                  default: return lang === 'fr' ? 'Autre' : 'Other'
+                }
+              }
+              const labelA = getCategoryLabel(a)
+              const labelB = getCategoryLabel(b)
+              return labelA.localeCompare(labelB)
+            })
+
+            return sortedKeys.map((catKey) => {
+              const catRows = groups[catKey]
+              // Sort inside each group by date DESC
+              const sortedCatRows = [...catRows].sort((a, b) => {
+                const dateCompare = b.date.localeCompare(a.date)
+                if (dateCompare !== 0) return dateCompare
+                return b.createdAt.localeCompare(a.createdAt)
+              })
+
+              const dailyOutflow = sortedCatRows.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0)
+              const dailyInflow = sortedCatRows.filter(r => r.type === 'inflow').reduce((s, r) => s + r.collectedAmount, 0)
+
+              let categoryMeta = CATEGORY_META[catKey] || {
+                label: getInfractionLabel(catKey, lang),
+                emoji: '📦',
+                color: '#fbbf24',
+                bg: 'rgba(251,191,36,0.12)',
+                border: 'rgba(251,191,36,0.24)',
+              }
+
+              const getCategoryLabel = (cat: string) => {
+                switch (cat) {
+                  case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
+                  case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
+                  case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
+                  case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
+                  case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
+                  case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
+                  case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
+                  case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
+                  case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
+                  case 'loyer': return lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'
+                  case 'electricite': return lang === 'fr' ? 'Électricité' : 'Electricity'
+                  case 'eau': return lang === 'fr' ? 'Eau' : 'Water'
+                  case 'connexion': return lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'
+                  case 'gps_puce': return lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM'
+                  case 'salaires': return lang === 'fr' ? 'Salaires / Personnel' : 'Salaries / Staff'
+                  default: return lang === 'fr' ? 'Autre' : 'Other'
+                }
+              }
+
+              const categoryTitle = categoryMeta.emoji + ' ' + getCategoryLabel(catKey)
 
               return (
                 <div
-                  key={dateKey}
+                  key={catKey}
                   className="glass-panel"
                   style={{
                     padding: '1.25rem 1.35rem',
                     borderRadius: '14px',
-                    border: '1px solid rgba(229,193,125,0.12)',
-                    boxShadow: '0 4px 24px rgba(0,0,0,0.25), inset 0 0 1px rgba(229,193,125,0.08)',
+                    border: `1px solid ${categoryMeta.border}`,
+                    background: 'rgba(10, 8, 7, 0.85)',
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+                    marginBottom: '1.25rem',
                   }}
                 >
-                  {/* ── Header matrix ── */}
+                  {/* ── Category Header matrix ── */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -1249,13 +1380,12 @@ export default function ExpensesClient({
                     borderBottom: '1px dashed rgba(229,193,125,0.15)',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ae9260', boxShadow: '0 0 10px rgba(229,193,125,0.6)' }} />
-                      <Calendar size={14} style={{ color: '#ae9260' }} />
-                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', letterSpacing: '0.01em', textTransform: 'capitalize' }}>
-                        {localized}
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: categoryMeta.color, boxShadow: `0 0 10px ${categoryMeta.color}` }} />
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '0.01em' }}>
+                        {categoryTitle}
                       </span>
-                      <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginLeft: '0.25rem' }}>
-                        · {dayRows.length} {dayRows.length > 1 ? t('preset.transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}
+                      <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginLeft: '0.25rem' }}>
+                        · {sortedCatRows.length} {sortedCatRows.length > 1 ? t('preset.transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
@@ -1280,7 +1410,7 @@ export default function ExpensesClient({
                           boxShadow: '0 0 14px rgba(239,68,68,0.18), inset 0 0 4px rgba(239,68,68,0.04)',
                         }}>
                           <TrendingDown size={13} />
-                          <span style={{ opacity: 0.85 }}>{t('expenses.totalDailyOutflow')}</span>
+                          <span style={{ opacity: 0.85 }}>{lang === 'fr' ? 'Total' : 'Total'}</span>
                           <span>-{dailyOutflow.toFixed(2)} DT</span>
                         </div>
                       )}
@@ -1288,47 +1418,10 @@ export default function ExpensesClient({
                   </div>
 
                   {/* ── Itemized rows ── */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                    {dayRows.map((row) => {
-                      const getCategoryLabel = (cat: string) => {
-                        switch (cat) {
-                          case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
-                          case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
-                          case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
-                          case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
-                          case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
-                          case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
-                          case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
-                          case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
-                          case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
-                          default: return lang === 'fr' ? 'Autre' : 'Other'
-                        }
-                      }
-
-                      let categoryMeta = CATEGORY_META[row.category] || {
-                        label: getInfractionLabel(row.category, lang),
-                        emoji: row.rawRef === 'claim' ? '⚠️' : '📦',
-                        color: '#fbbf24',
-                        bg: 'rgba(251,191,36,0.12)',
-                        border: 'rgba(251,191,36,0.24)',
-                      }
-                      if (row.rawRef === 'maintenance' || row.category === 'maintenance') {
-                        categoryMeta = {
-                          label: lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance',
-                          emoji: '🛠️',
-                          color: '#ef4444',
-                          bg: 'rgba(239,68,68,0.1)',
-                          border: 'rgba(239,68,68,0.25)',
-                        }
-                      }
-
-                      const translatedLabel = row.category in CATEGORY_META
-                        ? getCategoryLabel(row.category)
-                        : categoryMeta.label;
-
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {sortedCatRows.map((row) => {
                       const isDamageClaim =
                         row.category === 'damage_repair' ||
-                        (row.category as string) === 'Damage/Penalty' ||
                         row.claimType === 'damage_repair'
                       const liableClient = (isDamageClaim && row.clients && row.clients.id) ? row.clients : null
 
@@ -1337,20 +1430,30 @@ export default function ExpensesClient({
                           key={row.id}
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: 'minmax(180px, 1.1fr) minmax(220px, 1.5fr) minmax(220px, 1.1fr)',
+                            gridTemplateColumns: '120px minmax(140px, 1fr) minmax(220px, 1.5fr) minmax(220px, 1fr)',
                             gap: '1rem',
-                            padding: '0.85rem 1rem',
-                            background: liableClient
-                              ? 'linear-gradient(135deg, rgba(239,68,68,0.04), rgba(255,255,255,0.015))'
-                              : 'rgba(255,255,255,0.02)',
+                            padding: '0.95rem 1.15rem',
+                            background: 'rgba(255,255,255,0.025)',
                             border: liableClient
-                              ? '1px solid rgba(239,68,68,0.18)'
-                              : '1px solid rgba(255,255,255,0.04)',
+                              ? '1px solid rgba(239,68,68,0.2)'
+                              : '1px solid rgba(255,255,255,0.05)',
                             borderRadius: '10px',
                             alignItems: 'center',
+                            transition: 'all 0.2s',
                           }}
                         >
-                          {/* ── Column A — Asset & Telemetry ── */}
+                          {/* ── Column 1: Date ── */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}>
+                              <Calendar size={13} style={{ color: 'var(--accent-gold)' }} />
+                              <span>{fmtDate(row.date)}</span>
+                            </div>
+                            <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
+                              {fmtLegalDate(row.createdAt)}
+                            </span>
+                          </div>
+
+                          {/* ── Column 2: Vehicle & Plate ── */}
                           <div>
                             {row.licensePlate ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
@@ -1371,16 +1474,16 @@ export default function ExpensesClient({
                                   <div style={{
                                     background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
                                     color: '#000',
-                                    padding: '0.2rem 0.5rem',
+                                    padding: '0.15rem 0.4rem',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    fontSize: '0.65rem',
+                                    fontSize: '0.6rem',
                                     fontWeight: 900,
                                     letterSpacing: '0.05em',
                                   }}>TN</div>
                                   <div style={{
-                                    padding: '0.2rem 0.65rem',
+                                    padding: '0.15rem 0.5rem',
                                     display: 'flex',
                                     alignItems: 'center',
                                     letterSpacing: '0.05em',
@@ -1390,145 +1493,77 @@ export default function ExpensesClient({
                                 <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
                                   {row.vehicleLabel}
                                 </span>
-                                <span style={{ fontSize: '0.62rem', color: 'rgba(229,193,125,0.55)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
-                                  {row.contractKey}
-                                </span>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{lang === 'fr' ? 'Aucun véhicule lié' : 'No vehicle linked'}</span>
-                                <span style={{ fontSize: '0.62rem', color: 'rgba(229,193,125,0.55)', fontFamily: 'monospace', letterSpacing: '0.04em' }}>
-                                  {row.contractKey}
-                                </span>
-                              </div>
+                              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>
+                                {lang === 'fr' ? 'Dépense Générale' : 'General Expense'}
+                              </span>
                             )}
                           </div>
 
-                          {/* ── Column B — Liability & Context ── */}
+                          {/* ── Column 3: Description & Context (Entity) ── */}
                           <div>
                             {liableClient ? (
                               <div style={{
-                                padding: '0.7rem 0.85rem',
-                                background: 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(229,193,125,0.04))',
-                                border: '1px solid rgba(239,68,68,0.22)',
-                                borderRadius: '10px',
-                                boxShadow: 'inset 0 0 10px rgba(239,68,68,0.05)',
+                                padding: '0.5rem 0.65rem',
+                                background: 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(255,255,255,0.01))',
+                                border: '1px solid rgba(239,68,68,0.2)',
+                                borderRadius: '8px',
                               }}>
                                 <div style={{
                                   display: 'flex', alignItems: 'center', gap: '0.35rem',
-                                  fontSize: '0.62rem', fontWeight: 800, color: '#f87171',
-                                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                                  marginBottom: '0.4rem',
+                                  fontSize: '0.6rem', fontWeight: 800, color: '#f87171',
+                                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                                  marginBottom: '0.2rem',
                                 }}>
                                   <ShieldAlertIcon size={11} />
                                   <span>{lang === 'fr' ? 'Client Responsable' : 'Responsible Client'}</span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <div style={{
-                                    width: '30px', height: '30px', borderRadius: '50%',
+                                    width: '24px', height: '24px', borderRadius: '50%',
                                     background: 'linear-gradient(135deg, rgba(229,193,125,0.3), rgba(255,255,255,0.05))',
                                     border: '1px solid rgba(229,193,125,0.35)',
                                     display: 'grid', placeItems: 'center',
-                                    color: '#fff', fontWeight: 800, fontSize: '0.72rem',
+                                    color: '#fff', fontWeight: 800, fontSize: '0.65rem',
                                     flexShrink: 0,
                                   }}>
                                     {getInitials(liableClient.full_name || 'XX')}
                                   </div>
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{
-                                      fontSize: '0.85rem', fontWeight: 700, color: '#fff',
+                                      fontSize: '0.8rem', fontWeight: 700, color: '#fff',
                                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                     }}>
                                       {liableClient.full_name}
                                     </div>
                                     {row.description && (
                                       <div style={{
-                                        fontSize: '0.65rem', color: 'rgba(255,255,255,0.45)',
+                                        fontSize: '0.66rem', color: 'rgba(255,255,255,0.45)',
                                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                       }} title={row.description}>
                                         {row.description}
                                       </div>
                                     )}
                                   </div>
-                                  {row.rawBooking && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setEditingBooking(row.rawBooking) }}
-                                      title={lang === 'fr' ? "Ouvrir l'incident lié à la réservation" : "Open originating incident booking"}
-                                      style={{
-                                        background: 'rgba(229,193,125,0.08)',
-                                        border: '1px solid rgba(229,193,125,0.22)',
-                                        color: '#ae9260',
-                                        cursor: 'pointer',
-                                        padding: '0.3rem',
-                                        borderRadius: '6px',
-                                        display: 'grid',
-                                        placeItems: 'center',
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      <FileText size={12} />
-                                    </button>
-                                  )}
                                 </div>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                                {row.category === 'insurance' ? (
-                                  <div style={{
-                                    width: '32px', height: '32px', borderRadius: '10px', display: 'grid', placeItems: 'center',
-                                    background: 'linear-gradient(135deg, rgba(56,189,248,0.25), rgba(255,255,255,0.06))',
-                                    border: '1px solid rgba(56,189,248,0.3)', flexShrink: 0,
-                                  }}>
-                                    <ShieldIcon />
-                                  </div>
-                                ) : row.category === 'maintenance' ? (
-                                  <div style={{
-                                    width: '32px', height: '32px', borderRadius: '10px', display: 'grid', placeItems: 'center',
-                                    background: 'linear-gradient(135deg, rgba(239,68,68,0.25), rgba(255,255,255,0.06))',
-                                    border: '1px solid rgba(239,68,68,0.3)', flexShrink: 0,
-                                  }}>
-                                    <ToolIcon />
-                                  </div>
-                                ) : (
-                                  <div style={{
-                                    width: '32px', height: '32px', borderRadius: '10px', display: 'grid', placeItems: 'center',
-                                    background: 'linear-gradient(135deg, rgba(229,193,125,0.25), rgba(255,255,255,0.06))',
-                                    border: '1px solid rgba(229,193,125,0.14)', color: '#fff', fontWeight: 800, fontSize: '0.72rem', flexShrink: 0,
-                                  }}>
-                                    {getInitials(row.entity)}
-                                  </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                                  {row.entity}
+                                </span>
+                                {row.description && (
+                                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
+                                    {row.description}
+                                  </span>
                                 )}
-                                <div style={{ minWidth: 0, flex: 1 }}>
-                                  <div style={{
-                                    fontSize: '0.82rem', fontWeight: 700, color: '#fff',
-                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                  }}>
-                                    {row.entity}
-                                  </div>
-                                  {row.description && (
-                                    <div style={{
-                                      fontSize: '0.66rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.15rem',
-                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    }} title={row.description}>
-                                      {row.description}
-                                    </div>
-                                  )}
-                                </div>
                               </div>
                             )}
                           </div>
 
-                          {/* ── Column C — Ledger Accounting ── */}
+                          {/* ── Column 4: Ledger Accounting & Actions ── */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.7rem', flexWrap: 'wrap' }}>
-                            <span style={{
-                              padding: '0.28rem 0.65rem', borderRadius: '999px',
-                              background: categoryMeta.bg, color: categoryMeta.color,
-                              fontSize: '0.68rem', fontWeight: 700,
-                              border: `1px solid ${categoryMeta.border}`,
-                              whiteSpace: 'nowrap',
-                            }}>
-                              {categoryMeta.emoji} {translatedLabel}
-                            </span>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                               {row.type === 'outflow' ? (
                                 <span style={{ color: '#f87171', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>
@@ -1547,12 +1582,14 @@ export default function ExpensesClient({
                                 </>
                               )}
                             </div>
+                            
                             {row.type === 'outflow' && row.rawRef === 'expense' && (
                               <div style={{ display: 'flex', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
                                 <button className="icon-btn" onClick={() => setEditingExpense(row)} title={lang === 'fr' ? "Modifier" : "Edit"}><Edit2 size={13} /></button>
                                 <button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))} title={lang === 'fr' ? "Supprimer" : "Delete"}><Trash2 size={13} /></button>
                               </div>
                             )}
+
                             {row.type === 'inflow' && (
                               row.remainingAmount > 0 ? (
                                 <div style={{
@@ -1584,27 +1621,31 @@ export default function ExpensesClient({
 
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {isAddModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel">
-            <div className="modal-header">
-              <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
-              <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+              <div className="modal-header">
+                <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
+                <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
+              </div>
+              <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
             </div>
-            <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {editingExpense && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel">
-            <div className="modal-header">
-              <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
-              <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+              <div className="modal-header">
+                <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
+                <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
+              </div>
+              <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
             </div>
-            <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {editingBooking && (

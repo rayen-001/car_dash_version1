@@ -211,112 +211,104 @@ export async function deleteClient(id: string) {
 export async function syncAndRelateClients() {
   const { supabase, user } = await getAuthedUser()
 
-  // 1. Fetch all bookings for this owner
+  // 1. Fetch only UNLINKED bookings that have at least one identity field we
+  //    can safely use for matching (CIN, permis, or phone).
+  //    We intentionally do NOT match by full_name — same name ≠ same person.
   const { data: bookings, error: bookingsErr } = await supabase
     .from('bookings')
-    .select('id, client_name, client_id')
+    .select('id, client_name, client_id, client_cin_passport, client_license_number, client_phone')
     .eq('owner_id', user.id)
+    .is('client_id', null)
 
   if (bookingsErr) throw new Error(bookingsErr.message)
   if (!bookings || bookings.length === 0) return
 
-  // 2. Fetch all current clients for this owner
-  const { data: clients, error: clientsErr } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('owner_id', user.id)
+  // 2. Values to reject — placeholders / dummy / invalid identity values.
+  //    None of these count as a real identity for auto-matching.
+  const IGNORE_SET = new Set(['', 'N/A', 'NA', 'UNKNOWN', 'NULL', '0', '00000000', '*', '-'])
 
-  if (clientsErr) throw new Error(clientsErr.message)
+  function isValidIdentity(raw: string | null | undefined): boolean {
+    if (!raw) return false
+    const upper = raw.trim().toUpperCase()
+    return upper !== '' && !IGNORE_SET.has(upper)
+  }
 
   const clientIdsToRecalculate = new Set<string>()
 
-  // --- AUTOMATIC DUPLICATE RESOLUTION & SELF-HEALING ---
-  const nameToClientsMap = new Map<string, any[]>()
-  if (clients) {
-    clients.forEach(c => {
-      const norm = c.full_name.trim().toLowerCase()
-      if (!nameToClientsMap.has(norm)) {
-        nameToClientsMap.set(norm, [])
-      }
-      nameToClientsMap.get(norm)!.push(c)
-    })
-  }
-
-  const clientMap = new Map<string, string>() // Name -> Kept ID
-
-  for (const [name, list] of nameToClientsMap.entries()) {
-    if (list.length > 1) {
-      // Keep the first registered instance, delete other duplicate copies
-      const keptClient = list[0]
-      const duplicateIds = list.slice(1).map(c => c.id)
-
-      clientMap.set(name, keptClient.id)
-      clientIdsToRecalculate.add(keptClient.id)
-
-      // Point any bookings that referenced the deleted duplicates back to the kept ID
-      await supabase
-        .from('bookings')
-        .update({ client_id: keptClient.id })
-        .in('client_id', duplicateIds)
-        .eq('owner_id', user.id)
-
-      // Delete the duplicate CRM client rows cleanly
-      await supabase
-        .from('clients')
-        .delete()
-        .in('id', duplicateIds)
-        .eq('owner_id', user.id)
-    } else if (list.length === 1) {
-      clientMap.set(name, list[0].id)
-    }
-  }
-
-  // 3. Scan bookings to see if any have no client_id
+  // 3. Try to link each unlinked booking to an existing client using safe
+  //    identity-only matching. Priority order: CIN → Permis → Phone (unique).
   for (const booking of bookings) {
-    const normName = booking.client_name?.trim()
-    if (!normName) continue
-    const normNameLower = normName.toLowerCase()
+    let linkedClientId: string | null = null
 
-    let linkedClientId = booking.client_id
-
-    if (!linkedClientId) {
-      if (clientMap.has(normNameLower)) {
-        linkedClientId = clientMap.get(normNameLower)!
-        clientIdsToRecalculate.add(linkedClientId)
-        await supabase
-          .from('bookings')
-          .update({ client_id: linkedClientId })
-          .eq('id', booking.id)
-          .eq('owner_id', user.id)
-      } else {
-        const { data: newClient, error: createErr } = await supabase
+    // ── A. CIN match: booking.client_cin_passport → clients.cin ONLY ──────────
+    //    Never compare CIN against permis_numero — they are different documents.
+    const rawCIN = booking.client_cin_passport as string | null
+    if (!linkedClientId && isValidIdentity(rawCIN)) {
+      const cin = normCIN(rawCIN!)
+      if (isValidIdentity(cin)) {
+        const { data: matched } = await supabase
           .from('clients')
-          .insert({
-            owner_id: user.id,
-            full_name: normName,
-            phone: 'N/A',
-            email: null,
-            license_number: 'N/A'
-          })
           .select('id')
-          .single()
-
-        if (!createErr && newClient) {
-          linkedClientId = newClient.id
-          clientMap.set(normNameLower, linkedClientId)
-          clientIdsToRecalculate.add(linkedClientId)
-
-          await supabase
-            .from('bookings')
-            .update({ client_id: linkedClientId })
-            .eq('id', booking.id)
-            .eq('owner_id', user.id)
+          .eq('owner_id', user.id)  // strict owner scope
+          .eq('cin', cin)
+          .maybeSingle()
+        if (matched) {
+          linkedClientId = matched.id
         }
       }
     }
+
+    // ── B. Permis match: booking.client_license_number → clients.permis_numero ONLY ──
+    //    Never compare permis against cin — they are different documents.
+    const rawPermis = booking.client_license_number as string | null
+    if (!linkedClientId && isValidIdentity(rawPermis)) {
+      const permis = normPermis(rawPermis!)
+      if (isValidIdentity(permis)) {
+        const { data: matched } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('owner_id', user.id)  // strict owner scope
+          .eq('permis_numero', permis)
+          .maybeSingle()
+        if (matched) {
+          linkedClientId = matched.id
+        }
+      }
+    }
+
+    // ── C. Phone match: only if EXACTLY ONE client shares this phone (unambiguous) ──
+    //    If 0 or 2+ clients match → do NOT link (ambiguous or unknown).
+    const rawPhone = booking.client_phone as string | null
+    if (!linkedClientId && isValidIdentity(rawPhone)) {
+      const phone = normPhone(rawPhone!)
+      if (isValidIdentity(phone)) {
+        const { data: phoneMatches, error: phoneErr } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('owner_id', user.id)  // strict owner scope
+          .eq('phone', phone)
+        if (!phoneErr && phoneMatches && phoneMatches.length === 1) {
+          linkedClientId = phoneMatches[0].id
+        }
+        // 0 matches → unknown client, leave unlinked
+        // 2+ matches → ambiguous, leave unlinked (do not guess)
+      }
+    }
+
+    // ── D. Safe link: only update the booking if a real identity match was found ──
+    if (linkedClientId) {
+      await supabase
+        .from('bookings')
+        .update({ client_id: linkedClientId })
+        .eq('id', booking.id)
+        .eq('owner_id', user.id)
+
+      clientIdsToRecalculate.add(linkedClientId)
+    }
+    // No match found → booking stays unlinked. NEVER auto-link by name alone.
   }
 
-  // 4. Recalculate trust scores for any affected clients
+  // 4. Recalculate trust scores only for clients that were actually linked above.
   for (const cid of clientIdsToRecalculate) {
     try {
       await recalculateClientTrustScore(cid)

@@ -345,6 +345,14 @@ select option {
   color: #f5f5f5 !important;
 }
 
+.dashboard-page select optgroup,
+.modal-content select optgroup {
+  background-color: #12100e !important;
+  color: #ae9260 !important;
+  font-weight: 700;
+  font-style: normal;
+}
+
 /* ============================================================
    SCROLLBAR — Hairline
    ============================================================ */
