@@ -1,6 +1,6 @@
 'use client'
 
-import { Car } from 'lucide-react'
+import { Car, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
 import styles from '../history.module.css'
 import { useLanguage } from '@/lib/i18n'
 
@@ -20,21 +20,29 @@ interface VehicleIdentityCardProps {
   vehicle: Vehicle
   totalRentals: number
   totalRevenue: number
+  totalExpenses?: number
+  netProfit?: number
 }
 
-export default function VehicleIdentityCard({ vehicle, totalRentals, totalRevenue }: VehicleIdentityCardProps) {
+export default function VehicleIdentityCard({
+  vehicle,
+  totalRentals,
+  totalRevenue,
+  totalExpenses = 0,
+  netProfit = 0,
+}: VehicleIdentityCardProps) {
   const { lang } = useLanguage()
 
-  // Use first image if available
   const imageUrl = vehicle.images && vehicle.images.length > 0 ? vehicle.images[0] : null
+  const isProfit = netProfit >= 0
 
   return (
     <div className={`${styles['identity-card']} glass-panel`}>
       {imageUrl ? (
-        <img 
-          src={imageUrl} 
-          alt={`${vehicle.brand} ${vehicle.model}`} 
-          className={styles['vehicle-thumbnail']} 
+        <img
+          src={imageUrl}
+          alt={`${vehicle.brand} ${vehicle.model}`}
+          className={styles['vehicle-thumbnail']}
         />
       ) : (
         <div className={styles['vehicle-thumbnail-placeholder']}>
@@ -46,12 +54,12 @@ export default function VehicleIdentityCard({ vehicle, totalRentals, totalRevenu
         <h2 className={styles['identity-name']}>
           {vehicle.brand} {vehicle.model}
         </h2>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
           <div className={styles['identity-plate']}>
             {vehicle.license_plate || (lang === 'fr' ? 'SANS PLAQUE' : 'NO PLATE')}
           </div>
-          
+
           <div className={styles['identity-tags']}>
             {vehicle.year && <span className={styles['identity-tag']}>{vehicle.year}</span>}
             {vehicle.color && <span className={styles['identity-tag']}>{vehicle.color}</span>}
@@ -63,12 +71,47 @@ export default function VehicleIdentityCard({ vehicle, totalRentals, totalRevenu
       </div>
 
       <div className={styles['identity-kpis']}>
+        {/* Gross Revenue — from bookings only */}
         <div className={styles['kpi-item']}>
-          <div className={styles['kpi-label']}>{lang === 'fr' ? 'Revenu Total' : 'Total Revenue'}</div>
-          <div className={styles['kpi-value']}>{totalRevenue.toLocaleString()} DT</div>
+          <div className={styles['kpi-label']} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <TrendingUp size={12} style={{ color: '#4ade80' }} />
+            {lang === 'fr' ? 'Revenu Brut' : 'Gross Revenue'}
+          </div>
+          <div className={styles['kpi-value']} style={{ color: '#4ade80' }}>
+            {totalRevenue.toLocaleString('fr-TN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT
+          </div>
         </div>
+
+        {/* Total Costs — vehicle-linked expenses */}
         <div className={styles['kpi-item']}>
-          <div className={styles['kpi-label']}>{lang === 'fr' ? 'Réservations Complétées' : 'Completed Bookings'}</div>
+          <div className={styles['kpi-label']} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <TrendingDown size={12} style={{ color: '#f87171' }} />
+            {lang === 'fr' ? 'Coûts Alloués' : 'Allocated Costs'}
+          </div>
+          <div className={styles['kpi-value']} style={{ color: '#f87171' }}>
+            {totalExpenses.toLocaleString('fr-TN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT
+          </div>
+        </div>
+
+        {/* Net Profit = Gross Revenue - Expenses */}
+        <div className={styles['kpi-item']}>
+          <div className={styles['kpi-label']} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <DollarSign size={12} style={{ color: isProfit ? 'var(--accent-gold)' : '#fb923c' }} />
+            {lang === 'fr' ? 'Bénéfice Net' : 'Net Profit'}
+          </div>
+          <div
+            className={styles['kpi-value']}
+            style={{ color: isProfit ? 'var(--accent-gold)' : '#fb923c', fontWeight: 800 }}
+          >
+            {isProfit ? '+' : ''}{netProfit.toLocaleString('fr-TN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT
+          </div>
+        </div>
+
+        {/* Rentals count */}
+        <div className={styles['kpi-item']}>
+          <div className={styles['kpi-label']}>
+            {lang === 'fr' ? 'Réservations' : 'Bookings'}
+          </div>
           <div className={styles['kpi-value']} style={{ fontSize: '1.15rem' }}>
             {totalRentals} {lang === 'fr' ? 'locations' : 'rentals'}
           </div>

@@ -251,6 +251,12 @@ export default function VehicleHistoryClient({
     .filter((b) => b.status === 'confirmed' || b.status === 'completed')
     .reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
 
+  // Sum all vehicle-linked expenses (cost allocation, does NOT reduce booking revenue)
+  const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+
+  // Net profit = gross booking revenue minus allocated vehicle costs
+  const netProfit = totalRevenue - totalExpenses
+
   const completedRentals = bookings.length
 
   const getDocTypeLabel = (type: typeof activeDocType) => {
@@ -293,6 +299,8 @@ export default function VehicleHistoryClient({
         vehicle={currentVehicle}
         totalRentals={completedRentals}
         totalRevenue={totalRevenue}
+        totalExpenses={totalExpenses}
+        netProfit={netProfit}
       />
 
       {/* 3 glassmorphic legal status cards */}
