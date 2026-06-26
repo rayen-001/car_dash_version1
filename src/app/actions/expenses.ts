@@ -3,56 +3,26 @@
 import { revalidatePath } from 'next/cache'
 import { getAuthedUser } from './_shared'
 
-/**
- * Client is REQUIRED only for real claim/infraction types.
- * All standard expense categories (fuel, cleaning, loyer, eau, etc.) are
- * client-optional — the user may link a client for context, but it is never
- * enforced server-side for dépenses générales.
- */
-const CLIENT_REQUIRED_CATEGORIES: ReadonlySet<string> = new Set([
-  'damage_repair',
-  'installment_tranche',
-  'late_return_penalty',
-])
-
-function assertClientBindingForCategory(category: string, clientId: string | null) {
-  if (CLIENT_REQUIRED_CATEGORIES.has(category) && !clientId) {
-    throw new Error(
-      `Category "${category}" requires a client to be selected.`
-    )
-  }
-}
-
 export async function addExpense(formData: FormData) {
   const { supabase, user } = await getAuthedUser()
 
-  let category = formData.get('category') as string
-  const infractionType = formData.get('infraction_type') as string
-  const targetLiability = formData.get('target_liability_amount') as string
+  const category = formData.get('category') as string
   const description = formData.get('description') as string
   const amountInput = formData.get('amount') as string
   const vehicle_id = formData.get('vehicle_id') as string
-  const amount = parseFloat(amountInput || targetLiability || '0')
+  const amount = parseFloat(amountInput || '0')
 
-  if (infractionType) {
-    category = infractionType
-  }
+  if (!category) throw new Error('Category is required')
+  if (!description) throw new Error('Description is required')
+  if (!amount || amount <= 0) throw new Error('A positive amount is required')
 
-  const clientIdRaw = formData.get('client_id') as string
-  const client_id = clientIdRaw && clientIdRaw !== 'null' ? clientIdRaw : null
-
-  assertClientBindingForCategory(category, client_id)
-
-  const payload: any = {
+  const { error } = await supabase.from('expenses').insert({
     owner_id: user.id,
     vehicle_id: vehicle_id || null,
-    client_id,
     category,
     description,
     amount
-  }
-
-  const { error } = await supabase.from('expenses').insert(payload)
+  })
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/expenses')
@@ -63,29 +33,15 @@ export async function updateExpense(formData: FormData) {
 
   const rawId = formData.get('id') as string
   const id = rawId ? rawId.replace('expense-', '') : ''
-  let category = formData.get('category') as string
-  const infractionType = formData.get('infraction_type') as string
-  const targetLiability = formData.get('target_liability_amount') as string
+  const category = formData.get('category') as string
   const description = formData.get('description') as string
   const amountInput = formData.get('amount') as string
   const vehicle_id = formData.get('vehicle_id') as string
-  const amount = parseFloat(amountInput || targetLiability || '0')
-
-  if (infractionType) {
-    category = infractionType
-  }
-
-  const clientIdRaw = formData.get('client_id') as string
-  const client_id = clientIdRaw && clientIdRaw !== 'null' ? clientIdRaw : null
-
-  assertClientBindingForCategory(category, client_id)
-
-  const payload: any = { category, description, amount, vehicle_id: vehicle_id || null }
-  if (client_id) payload.client_id = client_id
+  const amount = parseFloat(amountInput || '0')
 
   const { error } = await supabase
     .from('expenses')
-    .update(payload)
+    .update({ category, description, amount, vehicle_id: vehicle_id || null })
     .eq('id', id)
     .eq('owner_id', user.id)
 
