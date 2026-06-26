@@ -908,151 +908,28 @@ export default function ExpensesClient({
     showToast(lang === 'fr' ? 'Ligne de réclamation marquée comme recouvrée.' : 'Claim line marked collected.', 'success')
   }
 
-  // ─── Expense Form ─────────────────────────────────────────────────────────
-  const ExpenseForm = ({ defaultValues, onSubmit, submitLabel }: {
-    defaultValues?: any
-    onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
-    submitLabel: string
-  }) => {
-    const [infractionType, setInfractionType] = useState(defaultValues?.claimType || '')
-    const [amount, setAmount] = useState(defaultValues?.amount || '')
-    const [targetLiability, setTargetLiability] = useState(defaultValues?.amount || '')
-
-    // Keep them synced if infraction is chosen
-    useEffect(() => {
-      if (infractionType) {
-        setAmount(targetLiability)
-      }
-    }, [infractionType, targetLiability])
-
-    return (
-      <form onSubmit={onSubmit} className="modal-form">
-        <div className="form-group">
-          <label>{lang === 'fr' ? 'Type de Réclamation / Infraction' : 'Claim / Infraction Type'}</label>
-          <select
-            name="infraction_type"
-            className="form-input"
-            value={infractionType}
-            onChange={(e) => setInfractionType(e.target.value)}
-          >
-            <option value="">{lang === 'fr' ? 'Aucun (Dépense Standard)' : 'None (Standard Expense)'}</option>
-            <option value="damage_repair">🔧 {lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'}</option>
-            <option value="installment_tranche">💳 {lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'}</option>
-            <option value="late_return_penalty">⏰ {lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'}</option>
-          </select>
-        </div>
-
-        {!infractionType ? (
-          <div className="form-group">
-            <label>{lang === 'fr' ? 'Catégorie' : 'Category'}</label>
-            <select name="category" required className="form-input" defaultValue={defaultValues?.category || 'fuel'}>
-              <optgroup label={lang === 'fr' ? '🚗 Véhicules' : '🚗 Vehicle'}>
-                <option value="fuel">⛽ {lang === 'fr' ? 'Carburant' : 'Fuel'}</option>
-                <option value="maintenance">🛠️ {lang === 'fr' ? 'Entretien' : 'Maintenance'}</option>
-                <option value="insurance">🛡️ {lang === 'fr' ? 'Assurance' : 'Insurance'}</option>
-                <option value="cleaning">🧹 {lang === 'fr' ? 'Nettoyage' : 'Cleaning'}</option>
-              </optgroup>
-              <optgroup label={lang === 'fr' ? '🏢 Charges Générales' : '🏢 General Overhead'}>
-                <option value="loyer">🏠 {lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'}</option>
-                <option value="electricite">⚡ {lang === 'fr' ? 'Électricité' : 'Electricity'}</option>
-                <option value="eau">💧 {lang === 'fr' ? 'Eau' : 'Water'}</option>
-                <option value="connexion">📡 {lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'}</option>
-                <option value="gps_puce">🛰️ {lang === 'fr' ? 'GPS / Puce Téléphone' : 'GPS / SIM Card'}</option>
-                <option value="salaires">👤 {lang === 'fr' ? 'Salaires / Personnel' : 'Salaries / Staff'}</option>
-              </optgroup>
-              <optgroup label={lang === 'fr' ? '📋 Divers' : '📋 Miscellaneous'}>
-                <option value="other">📋 {lang === 'fr' ? 'Autre' : 'Other'}</option>
-              </optgroup>
-            </select>
-          </div>
-        ) : (
-          <div className="form-group">
-            <label>{lang === 'fr' ? 'Montant de la Responsabilité Visée (DT)' : 'Target Liability Amount (DT)'}</label>
-            <input
-              type="number"
-              name="target_liability_amount"
-              placeholder="0.00"
-              className="form-input"
-              min="0"
-              step="0.01"
-              value={targetLiability}
-              onChange={(e) => setTargetLiability(e.target.value)}
-              required
-            />
-            {/* Hidden input to satisfy amount field on server */}
-            <input type="hidden" name="amount" value={amount} />
-          </div>
-        )}
-
-        <div className="form-group">
-          <label>{lang === 'fr' ? 'Description' : 'Description'}</label>
-          <input
-            type="text"
-            name="description"
-            placeholder={infractionType ? (lang === 'fr' ? "ex. Rétroviseur cassé" : "e.g. Broken side mirror claim") : (lang === 'fr' ? "ex. Lavage hebdomadaire" : "e.g. Weekly car wash")}
-            className="form-input"
-            defaultValue={defaultValues?.description || ''}
-            required
-          />
-        </div>
-
-        <div className="form-row">
-          {!infractionType && (
-            <div className="form-group">
-              <label>{lang === 'fr' ? 'Montant (DT)' : 'Amount (DT)'}</label>
-              <input
-                type="number"
-                name="amount"
-                required
-                placeholder="50"
-                min="0"
-                step="0.01"
-                className="form-input"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </div>
-          )}
-          <div className="form-group">
-            <label>{lang === 'fr' ? 'Lien vers Véhicule (Optionnel)' : 'Link to Vehicle (Optional)'}</label>
-            <select name="vehicle_id" className="form-input" defaultValue={defaultValues?.vehicleId || defaultValues?.vehicle_id || ''}>
-              <option value="">{lang === 'fr' ? '-- Dépense Générale --' : '-- General Expense --'}</option>
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate})</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        
-        <div className="form-group">
-          <label>
-            {infractionType
-              ? (lang === 'fr' ? 'Lien vers Client (Requis)' : 'Link to Client (Required)')
-              : (lang === 'fr' ? 'Lien vers Client (Optionnel)' : 'Link to Client (Optional)')}
-          </label>
-          <select name="client_id" className="form-input" defaultValue={defaultValues?.client_id || ''} required={!!infractionType}>
-            <option value="">{lang === 'fr' ? '-- Aucun Client Lié --' : '-- No Client Linked --'}</option>
-            {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.full_name} ({c.phone || c.cin || 'N/A'})</option>
-            ))}
-          </select>
-          {!infractionType && (
-            <span style={{ fontSize: '0.72rem', color: 'rgba(229,193,125,0.4)', marginTop: '0.25rem', display: 'block' }}>
-              {lang === 'fr' ? 'Optionnel — lier un client si la dépense lui est associée' : 'Optional — link a client if this expense is associated with one'}
-            </span>
-          )}
-        </div>
-
-        <div className="modal-footer">
-          <button type="button" className="btn-secondary" onClick={() => { setIsAddModalOpen(false); setEditingExpense(null) }}>{t('common.cancel')}</button>
-          <button type="submit" className="btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {loading && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
-            <span>{submitLabel}</span>
-          </button>
-        </div>
-      </form>
-    )
-  }
+  // ─── Inline expense category select ─────────────────────────────────────
+  const CategorySelect = ({ defaultValue = 'fuel' }: { defaultValue?: string }) => (
+    <select name="category" required className="form-input" defaultValue={defaultValue}>
+      <optgroup label={lang === 'fr' ? '🚗 Véhicules' : '🚗 Vehicles'}>
+        <option value="fuel">⛽ {lang === 'fr' ? 'Carburant' : 'Fuel'}</option>
+        <option value="maintenance">🛠️ {lang === 'fr' ? 'Entretien' : 'Maintenance'}</option>
+        <option value="insurance">🛡️ {lang === 'fr' ? 'Assurance' : 'Insurance'}</option>
+        <option value="cleaning">🧹 {lang === 'fr' ? 'Nettoyage' : 'Cleaning'}</option>
+      </optgroup>
+      <optgroup label={lang === 'fr' ? '🏢 Charges Générales' : '🏢 General Overhead'}>
+        <option value="loyer">🏠 {lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'}</option>
+        <option value="electricite">⚡ {lang === 'fr' ? 'Électricité' : 'Electricity'}</option>
+        <option value="eau">💧 {lang === 'fr' ? 'Eau' : 'Water'}</option>
+        <option value="connexion">📡 {lang === 'fr' ? 'Connexion / Internet' : 'Internet'}</option>
+        <option value="gps_puce">🛰️ {lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM'}</option>
+        <option value="salaires">👤 {lang === 'fr' ? 'Salaires / Personnel' : 'Salaries / Staff'}</option>
+      </optgroup>
+      <optgroup label={lang === 'fr' ? '📋 Divers' : '📋 Miscellaneous'}>
+        <option value="other">📋 {lang === 'fr' ? 'Autre' : 'Other'}</option>
+      </optgroup>
+    </select>
+  )
 
   const presetLabels: Record<DatePreset, string> = {
     today: t('preset.today'),
@@ -1642,7 +1519,52 @@ export default function ExpensesClient({
                 <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
                 <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
               </div>
-              <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
+              <form onSubmit={handleAdd} className="modal-form">
+                <div className="form-group">
+                  <label>{lang === 'fr' ? 'Catégorie' : 'Category'}</label>
+                  <CategorySelect />
+                </div>
+                <div className="form-group">
+                  <label>{lang === 'fr' ? 'Description' : 'Description'}</label>
+                  <input
+                    type="text"
+                    name="description"
+                    placeholder={lang === 'fr' ? 'ex. Lavage hebdomadaire, Essence voiture...' : 'e.g. Weekly wash, Fuel top-up...'}
+                    className="form-input"
+                    required
+                  />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>{lang === 'fr' ? 'Montant (DT)' : 'Amount (DT)'}</label>
+                    <input
+                      type="number"
+                      name="amount"
+                      required
+                      placeholder="50"
+                      min="0"
+                      step="0.01"
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>{lang === 'fr' ? 'Véhicule (Optionnel)' : 'Vehicle (Optional)'}</label>
+                    <select name="vehicle_id" className="form-input">
+                      <option value="">{lang === 'fr' ? '-- Dépense Générale --' : '-- General Expense --'}</option>
+                      {vehicles.map(v => (
+                        <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn-secondary" onClick={() => setIsAddModalOpen(false)}>{t('common.cancel')}</button>
+                  <button type="submit" className="btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {loading && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
+                    <span>{lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </ModalPortal>
@@ -1656,7 +1578,54 @@ export default function ExpensesClient({
                 <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
                 <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
               </div>
-              <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
+              <form onSubmit={handleEdit} className="modal-form">
+                <div className="form-group">
+                  <label>{lang === 'fr' ? 'Catégorie' : 'Category'}</label>
+                  <CategorySelect defaultValue={editingExpense?.category || 'fuel'} />
+                </div>
+                <div className="form-group">
+                  <label>{lang === 'fr' ? 'Description' : 'Description'}</label>
+                  <input
+                    type="text"
+                    name="description"
+                    placeholder={lang === 'fr' ? 'ex. Lavage hebdomadaire...' : 'e.g. Weekly wash...'}
+                    className="form-input"
+                    defaultValue={editingExpense?.description || ''}
+                    required
+                  />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>{lang === 'fr' ? 'Montant (DT)' : 'Amount (DT)'}</label>
+                    <input
+                      type="number"
+                      name="amount"
+                      required
+                      placeholder="50"
+                      min="0"
+                      step="0.01"
+                      className="form-input"
+                      defaultValue={editingExpense?.amount || ''}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>{lang === 'fr' ? 'Véhicule (Optionnel)' : 'Vehicle (Optional)'}</label>
+                    <select name="vehicle_id" className="form-input" defaultValue={editingExpense?.vehicleId || editingExpense?.vehicles?.id || ''}>
+                      <option value="">{lang === 'fr' ? '-- Dépense Générale --' : '-- General Expense --'}</option>
+                      {vehicles.map(v => (
+                        <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.license_plate})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn-secondary" onClick={() => setEditingExpense(null)}>{t('common.cancel')}</button>
+                  <button type="submit" className="btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {loading && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
+                    <span>{lang === 'fr' ? 'Enregistrer' : 'Save Changes'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </ModalPortal>
