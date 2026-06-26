@@ -246,16 +246,35 @@ export default function VehicleHistoryClient({
     })
   }
 
-  // Calculations for Hero Identity Card
-  const totalRevenue = bookings
-    .filter((b) => b.status === 'confirmed' || b.status === 'completed')
-    .reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
+  // ── Financial KPIs ──────────────────────────────────────────────────────
+  const activeBookings = bookings.filter(
+    (b) => b.status === 'confirmed' || b.status === 'completed'
+  )
 
-  // Sum all vehicle-linked expenses (cost allocation, does NOT reduce booking revenue)
-  const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+  // 1. CA Brut Contrats — contractual total (what was agreed, not what was paid)
+  const caBrut = activeBookings.reduce(
+    (sum, b) => sum + (Number(b.total_amount) || 0), 0
+  )
 
-  // Net profit = gross booking revenue minus allocated vehicle costs
-  const netProfit = totalRevenue - totalExpenses
+  // 2. Revenu Encaissé — actual cash received
+  //    = acompte_paid + sum(installments where status === 'paid')
+  const revenuEncaisse = activeBookings.reduce((sum, b) => {
+    const acompte = Number(b.acompte_paid) || 0
+    const paidInstallments = (b.installments || []).reduce(
+      (s: number, inst: any) =>
+        inst.status === 'paid' ? s + (Number(inst.amount) || 0) : s,
+      0
+    )
+    return sum + acompte + paidInstallments
+  }, 0)
+
+  // 3. Coûts Alloués — vehicle-linked expenses (does NOT affect revenue)
+  const totalExpenses = expenses.reduce(
+    (sum, e) => sum + (Number(e.amount) || 0), 0
+  )
+
+  // 4. Bénéfice Net Réel — cash-based, not contractual
+  const netProfit = revenuEncaisse - totalExpenses
 
   const completedRentals = bookings.length
 
@@ -295,10 +314,11 @@ export default function VehicleHistoryClient({
       />
 
       {/* Vehicle identity hero card */}
-      <VehicleIdentityCard 
+      <VehicleIdentityCard
         vehicle={currentVehicle}
         totalRentals={completedRentals}
-        totalRevenue={totalRevenue}
+        caBrut={caBrut}
+        revenuEncaisse={revenuEncaisse}
         totalExpenses={totalExpenses}
         netProfit={netProfit}
       />
