@@ -1,0 +1,428 @@
+Implementation Plan: Booking Tags & Notes Filtering System
+Overview
+Add a structured tag system on top of the existing owner_remarks (TEXT) and damage_notes (TEXT) columns in the bookings table. Tags are short prefixed tokens (e.g. [VIP], [DAMAGE]) that are stored inline in the text fields, parsed in the frontend, and surfaced as interactive filter chips in the Bookings page and Vehicle History page. No new database tables are required.
+
+Current State (What Already Exists)
+Layer	What exists
+DB	bookings.owner_remarks TEXT NULL — free-form text used for notes
+DB	bookings.damage_notes TEXT NULL — used for return damage log with color prefix [GREEN]/[GRAY]/[RED]
+DB	bookings.client_behavior_status TEXT NULL — stores raw behavior label
+Types	Booking.damage_notes?: string, Booking.owner_remarks (not in global type yet)
+Actions	updateBookingHistoricalDetails() already accepts owner_remarks and damage_notes
+UI	QuickEditBookingModal has a comments section with color picker ([GREEN]/[GRAY]/[RED])
+UI	BookingHistoryCard renders owner_remarks as raw text
+UI	BookingsClient has no tag filter bar whatsoever
+Database Structure
+Existing Columns Used (No Migration Needed)
+sql
+
+-- bookings table — columns already in production
+owner_remarks  TEXT NULL   -- stores notes + new tags
+damage_notes   TEXT NULL   -- stores return condition notes (already prefixed with [GREEN]/[GRAY]/[RED])
+Tag Storage Format
+Tags are embedded at the start of owner_remarks as bracket-prefixed tokens:
+
+
+owner_remarks = "[VIP][AGENCY] Long-term client from Tunisie Voyages. Paid cash."
+owner_remarks = "[DAMAGE][LATE_RETURN] Door scratch left side. Returned 3 hours late."
+owner_remarks = "[INSURANCE_CLAIM] File #4521 opened with STAR insurance."
+NOTE
+
+This zero-migration approach works because owner_remarks is TEXT with no constraints. The [TAG] format is distinct from the existing [GREEN]/[GRAY]/[RED] system used in damage_notes, so there is zero collision risk between both systems.
+
+Optional Future Migration (Phase 2 only, not now)
+If tags need to be queried server-side at scale later:
+
+sql
+
+-- Future only — not needed for this phase
+ALTER TABLE bookings ADD COLUMN tags TEXT[] DEFAULT '{}';
+CREATE INDEX idx_bookings_tags ON bookings USING GIN(tags);
+Step 0 — Tag Taxonomy Definition
+Define the canonical tag list. Each tag has a key, a display label, a color, and a background tint.
+
+Tag Key	Display Label	Color	Use Case
+[VIP]	VIP	#e5c17d gold	Long-term / premium client
+[BLACKLIST]	Blacklisted	#ef4444 red	Never rent again
+[DAMAGE]	Damage	#f97316 orange	Vehicle damage occurred
+[LATE_RETURN]	Late Return	#facc15 yellow	Client returned car late
+[INSURANCE_CLAIM]	Insurance Claim	#60a5fa blue	Open insurance file
+[PAID_CASH]	Cash (Off-System)	#4ade80 green	Payment made outside platform
+[AGENCY]	Via Agency	#a78bfa purple	Booking from a travel agency
+[PENDING]	Pending Follow-Up	#94a3b8 slate	Owner still needs to act
+[REFUND]	Refunded	#22d3ee cyan	Partial or full refund issued
+[DISPUTE]	Dispute	#dc2626 dark red	Active conflict with client
+Step 1 — New Utility File: src/lib/bookingTags.ts
+[NEW FILE] — Single source of truth for the entire tag system.
+
+typescript
+
+// src/lib/bookingTags.ts
+export type BookingTag = {
+  key: string           // e.g. '[VIP]'
+  label: string         // e.g. 'VIP'
+  color: string         // text color
+  bg: string            // background tint
+  border: string        // border color
+  emoji: string         // used in compact chips
+}
+export const BOOKING_TAGS: BookingTag[] = [
+  { key: '[VIP]',              label: 'VIP',            color: '#e5c17d', bg: 'rgba(229,193,125,0.14)', border: 'rgba(229,193,125,0.4)', emoji: '⭐' },
+  { key: '[BLACKLIST]',        label: 'Blacklisted',    color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',   emoji: '🚫' },
+  { key: '[DAMAGE]',           label: 'Damage',         color: '#f97316', bg: 'rgba(249,115,22,0.12)',  border: 'rgba(249,115,22,0.4)',  emoji: '🔧' },
+  { key: '[LATE_RETURN]',      label: 'Late Return',    color: '#facc15', bg: 'rgba(250,204,21,0.12)',  border: 'rgba(250,204,21,0.4)',  emoji: '⏰' },
+  { key: '[INSURANCE_CLAIM]',  label: 'Insurance',      color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.4)',  emoji: '📋' },
+  { key: '[PAID_CASH]',        label: 'Cash',           color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.4)',  emoji: '💵' },
+  { key: '[AGENCY]',           label: 'Agency',         color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.4)', emoji: '🏢' },
+  { key: '[PENDING]',          label: 'Pending',        color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.4)', emoji: '⏳' },
+  { key: '[REFUND]',           label: 'Refunded',       color: '#22d3ee', bg: 'rgba(34,211,238,0.12)',  border: 'rgba(34,211,238,0.4)',  emoji: '💸' },
+  { key: '[DISPUTE]',          label: 'Dispute',        color: '#dc2626', bg: 'rgba(220,38,38,0.12)',   border: 'rgba(220,38,38,0.4)',   emoji: '⚠️' },
+]
+/** Extract all tag keys present in a remarks string */
+export function extractTags(remarks: string | null | undefined): string[] {
+  if (!remarks) return []
+  return BOOKING_TAGS
+    .filter(t => remarks.includes(t.key))
+    .map(t => t.key)
+}
+/** Get the full BookingTag metadata for a key */
+export function getTagMeta(key: string): BookingTag | undefined {
+  return BOOKING_TAGS.find(t => t.key === key)
+}
+/** Toggle a tag inside a remarks string. Adds if absent, removes if present. */
+export function toggleTag(remarks: string, tagKey: string): string {
+  if (remarks.includes(tagKey)) {
+    return remarks.replace(tagKey, '').replace(/\s{2,}/g, ' ').trim()
+  }
+  // Prepend tag, keep free text after
+  return `${tagKey} ${remarks}`.trim()
+}
+/** Strip all known tags from a string, returning only the free text */
+export function stripTags(remarks: string): string {
+  let result = remarks
+  for (const t of BOOKING_TAGS) {
+    result = result.replace(t.key, '')
+  }
+  return result.replace(/\s{2,}/g, ' ').trim()
+}
+Step 2 — TypeScript Types Update
+[MODIFY] src/types/index.ts
+Add owner_remarks to the Booking interface (it is missing from the global type):
+
+typescript
+
+// Inside interface Booking { ... }
+// Add after `damage_notes?: string`
+owner_remarks?: string | null
+Step 3 — Tag Picker Component (Reusable)
+[NEW FILE] src/components/TagPicker.tsx
+
+A standalone component that can be dropped into any form modal.
+
+tsx
+
+// src/components/TagPicker.tsx
+'use client'
+import { BOOKING_TAGS, extractTags, toggleTag } from '@/lib/bookingTags'
+interface TagPickerProps {
+  value: string           // current owner_remarks value
+  onChange: (v: string) => void
+}
+export default function TagPicker({ value, onChange }: TagPickerProps) {
+  const activeTags = extractTags(value)
+  return (
+    <div>
+      <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>
+        🏷️ Tags
+      </label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+        {BOOKING_TAGS.map(tag => {
+          const isActive = activeTags.includes(tag.key)
+          return (
+            <button
+              key={tag.key}
+              type="button"
+              onClick={() => onChange(toggleTag(value, tag.key))}
+              style={{
+                padding: '0.25rem 0.65rem',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                border: `1px solid ${isActive ? tag.border : 'rgba(255,255,255,0.1)'}`,
+                background: isActive ? tag.bg : 'rgba(255,255,255,0.03)',
+                color: isActive ? tag.color : 'rgba(255,255,255,0.45)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {tag.emoji} {tag.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+Step 4 — Inline Tag Chips Component (Reusable)
+[NEW FILE] src/components/TagChips.tsx
+
+Used in table rows and history cards to render compact colored tags.
+
+tsx
+
+// src/components/TagChips.tsx
+import { extractTags, getTagMeta } from '@/lib/bookingTags'
+interface TagChipsProps {
+  remarks: string | null | undefined
+  compact?: boolean
+}
+export default function TagChips({ remarks, compact }: TagChipsProps) {
+  const tags = extractTags(remarks)
+  if (tags.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.3rem' }}>
+      {tags.map(key => {
+        const meta = getTagMeta(key)!
+        return (
+          <span
+            key={key}
+            title={meta.label}
+            style={{
+              padding: compact ? '0.1rem 0.4rem' : '0.2rem 0.5rem',
+              borderRadius: '12px',
+              fontSize: compact ? '0.68rem' : '0.73rem',
+              fontWeight: 600,
+              background: meta.bg,
+              border: `1px solid ${meta.border}`,
+              color: meta.color,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {meta.emoji} {compact ? '' : meta.label}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+Step 5 — QuickEditBookingModal: Add Tag Picker
+[MODIFY] src/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal.tsx
+What changes:
+
+Import TagPicker component
+Add ownerRemarks state initialized from booking.owner_remarks
+Render <TagPicker> above the existing damage_notes textarea
+Include owner_remarks: ownerRemarks in the updateBookingHistoricalDetails() call
+State addition:
+
+typescript
+
+const [ownerRemarks, setOwnerRemarks] = useState(booking?.owner_remarks ?? '')
+Inside the form JSX (above damage_notes section):
+
+tsx
+
+<TagPicker value={ownerRemarks} onChange={setOwnerRemarks} />
+<textarea
+  value={ownerRemarks}
+  onChange={e => setOwnerRemarks(e.target.value)}
+  placeholder="Free-form notes... Tags above are added automatically."
+  rows={3}
+/>
+In the submit handler:
+
+typescript
+
+owner_remarks: ownerRemarks || null,
+Step 6 — BookingsClient: Tag Filter Bar + Row Chips
+[MODIFY] src/app/dashboard/bookings/BookingsClient.tsx
+This is the most impactful change. Three sub-tasks:
+
+6a — New State
+typescript
+
+import { BOOKING_TAGS, extractTags } from '@/lib/bookingTags'
+import TagChips from '@/components/TagChips'
+// Add inside component
+const [activeTag, setActiveTag] = useState<string | null>(null)
+// Reset page on tag filter change
+useEffect(() => { setCurrentPage(1) }, [activeTag])
+6b — Tag Filter Applied in filteredBookings
+typescript
+
+// After the existing filter logic (line ~141), wrap with tag check:
+const tagFiltered = activeTag
+  ? filteredBookings.filter(b => b.owner_remarks?.includes(activeTag))
+  : filteredBookings
+// Replace `filteredBookings` → `tagFiltered` in sortedBookings
+const sortedBookings = [...tagFiltered].sort(...)
+6c — Tag Filter Bar UI (insert inside the control-bar div)
+Below the existing date filters, add a new row:
+
+tsx
+
+{/* Tag Filter Bar */}
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem', alignItems: 'center' }}>
+  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: '0.5rem' }}>🏷️ Tag:</span>
+  <button
+    onClick={() => setActiveTag(null)}
+    style={{
+      padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600,
+      background: !activeTag ? 'rgba(229,193,125,0.14)' : 'transparent',
+      border: `1px solid ${!activeTag ? 'rgba(229,193,125,0.4)' : 'rgba(255,255,255,0.1)'}`,
+      color: !activeTag ? '#e5c17d' : 'rgba(255,255,255,0.45)',
+      cursor: 'pointer',
+    }}
+  >
+    All ({initialBookings.length})
+  </button>
+  {BOOKING_TAGS.map(tag => {
+    const count = initialBookings.filter(b => b.owner_remarks?.includes(tag.key)).length
+    if (count === 0) return null
+    const isActive = activeTag === tag.key
+    return (
+      <button
+        key={tag.key}
+        onClick={() => setActiveTag(isActive ? null : tag.key)}
+        style={{
+          padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600,
+          background: isActive ? tag.bg : 'transparent',
+          border: `1px solid ${isActive ? tag.border : 'rgba(255,255,255,0.1)'}`,
+          color: isActive ? tag.color : 'rgba(255,255,255,0.4)',
+          cursor: 'pointer', transition: 'all 0.15s ease',
+        }}
+      >
+        {tag.emoji} {tag.label} ({count})
+      </button>
+    )
+  })}
+</div>
+6d — Tag Chips in Each Table Row
+In the CONTRACT column cell (col 1), below the status badge:
+
+tsx
+
+{/* After the status Badge */}
+<TagChips remarks={booking.owner_remarks} compact />
+Step 7 — BookingHistoryCard: Show Tags
+[MODIFY] src/app/dashboard/vehicles/[id]/history/components/BookingHistoryCard.tsx
+Replace the raw owner_remarks text rendering with TagChips + clean text:
+
+tsx
+
+import TagChips from '@/components/TagChips'
+import { stripTags } from '@/lib/bookingTags'
+// Replace the existing owner_remarks block:
+{booking.owner_remarks && (
+  <div className={styles['remarks-row']}>
+    <TagChips remarks={booking.owner_remarks} />
+    {stripTags(booking.owner_remarks) && (
+      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+        {stripTags(booking.owner_remarks)}
+      </span>
+    )}
+  </div>
+)}
+Step 8 — VehicleHistoryClient: Tag Filter in History
+[MODIFY] src/app/dashboard/vehicles/[id]/history/VehicleHistoryClient.tsx
+Add a tag filter above the booking history list (same pattern as BookingsClient step 6c):
+
+typescript
+
+const [historyTagFilter, setHistoryTagFilter] = useState<string | null>(null)
+// Apply in the booking list filter:
+const displayedBookings = historyTagFilter
+  ? bookings.filter(b => b.owner_remarks?.includes(historyTagFilter))
+  : bookings
+Step 9 — MasterOperationsGrid: Tag Chips
+[MODIFY] src/app/dashboard/vehicles/[id]/history/components/MasterOperationsGrid.tsx
+Add TagChips rendering next to DamageNoteView in each row:
+
+tsx
+
+import TagChips from '@/components/TagChips'
+// Below the DamageNoteView render:
+<TagChips remarks={booking.owner_remarks} compact />
+Step 10 — BookingFormModal: Tag Picker on New Booking
+[MODIFY] src/app/dashboard/bookings/components/BookingFormModal.tsx
+When creating a new booking, add TagPicker to the notes section so tags can be set at creation time (not only on edit).
+
+State:
+
+typescript
+
+const [ownerRemarks, setOwnerRemarks] = useState('')
+FormData append before submit:
+
+typescript
+
+formData.append('owner_remarks', ownerRemarks)
+Server action update in addBooking() and updateBooking() in src/app/actions/bookings.ts:
+
+typescript
+
+const owner_remarks = formData.get('owner_remarks') as string || null
+// Add to insert payload:
+owner_remarks,
+Complete Data Flow
+
+[Step 1] Owner opens BookingFormModal or QuickEditBookingModal
+             │
+             ▼
+[Step 2] TagPicker UI — click tag chips to toggle [VIP], [DAMAGE], etc.
+             │  tags written as prefix in owner_remarks textarea
+             ▼
+[Step 3] Form submit → Server Action (addBooking / updateBookingHistoricalDetails)
+             │  owner_remarks = "[VIP][DAMAGE] Scratch on rear bumper" saved to DB
+             ▼
+[Step 4] Supabase bookings table — owner_remarks TEXT column
+             │
+             ├──► [BookingsClient] reads owner_remarks from initialBookings prop
+             │         → Tag Filter Bar: shows active tags with counts
+             │         → filteredBookings filtered by activeTag
+             │         → Table rows show TagChips in CONTRACT column
+             │
+             ├──► [VehicleHistoryClient] reads bookings with owner_remarks
+             │         → Tag filter above history list
+             │         → BookingHistoryCard shows TagChips + clean text
+             │
+             └──► [MasterOperationsGrid] shows TagChips next to DamageNoteView
+File Change Summary
+File	Status	Change
+src/lib/bookingTags.ts	NEW	Tag dictionary, extractTags, toggleTag, stripTags
+src/components/TagPicker.tsx	NEW	Interactive tag toggle button group
+src/components/TagChips.tsx	NEW	Read-only colored tag chips display
+src/types/index.ts	MODIFY	Add owner_remarks?: string | null to Booking
+src/app/actions/bookings.ts	MODIFY	Accept owner_remarks in addBooking + updateBooking
+src/app/dashboard/bookings/BookingsClient.tsx	MODIFY	Tag state, filter bar, row chips
+src/app/dashboard/bookings/components/BookingFormModal.tsx	MODIFY	TagPicker + owner_remarks FormData
+src/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal.tsx	MODIFY	TagPicker + owner_remarks state + submit
+src/app/dashboard/vehicles/[id]/history/components/BookingHistoryCard.tsx	MODIFY	TagChips + stripTags display
+src/app/dashboard/vehicles/[id]/history/VehicleHistoryClient.tsx	MODIFY	Tag filter + displayedBookings
+src/app/dashboard/vehicles/[id]/history/components/MasterOperationsGrid.tsx	MODIFY	TagChips per row
+NOTE
+
+Zero database migrations required. owner_remarks column already exists in bookings as TEXT NULL.
+
+Execution Order
+
+1.  src/lib/bookingTags.ts                    — Foundation (no deps)
+2.  src/types/index.ts                        — Add owner_remarks to Booking type
+3.  src/components/TagChips.tsx               — Read-only display component
+4.  src/components/TagPicker.tsx              — Interactive picker component
+5.  src/app/actions/bookings.ts               — Accept owner_remarks in addBooking + updateBooking
+6.  src/app/dashboard/bookings/components/BookingFormModal.tsx   — TagPicker on new booking
+7.  src/app/dashboard/bookings/BookingsClient.tsx                — Filter bar + row chips
+8.  src/app/dashboard/vehicles/.../QuickEditBookingModal.tsx     — TagPicker on edit
+9.  src/app/dashboard/vehicles/.../BookingHistoryCard.tsx        — TagChips display
+10. src/app/dashboard/vehicles/.../VehicleHistoryClient.tsx      — History tag filter
+11. src/app/dashboard/vehicles/.../MasterOperationsGrid.tsx      — Grid row chips
+12. npx tsc --noEmit                           — Verify zero TS errors
+Estimated time: ~4 hours
+
+Open Questions
+IMPORTANT
+
+Should the [BLACKLIST] tag also flag the client record in the CRM (auto-set a is_blacklisted boolean on the clients table), or just mark the booking?
+Do you want the tag filter bar to support multi-select (AND logic) or single-select (OR logic)?
+Should owner_remarks and its tags be visible to the client in any document/invoice, or strictly owner-only?

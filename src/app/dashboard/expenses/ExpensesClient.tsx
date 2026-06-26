@@ -795,6 +795,7 @@ export default function ExpensesClient({
       await addExpense(new FormData(e.currentTarget))
       setIsAddModalOpen(false)
       showToast(lang === 'fr' ? 'Dépense enregistrée avec succès !' : 'Expense logged successfully!', 'success')
+      router.refresh()
     } catch (err: any) {
       showToast(err.message || (lang === 'fr' ? 'Échec de l\'enregistrement de la dépense.' : 'Failed to log expense.'), 'error')
     }
@@ -861,6 +862,7 @@ export default function ExpensesClient({
       await updateExpense(formData)
       setEditingExpense(null)
       showToast(lang === 'fr' ? 'Dépense mise à jour avec succès !' : 'Expense updated successfully!', 'success')
+      router.refresh()
     } catch (err: any) {
       showToast(err.message || (lang === 'fr' ? 'Échec de la mise à jour de la dépense.' : 'Failed to update expense.'), 'error')
     }
@@ -878,6 +880,7 @@ export default function ExpensesClient({
     try {
       await deleteExpense(id)
       showToast(lang === 'fr' ? 'Enregistrement de dépense supprimé.' : 'Expense record deleted.', 'success')
+      router.refresh()
     } catch (err: any) {
       showToast(err.message || (lang === 'fr' ? 'Échec de la suppression de la dépense.' : 'Failed to delete expense.'), 'error')
     }
@@ -1190,27 +1193,29 @@ export default function ExpensesClient({
       {/* ── Fleet Costs Filter Ribbon ── */}
       <div style={{
         display: 'flex',
-        gap: '0.6rem',
-        overflowX: 'auto',
-        padding: '0.4rem 0.2rem',
+        flexWrap: 'wrap',
+        gap: '0.5rem',
+        padding: '0.75rem',
         marginBottom: '1.25rem',
-        scrollbarWidth: 'none',
+        background: 'rgba(10,8,7,0.6)',
+        border: '1px solid rgba(229,193,125,0.1)',
+        borderRadius: '12px',
       }} className="no-print">
         {[
-          { key: 'all', label: lang === 'fr' ? 'Toutes les Dépenses' : 'All Expenses', emoji: '📊', color: 'var(--accent-gold)' },
+          { key: 'all', label: lang === 'fr' ? 'Tout' : 'All', emoji: '📊', color: 'var(--accent-gold)' },
           { key: 'fuel', label: lang === 'fr' ? 'Carburant' : 'Fuel', emoji: '⛽', color: '#f59e0b' },
-          { key: 'maintenance', label: lang === 'fr' ? 'Entretien' : 'Maintenance', emoji: '🛠️', color: '#ef4444' },
+          { key: 'maintenance', label: lang === 'fr' ? 'Entretien' : 'Maint.', emoji: '🛠️', color: '#ef4444' },
           { key: 'insurance', label: lang === 'fr' ? 'Assurance' : 'Insurance', emoji: '🛡️', color: '#38bdf8' },
           { key: 'cleaning', label: lang === 'fr' ? 'Nettoyage' : 'Cleaning', emoji: '🧹', color: '#a78bfa' },
-          { key: 'loyer', label: lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office', emoji: '🏠', color: '#fb923c' },
-          { key: 'electricite', label: lang === 'fr' ? 'Électricité' : 'Electricity', emoji: '⚡', color: '#facc15' },
+          { key: 'loyer', label: lang === 'fr' ? 'Loyer' : 'Rent', emoji: '🏠', color: '#fb923c' },
+          { key: 'electricite', label: lang === 'fr' ? 'Électricité' : 'Electric.', emoji: '⚡', color: '#facc15' },
           { key: 'eau', label: lang === 'fr' ? 'Eau' : 'Water', emoji: '💧', color: '#22d3ee' },
-          { key: 'connexion', label: lang === 'fr' ? 'Connexion / Internet' : 'Internet', emoji: '📡', color: '#34d399' },
-          { key: 'gps_puce', label: lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM', emoji: '🛰️', color: '#818cf8' },
+          { key: 'connexion', label: lang === 'fr' ? 'Internet' : 'Internet', emoji: '📡', color: '#34d399' },
+          { key: 'gps_puce', label: 'GPS / SIM', emoji: '🛰️', color: '#818cf8' },
           { key: 'salaires', label: lang === 'fr' ? 'Salaires' : 'Salaries', emoji: '👤', color: '#f472b6' },
-          { key: 'damage_repair', label: lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair', emoji: '🔧', color: '#ef4444' },
-          { key: 'installment_tranche', label: lang === 'fr' ? 'Tranche Paiement' : 'Tranche Payment', emoji: '💳', color: '#10b981' },
-          { key: 'late_return_penalty', label: lang === 'fr' ? 'Pénalité Retard' : 'Late Return Penalty', emoji: '⏰', color: '#f59e0b' },
+          { key: 'damage_repair', label: lang === 'fr' ? 'Dégâts' : 'Damage', emoji: '🔧', color: '#ef4444' },
+          { key: 'installment_tranche', label: lang === 'fr' ? 'Tranche' : 'Tranche', emoji: '💳', color: '#10b981' },
+          { key: 'late_return_penalty', label: lang === 'fr' ? 'Pénalité' : 'Penalty', emoji: '⏰', color: '#f59e0b' },
           { key: 'other', label: lang === 'fr' ? 'Autre' : 'Other', emoji: '📋', color: '#94a3b8' }
         ].map(item => {
           const active = flowFilter === item.key
@@ -1222,24 +1227,33 @@ export default function ExpensesClient({
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.55rem 1.15rem',
+                gap: '0.35rem',
+                padding: '0.42rem 0.85rem',
                 borderRadius: '999px',
-                border: active ? `1px solid ${item.color}` : '1px solid rgba(229,193,125,0.12)',
+                border: active ? `1px solid ${item.color}` : '1px solid rgba(229,193,125,0.1)',
                 background: active
-                  ? `linear-gradient(135deg, ${item.color}1e, ${item.color}0a)`
-                  : 'rgba(10,8,7,0.4)',
-                color: active ? item.color : 'rgba(229,193,125,0.6)',
-                fontSize: '0.82rem',
+                  ? `linear-gradient(135deg, ${item.color}22, ${item.color}0a)`
+                  : 'rgba(255,255,255,0.03)',
+                color: active ? item.color : 'rgba(229,193,125,0.55)',
+                fontSize: '0.78rem',
                 fontWeight: 700,
                 cursor: 'pointer',
-                transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
-                boxShadow: active ? `0 0 12px ${item.color}25` : 'none',
+                transition: 'all 0.2s ease',
+                boxShadow: active ? `0 0 10px ${item.color}30` : 'none',
                 whiteSpace: 'nowrap',
+                fontFamily: 'var(--font-body)',
               }}
             >
-              <span>{item.emoji}</span>
-              <span>{item.label} ({count})</span>
+              <span style={{ fontSize: '0.9rem' }}>{item.emoji}</span>
+              <span>{item.label}</span>
+              <span style={{
+                fontSize: '0.68rem',
+                background: active ? `${item.color}25` : 'rgba(255,255,255,0.07)',
+                color: active ? item.color : 'rgba(229,193,125,0.4)',
+                borderRadius: '999px',
+                padding: '0.05rem 0.4rem',
+                fontWeight: 800,
+              }}>{count}</span>
             </button>
           )
         })}
