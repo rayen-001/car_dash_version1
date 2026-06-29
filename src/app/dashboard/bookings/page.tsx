@@ -37,7 +37,7 @@ export default async function BookingsPage() {
   const allClients = await fetchAllClients(
     supabase,
     user.id,
-    'id, full_name, phone, trust_score, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le',
+    'id, full_name, phone, trust_score, internal_note, manual_score_adjustment, cin, license_number, address, date_naissance, cin_delivre_le, permis_numero, permis_delivre_le',
     [{ column: 'full_name', ascending: true }],
     true // activeOnly = true
   )

@@ -9,6 +9,7 @@ import { StatCard } from '@/components/StatCard'
 import { Badge } from '@/components/Badge'
 import MaintenanceReportModal from './components/MaintenanceReportModal'
 import { BusinessSettings } from '@/types'
+import ModalPortal from '@/components/ModalPortal'
 
 export default function MaintenanceClient({ 
   initialRecords, 
@@ -333,46 +334,52 @@ export default function MaintenanceClient({
 
       {/* ADD MODAL */}
       {isAddModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel">
-            <div className="modal-header">
-              <h2>Log Service Record</h2>
-              <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+              <div className="modal-header">
+                <h2>Log Service Record</h2>
+                <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
+              </div>
+              <ServiceForm onSubmit={handleAdd} submitLabel="Save Record" />
             </div>
-            <ServiceForm onSubmit={handleAdd} submitLabel="Save Record" />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* EDIT MODAL */}
       {editingRecord && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel">
-            <div className="modal-header">
-              <h2>Edit Service Record</h2>
-              <button className="icon-btn" onClick={() => setEditingRecord(null)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+              <div className="modal-header">
+                <h2>Edit Service Record</h2>
+                <button className="icon-btn" onClick={() => setEditingRecord(null)}><X size={20} /></button>
+              </div>
+              <ServiceForm defaultValues={editingRecord} onSubmit={handleEdit} submitLabel="Save Changes" />
             </div>
-            <ServiceForm defaultValues={editingRecord} onSubmit={handleEdit} submitLabel="Save Changes" />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* REPORT PRINT MODAL */}
       {isReportOpen && (
-        <MaintenanceReportModal
-          records={filteredRecords}
-          businessSettings={businessSettings}
-          onClose={() => setIsReportOpen(false)}
-          filters={{
-            vehicle: vehicleFilter === 'All' ? 'All Vehicles' : (vehicles.find(v => v.id === vehicleFilter) ? `${vehicles.find(v => v.id === vehicleFilter).brand} ${vehicles.find(v => v.id === vehicleFilter).model}` : 'Associated Vehicle'),
-            searchQuery: searchQuery
-          }}
-          stats={{
-            totalCost: filteredRecords.reduce((acc, curr) => acc + Number(curr.cost || 0), 0),
-            overdue: overdueCount,
-            upcoming: upcomingCount
-          }}
-        />
+        <ModalPortal>
+          <MaintenanceReportModal
+            records={filteredRecords}
+            businessSettings={businessSettings}
+            onClose={() => setIsReportOpen(false)}
+            filters={{
+              vehicle: vehicleFilter === 'All' ? 'All Vehicles' : (vehicles.find(v => v.id === vehicleFilter) ? `${vehicles.find(v => v.id === vehicleFilter).brand} ${vehicles.find(v => v.id === vehicleFilter).model}` : 'Associated Vehicle'),
+              searchQuery: searchQuery
+            }}
+            stats={{
+              totalCost: filteredRecords.reduce((acc, curr) => acc + Number(curr.cost || 0), 0),
+              overdue: overdueCount,
+              upcoming: upcomingCount
+            }}
+          />
+        </ModalPortal>
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `

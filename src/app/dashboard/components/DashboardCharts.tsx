@@ -45,39 +45,51 @@ export default function DashboardCharts({
 
     const PAID_STATUSES = ['confirmed', 'completed']
 
-    // Aggregate current-year Inflows
+    // Aggregate current-year Inflows (Strict Cash-Basis)
     allBookings.forEach(b => {
       const status = (b.status || '').toLowerCase()
       if (PAID_STATUSES.includes(status)) {
-        const bDateStr = b.start_date || b.created_at
-        if (bDateStr && bDateStr.startsWith(currentYearPrefix)) {
-          const d = new Date(bDateStr)
-          const mIndex = d.getMonth()
-          const totalAmount = Number(b.total_amount) || 0
-          data[mIndex].inflows += totalAmount
+        // Upfront deposit (acompte)
+        const acompteAmt = Number(b.acompte_paid) || 0
+        if (acompteAmt > 0) {
+          const acompteDate = b.acompte_paid_date || b.created_at
+          if (acompteDate && acompteDate.startsWith(currentYearPrefix)) {
+            const d = new Date(acompteDate)
+            const mIndex = d.getMonth()
+            data[mIndex].inflows += acompteAmt
+          }
+        }
+
+        // Paid installments
+        if (b.installments && Array.isArray(b.installments)) {
+          b.installments.forEach((inst: any) => {
+            if (inst.status === 'paid') {
+              const instAmt = Number(inst.amount) || 0
+              const instDate = inst.paid_date || inst.due_date
+              if (instDate && instDate.startsWith(currentYearPrefix)) {
+                const d = new Date(instDate)
+                const mIndex = d.getMonth()
+                data[mIndex].inflows += instAmt
+              }
+            }
+          })
         }
       }
     })
 
-    // Aggregate current-year Outflows (Expenses)
+    // Aggregate current-year Outflows (Expenses, excluding claims)
     expenses.forEach(e => {
       const eDateStr = e.created_at
-      if (eDateStr && eDateStr.startsWith(currentYearPrefix)) {
+      const isClaim = ['damage_repair', 'installment_tranche', 'late_return_penalty'].includes(e.category)
+      if (!isClaim && eDateStr && eDateStr.startsWith(currentYearPrefix)) {
         const d = new Date(eDateStr)
         const mIndex = d.getMonth()
         data[mIndex].outflows += (Number(e.amount) || 0)
       }
     })
 
-    // Aggregate current-year Outflows (Maintenance)
-    maintenance.forEach(m => {
-      const mDateStr = m.service_date || m.created_at
-      if (mDateStr && mDateStr.startsWith(currentYearPrefix)) {
-        const d = new Date(mDateStr)
-        const mIndex = d.getMonth()
-        data[mIndex].outflows += (Number(m.cost) || 0)
-      }
-    })
+    // All stats must count expenses only. Outflows are not calculated as expenses + maintenance.
+    // The mirrored maintenance expenses are already included in the expenses list.
 
     return data
   }, [allBookings, expenses, maintenance, currentYearPrefix])

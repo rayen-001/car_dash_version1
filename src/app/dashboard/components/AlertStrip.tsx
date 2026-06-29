@@ -11,6 +11,8 @@ interface AlertStripProps {
   vehicles?: any[]
   activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null
   setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null) => void
+  operationDateFrom: string
+  operationDateTo: string
 }
 
 export default function AlertStrip({
@@ -18,7 +20,9 @@ export default function AlertStrip({
   vehicleLegalDocs = [],
   vehicles = [],
   activeAlertFilter,
-  setActiveAlertFilter
+  setActiveAlertFilter,
+  operationDateFrom,
+  operationDateTo
 }: AlertStripProps) {
   const { lang } = useLanguage()
 
@@ -31,36 +35,134 @@ export default function AlertStrip({
     const todayStr = `${yStr}-${mStr}-${dStr}`
     const todayObj = localToday
 
-    // 1. Pickups Today (Cars Out Today)
+    const fmtDateCompact = (dateStr: string, l: 'fr' | 'en'): string => {
+      try {
+        const parts = dateStr.split('-')
+        if (parts.length !== 3) return dateStr
+        const day = parts[2]
+        const month = parts[1]
+        const monthsFr = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+        const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        const monthIndex = parseInt(month, 10) - 1
+        if (monthIndex >= 0 && monthIndex < 12) {
+          const monthName = l === 'fr' ? monthsFr[monthIndex] : monthsEn[monthIndex]
+          return `${day} ${monthName}`
+        }
+        return `${day}/${month}`
+      } catch {
+        return dateStr
+      }
+    }
+
+    const hasRange = !!(operationDateFrom || operationDateTo)
+    let rangeStart = todayStr
+    let rangeEnd = todayStr
+
+    if (operationDateFrom && operationDateTo) {
+      rangeStart = operationDateFrom
+      rangeEnd = operationDateTo
+    } else if (operationDateFrom) {
+      rangeStart = operationDateFrom
+      rangeEnd = operationDateFrom
+    } else if (operationDateTo) {
+      rangeStart = todayStr
+      rangeEnd = operationDateTo
+    }
+
+    // 1. Pickups (Departures)
     const pickupsToday = allBookings.filter(b => {
       if (b.status === 'cancelled') return false
-      return b.start_date === todayStr
-    })
+      return b.start_date >= rangeStart && b.start_date <= rangeEnd
+    }).sort((a, b) => a.start_date.localeCompare(b.start_date))
+
+    const getPickupsTitle = () => {
+      if (!hasRange || rangeStart === rangeEnd) {
+        if (rangeStart === todayStr) return lang === 'fr' ? "Départs Aujourd'hui" : 'Pickups Today'
+        return lang === 'fr' ? `Départs le ${fmtDateCompact(rangeStart, 'fr')}` : `Pickups on ${fmtDateCompact(rangeStart, 'en')}`
+      }
+      const diffDays = Math.ceil((new Date(rangeEnd).getTime() - new Date(rangeStart).getTime()) / (1000 * 60 * 60 * 24)) + 1
+      if (rangeStart === todayStr) {
+        return lang === 'fr' ? `Départs (Prochains ${diffDays} jours)` : `Pickups (Next ${diffDays} days)`
+      }
+      return lang === 'fr' ? `Départs (${fmtDateCompact(rangeStart, 'fr')} - ${fmtDateCompact(rangeEnd, 'fr')})` : `Pickups (${fmtDateCompact(rangeStart, 'en')} - ${fmtDateCompact(rangeEnd, 'en')})`
+    }
+
+    const getPickupsMessage = () => {
+      if (!hasRange || rangeStart === rangeEnd) {
+        if (rangeStart === todayStr) {
+          return lang === 'fr'
+            ? `${pickupsToday.length} véhicule(s) à récupérer aujourd'hui.`
+            : `${pickupsToday.length} vehicle(s) going out today.`
+        }
+        return lang === 'fr'
+          ? `${pickupsToday.length} véhicule(s) à récupérer ce jour.`
+          : `${pickupsToday.length} vehicle(s) going out this day.`
+      }
+      const diffDays = Math.ceil((new Date(rangeEnd).getTime() - new Date(rangeStart).getTime()) / (1000 * 60 * 60 * 24)) + 1
+      if (rangeStart === todayStr) {
+        return lang === 'fr'
+          ? `${pickupsToday.length} véhicule(s) à récupérer sur les prochains ${diffDays} jours.`
+          : `${pickupsToday.length} vehicle(s) going out in the next ${diffDays} days.`
+      }
+      return lang === 'fr'
+        ? `${pickupsToday.length} véhicule(s) à récupérer sur la période.`
+        : `${pickupsToday.length} vehicle(s) going out in this period.`
+    }
 
     activeAlerts.push({
       id: 'pickups-today',
       type: 'pickups',
       icon: <CarFront size={18} />,
-      title: lang === 'fr' ? "Départs Aujourd'hui" : 'Pickups Today',
-      message: lang === 'fr'
-        ? `${pickupsToday.length} véhicule(s) à récupérer aujourd'hui.`
-        : `${pickupsToday.length} vehicle(s) going out today.`
+      title: getPickupsTitle(),
+      message: getPickupsMessage()
     })
 
-    // 2. Returns Today
+    // 2. Returns
     const returnsToday = allBookings.filter(b => {
       if (b.status === 'completed' || b.status === 'cancelled') return false
-      return b.end_date === todayStr
-    })
+      return b.end_date >= rangeStart && b.end_date <= rangeEnd
+    }).sort((a, b) => a.end_date.localeCompare(b.end_date))
+
+    const getReturnsTitle = () => {
+      if (!hasRange || rangeStart === rangeEnd) {
+        if (rangeStart === todayStr) return lang === 'fr' ? "Retours Aujourd'hui" : 'Returns Today'
+        return lang === 'fr' ? `Retours le ${fmtDateCompact(rangeStart, 'fr')}` : `Returns on ${fmtDateCompact(rangeStart, 'en')}`
+      }
+      const diffDays = Math.ceil((new Date(rangeEnd).getTime() - new Date(rangeStart).getTime()) / (1000 * 60 * 60 * 24)) + 1
+      if (rangeStart === todayStr) {
+        return lang === 'fr' ? `Retours (Prochains ${diffDays} jours)` : `Returns (Next ${diffDays} days)`
+      }
+      return lang === 'fr' ? `Retours (${fmtDateCompact(rangeStart, 'fr')} - ${fmtDateCompact(rangeEnd, 'fr')})` : `Returns (${fmtDateCompact(rangeStart, 'en')} - ${fmtDateCompact(rangeEnd, 'en')})`
+    }
+
+    const getReturnsMessage = () => {
+      if (!hasRange || rangeStart === rangeEnd) {
+        if (rangeStart === todayStr) {
+          return lang === 'fr'
+            ? `${returnsToday.length} véhicule(s) de retour aujourd'hui.`
+            : `${returnsToday.length} vehicle(s) arriving back today.`
+        }
+        return lang === 'fr'
+          ? `${returnsToday.length} véhicule(s) de retour ce jour.`
+          : `${returnsToday.length} vehicle(s) arriving back this day.`
+      }
+      const diffDays = Math.ceil((new Date(rangeEnd).getTime() - new Date(rangeStart).getTime()) / (1000 * 60 * 60 * 24)) + 1
+      if (rangeStart === todayStr) {
+        return lang === 'fr'
+          ? `${returnsToday.length} véhicule(s) de retour sur les prochains ${diffDays} jours.`
+          : `${returnsToday.length} vehicle(s) arriving back in the next ${diffDays} days.`
+      }
+      return lang === 'fr'
+        ? `${returnsToday.length} véhicule(s) de retour sur la période.`
+        : `${returnsToday.length} vehicle(s) arriving back in this period.`
+    }
 
     activeAlerts.push({
       id: 'returns-today',
       type: 'info',
       icon: <Clock size={18} />,
-      title: lang === 'fr' ? "Retours Aujourd'hui" : 'Returns Today',
-      message: lang === 'fr'
-        ? `${returnsToday.length} véhicule(s) de retour aujourd'hui.`
-        : `${returnsToday.length} vehicle(s) arriving back today.`
+      title: getReturnsTitle(),
+      message: getReturnsMessage()
     })
 
     // 3. Overdue Returns (Past end_date, not completed/cancelled)
@@ -175,7 +277,7 @@ export default function AlertStrip({
     })
 
     return activeAlerts
-  }, [allBookings, vehicleLegalDocs, vehicles, lang])
+  }, [allBookings, vehicleLegalDocs, vehicles, lang, operationDateFrom, operationDateTo])
 
   const filterMap: Record<string, 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250'> = {
     'overdue': 'overdue',

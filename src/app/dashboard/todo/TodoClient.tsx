@@ -24,6 +24,7 @@ import {
 } from '@/lib/agendaBuilder'
 import { completeTodo, deleteTodo, reopenTodo } from '@/app/actions/todos'
 import AddTaskModal from './components/AddTaskModal'
+import ModalPortal from '@/components/ModalPortal'
 import type { Booking, Vehicle, Todo, VehicleLegalDoc } from '@/types'
 
 type Tab = 'today' | 'tomorrow' | 'week' | 'month' | 'date'
@@ -330,13 +331,15 @@ export default function TodoClient({ bookings, vehicles, legalDocs, initialTodos
 
       {/* Add modal --------------------------------------------------------- */}
       {isAddOpen && (
-        <AddTaskModal
-          onClose={() => setIsAddOpen(false)}
-          onCreated={(newTodo) => {
-            setTodos(prev => [newTodo, ...prev])
-            setIsAddOpen(false)
-          }}
-        />
+        <ModalPortal>
+          <AddTaskModal
+            onClose={() => setIsAddOpen(false)}
+            onCreated={(newTodo) => {
+              setTodos(prev => [newTodo, ...prev])
+              setIsAddOpen(false)
+            }}
+          />
+        </ModalPortal>
       )}
 
       {isPending && (

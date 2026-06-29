@@ -12,6 +12,7 @@ import BookingFormModal from './components/BookingFormModal'
 import BookingInvoiceModal from './components/BookingInvoiceModal'
 import BookingAgreementModal from './components/BookingAgreementModal'
 import { useLanguage } from '@/lib/i18n'
+import { ClientNoteScoreModal, ClientInternalNoteBadge, ClientEffectiveScoreBadge } from '@/components/ClientNoteScoreModal'
 import Fuse from 'fuse.js'
 
 function normalizeText(str: string): string {
@@ -51,6 +52,7 @@ export default function BookingsClient({
   vehicleLegalDocs?: any[]
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false)
+  const [noteScoreModalClient, setNoteScoreModalClient] = useState<any | null>(null)
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null)
   const [loading, setLoading] = useState(false)
   const { showToast } = useToast()
@@ -181,14 +183,51 @@ export default function BookingsClient({
 
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    // Take snapshot of previous state for potential rollback
+    const snapshot = [...serverBookings]
+
+    // Update UI instantly
+    setServerBookings((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b))
+    )
     setLoading(true)
     try {
-      await updateBookingStatus(id, newStatus)
+      const res = await updateBookingStatus(id, newStatus)
+      
+      // Merge returned server data (including recalculated client trust scores)
+      if (res) {
+        setServerBookings((prev) =>
+          prev.map((b) => {
+            let updated = { ...b }
+            if (b.id === id) {
+              updated.status = res.status
+            }
+            // If primary client score updated, update it locally in all rows
+            if (updated.primary_client && res.primaryClientId === updated.primary_client.id) {
+              updated.primary_client = {
+                ...updated.primary_client,
+                trust_score: res.primaryClientScore
+              }
+            }
+            // If secondary client score updated, update it locally in all rows
+            if (updated.secondary_client && res.secondaryClientId === updated.secondary_client.id) {
+              updated.secondary_client = {
+                ...updated.secondary_client,
+                trust_score: res.secondaryClientScore
+              }
+            }
+            return updated
+          })
+        )
+      }
       showToast(`Booking status updated to ${newStatus}!`, 'success')
     } catch (err: any) {
+      // Rollback to previous state on failure
+      setServerBookings(snapshot)
       showToast(err.message || 'Error updating status', 'error')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'All' || vehicleFilter !== 'All' || dateFrom !== '' || dateTo !== ''
@@ -767,41 +806,34 @@ export default function BookingsClient({
                         <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(229,193,125,0.15)', border: '1px solid rgba(229,193,125,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#E5C17D', fontWeight: 600, fontSize: '0.85rem' }}>
                            {getInitials(primary.full_name)}
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div className="fw-500" style={{ color: '#fff', fontSize: '0.95rem' }}>{primary.full_name}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="fw-500" style={{ color: '#fff', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                            {primary.full_name}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                setNoteScoreModalClient(booking.primary_client || {
+                                  id: booking.client_id,
+                                  full_name: booking.client_name,
+                                  trust_score: null,
+                                  internal_note: null,
+                                  manual_score_adjustment: null
+                                })
+                              }}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', color: '#ae9260' }}
+                              title={t('clientNotes.title')}
+                            >
+                              <Edit size={12} style={{ color: 'rgba(229,193,125,0.6)' }} />
+                            </button>
+                          </div>
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
                             {primary.phone || 'No Phone'}
                           </div>
-                          {primary.trust_score !== null && primary.trust_score !== undefined && primary.trust_score < 30 ? (
-                            <div style={{ 
-                              background: 'rgba(239,68,68,0.15)', 
-                              border: '1px solid rgba(239,68,68,0.4)', 
-                              color: '#ef4444', 
-                              padding: '0.2rem 0.5rem', 
-                              borderRadius: '4px', 
-                              fontSize: '0.7rem', 
-                              fontWeight: 'bold',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              animation: 'pulseAlert 2s infinite'
-                            }}>
-                              {t('dri.primaryRisk')}
-                            </div>
-                          ) : (
-                            <span style={{
-                              background: primary.trust_score === null || primary.trust_score === undefined ? 'rgba(255,255,255,0.05)' : primary.trust_score >= 80 ? 'rgba(16,185,129,0.15)' : primary.trust_score >= 60 ? 'rgba(74,222,128,0.15)' : 'rgba(251,191,36,0.15)',
-                              color: primary.trust_score === null || primary.trust_score === undefined ? 'var(--text-muted)' : primary.trust_score >= 80 ? '#10b981' : primary.trust_score >= 60 ? '#4ade80' : '#fbbf24',
-                              padding: '0.15rem 0.4rem',
-                              borderRadius: '4px',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              border: '1px solid',
-                              borderColor: primary.trust_score === null || primary.trust_score === undefined ? 'rgba(255,255,255,0.1)' : primary.trust_score >= 80 ? 'rgba(16,185,129,0.3)' : primary.trust_score >= 60 ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.3)',
-                            }}>
-                              {primary.trust_score === null || primary.trust_score === undefined ? t('dri.unrated') : primary.trust_score >= 80 ? `${t('dri.excellent')} (${primary.trust_score.toFixed(1)} DRI)` : primary.trust_score >= 60 ? `${t('dri.standard')} (${primary.trust_score.toFixed(1)} DRI)` : `${t('dri.watch')} (${primary.trust_score.toFixed(1)} DRI)`}
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start' }}>
+                            <ClientEffectiveScoreBadge client={booking.primary_client || { trust_score: null, manual_score_adjustment: null }} />
+                            <ClientInternalNoteBadge note={booking.primary_client?.internal_note} />
+                          </div>
                         </div>
                       </div>
 
@@ -814,41 +846,29 @@ export default function BookingsClient({
                           <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc', fontWeight: 600, fontSize: '0.75rem' }}>
                             {getInitials(secondary.full_name)}
                           </div>
-                          <div style={{ flex: 1 }}>
-                            <div className="fw-500" style={{ color: '#ccc', fontSize: '0.9rem' }}>{secondary.full_name} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>({t('bookings.coDriver')})</span></div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="fw-500" style={{ color: '#ccc', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                              {secondary.full_name}
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>({t('bookings.coDriver')})</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  e.preventDefault()
+                                  setNoteScoreModalClient(booking.secondary_client)
+                                }}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', color: '#ae9260' }}
+                                title={t('clientNotes.title')}
+                              >
+                                <Edit size={11} style={{ color: 'rgba(229,193,125,0.6)' }} />
+                              </button>
+                            </div>
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
                               {secondary.phone || 'No Phone'}
                             </div>
-                            {secondary.trust_score !== null && secondary.trust_score !== undefined && secondary.trust_score < 30 ? (
-                              <div style={{ 
-                                background: 'rgba(239,68,68,0.15)', 
-                                border: '1px solid rgba(239,68,68,0.4)', 
-                                color: '#ef4444', 
-                                padding: '0.2rem 0.5rem', 
-                                borderRadius: '4px', 
-                                fontSize: '0.7rem', 
-                                fontWeight: 'bold',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                animation: 'pulseAlert 2s infinite'
-                              }}>
-                                {t('dri.codriverRisk')}
-                              </div>
-                            ) : (
-                              <span style={{
-                                background: secondary.trust_score === null || secondary.trust_score === undefined ? 'rgba(255,255,255,0.05)' : secondary.trust_score >= 80 ? 'rgba(16,185,129,0.15)' : secondary.trust_score >= 60 ? 'rgba(74,222,128,0.15)' : 'rgba(251,191,36,0.15)',
-                                color: secondary.trust_score === null || secondary.trust_score === undefined ? 'var(--text-muted)' : secondary.trust_score >= 80 ? '#10b981' : secondary.trust_score >= 60 ? '#4ade80' : '#fbbf24',
-                                padding: '0.15rem 0.4rem',
-                                borderRadius: '4px',
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                border: '1px solid',
-                                borderColor: secondary.trust_score === null || secondary.trust_score === undefined ? 'rgba(255,255,255,0.1)' : secondary.trust_score >= 80 ? 'rgba(16,185,129,0.3)' : secondary.trust_score >= 60 ? 'rgba(74,222,128,0.3)' : 'rgba(251,191,36,0.3)',
-                              }}>
-                                {secondary.trust_score === null || secondary.trust_score === undefined ? t('dri.unrated') : secondary.trust_score >= 80 ? `${t('dri.excellent')} (${secondary.trust_score.toFixed(1)} DRI)` : secondary.trust_score >= 60 ? `${t('dri.standard')} (${secondary.trust_score.toFixed(1)} DRI)` : `${t('dri.watch')} (${secondary.trust_score.toFixed(1)} DRI)`}
-                              </span>
-                            )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start' }}>
+                              <ClientEffectiveScoreBadge client={secondary} />
+                              <ClientInternalNoteBadge note={secondary.internal_note} />
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -1239,6 +1259,38 @@ export default function BookingsClient({
           initialBookings={serverBookings}
           vehicleLegalDocs={vehicleLegalDocs}
           onClose={() => setIsFormOpen(false)}
+        />
+      )}
+
+      {noteScoreModalClient && (
+        <ClientNoteScoreModal
+          isOpen={!!noteScoreModalClient}
+          onClose={() => setNoteScoreModalClient(null)}
+          client={noteScoreModalClient}
+           onClientUpdated={(updated: any) => {
+            setServerBookings((prev) =>
+              prev.map((b) => {
+                let updatedBooking = { ...b }
+                if (updatedBooking.primary_client && updatedBooking.primary_client.id === updated.id) {
+                  updatedBooking.primary_client = {
+                    ...updatedBooking.primary_client,
+                    internal_note: updated.internal_note,
+                    manual_score_adjustment: updated.manual_score_adjustment,
+                    trust_score: updated.trust_score
+                  }
+                }
+                if (updatedBooking.secondary_client && updatedBooking.secondary_client.id === updated.id) {
+                  updatedBooking.secondary_client = {
+                    ...updatedBooking.secondary_client,
+                    internal_note: updated.internal_note,
+                    manual_score_adjustment: updated.manual_score_adjustment,
+                    trust_score: updated.trust_score
+                  }
+                }
+                return updatedBooking
+              })
+            )
+          }}
         />
       )}
 

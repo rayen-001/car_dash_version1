@@ -59,6 +59,7 @@ interface LedgerRow {
   totalAmount?: number
   rawBooking?: any
   clients?: any
+  maintenance_id?: string | null  // non-null = system-managed mirrored expense
 }
 
 type DatePreset = 'today' | 'week' | 'month' | 'all' | 'custom'
@@ -507,6 +508,7 @@ interface ExpenseInput {
   vehicles?: any
   client_phone?: string
   clients?: any
+  vehicle_id?: string | null
 }
 
 interface MaintenanceInput {
@@ -516,6 +518,7 @@ interface MaintenanceInput {
   description?: string
   cost?: number | string
   vehicles?: any
+  vehicle_id?: string | null
 }
 
 export default function ExpensesClient({
@@ -561,6 +564,7 @@ export default function ExpensesClient({
   // ── Search + Type Filter ──────────────────────────────────────────────────
   const [searchQuery, setSearchQuery]   = useState('')
   const [typeFilter, setTypeFilter]     = useState<'all' | 'inflow' | 'outflow'>('all')
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all')
 
   const searchParams = useSearchParams()
   useEffect(() => {
@@ -639,11 +643,19 @@ export default function ExpensesClient({
         claimType: isClaim ? cat as LedgerRow['claimType'] : undefined,
         vehicleId: (e as any).vehicle_id || '',
         clients: resolvedClient,
+        maintenance_id: (e as any).maintenance_id || null,
       })
     }
 
-    // 3. Maintenance outflows
+    // 3. Maintenance outflows (preventing double listing of synced maintenance)
     for (const m of initialMaintenance) {
+      const isRepresented = initialExpenses.some(e => 
+        e.vehicle_id === m.vehicle_id && 
+        Number(e.amount) === Number(m.cost) && 
+        e.category === 'maintenance'
+      )
+      if (isRepresented) continue
+
       const date = isoDate(m.service_date || m.created_at)
       const v = m.vehicles as any
       const plate = buildPlateLabel(v)
@@ -680,7 +692,7 @@ export default function ExpensesClient({
     })
   }, [initialBookings, initialExpenses, initialMaintenance, TODAY, settledInstallmentIds, locallySettledClaims, lang])
 
-  // ── Category Counts (based on active date/type/search query, but not category filter) ──
+  // ── Category Counts (based on active date/type/search query/vehicle, but not category filter) ──
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     const { from, to } = dateWindow
@@ -693,6 +705,14 @@ export default function ExpensesClient({
     allRows.forEach(row => {
       const inWindow = row.date >= from && row.date <= to
       const typeMatch = typeFilter === 'all' || row.type === typeFilter
+
+      // Vehicle filter match
+      let vehicleMatch = true
+      if (selectedVehicleId === 'company') {
+        vehicleMatch = !row.vehicleId
+      } else if (selectedVehicleId !== 'all') {
+        vehicleMatch = row.vehicleId === selectedVehicleId
+      }
 
       let smartMatch = true
       if (isOverdueQuery) {
@@ -710,14 +730,14 @@ export default function ExpensesClient({
           row.installments.some(t => t.due_date.includes(q))
       }
 
-      if (inWindow && typeMatch && smartMatch) {
+      if (inWindow && typeMatch && vehicleMatch && smartMatch) {
         counts[row.category] = (counts[row.category] || 0) + 1
       }
     })
     return counts
-  }, [allRows, dateWindow, typeFilter, searchQuery, TODAY])
+  }, [allRows, dateWindow, typeFilter, searchQuery, selectedVehicleId, TODAY])
 
-  // ── Smart Filter (date string, "overdue", "due today") ────────────────────
+  // ── Smart Filter (date string, "overdue", "due today", vehicle filter) ────────────────────
   const filtered = useMemo(() => {
     const { from, to } = dateWindow
     const q = searchQuery.trim().toLowerCase()
@@ -736,6 +756,16 @@ export default function ExpensesClient({
       const flowMatch = flowFilter === 'all' || row.category === flowFilter
 
       if (!flowMatch) return false
+
+      // Vehicle filter match
+      let vehicleMatch = true
+      if (selectedVehicleId === 'company') {
+        vehicleMatch = !row.vehicleId
+      } else if (selectedVehicleId !== 'all') {
+        vehicleMatch = row.vehicleId === selectedVehicleId
+      }
+
+      if (!vehicleMatch) return false
 
       // Smart search intercept for installment-based queries
       if (isOverdueQuery) {
@@ -761,7 +791,7 @@ export default function ExpensesClient({
 
       return inWindow && typeMatch && searchMatch
     })
-  }, [allRows, dateWindow, typeFilter, flowFilter, searchQuery, TODAY])
+  }, [allRows, dateWindow, typeFilter, flowFilter, searchQuery, selectedVehicleId, TODAY])
 
   // ── KPI Computations ──────────────────────────────────────────────────────
   const totalInflow  = useMemo(() => filtered.filter(r => r.type === 'inflow').reduce((s, r) => s + r.amount, 0), [filtered])
@@ -1155,6 +1185,36 @@ export default function ExpensesClient({
             >×</button>
           )}
         </div>
+
+        {/* Premium Vehicle Selector Filter */}
+        <div style={{ position: 'relative', minWidth: '200px' }}>
+          <select
+            value={selectedVehicleId}
+            onChange={(e) => setSelectedVehicleId(e.target.value)}
+            className="form-input"
+            style={{
+              paddingRight: '2rem',
+              backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23E5C17D%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 0.8rem top 50%',
+              backgroundSize: '0.65rem auto',
+              appearance: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="all" style={{ background: '#111', color: '#fff' }}>
+              {lang === 'fr' ? '🚗 Toutes les dépenses' : '🚗 All Transactions'}
+            </option>
+            <option value="company" style={{ background: '#111', color: '#fff' }}>
+              {lang === 'fr' ? '🏢 Dépenses Société (Générales)' : '🏢 Global / Corporate Expenses'}
+            </option>
+            {vehicles.map(v => (
+              <option key={v.id} value={v.id} style={{ background: '#111', color: '#fff' }}>
+                [{v.license_plate}] {v.brand} {v.model}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -1168,316 +1228,165 @@ export default function ExpensesClient({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
           {(() => {
-            // Group by Category
-            const groups: Record<string, typeof filtered> = {}
-            filtered.forEach(row => {
-              const key = row.category || 'other'
-              if (!groups[key]) groups[key] = []
-              groups[key].push(row)
-            })
-
-            // Sort categories alphabetically by their localized label
-            const sortedKeys = Object.keys(groups).sort((a, b) => {
-              const getCategoryLabel = (cat: string) => {
-                switch (cat) {
-                  case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
-                  case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
-                  case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
-                  case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
-                  case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
-                  case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
-                  case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
-                  case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
-                  case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
-                  case 'loyer': return lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'
-                  case 'electricite': return lang === 'fr' ? 'Électricité' : 'Electricity'
-                  case 'eau': return lang === 'fr' ? 'Eau' : 'Water'
-                  case 'connexion': return lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'
-                  case 'gps_puce': return lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM'
-                  case 'salaires': return lang === 'fr' ? 'Salaires' : 'Salaries'
-                  default: return lang === 'fr' ? 'Autre' : 'Other'
-                }
+            const getCategoryLabel = (cat: string) => {
+              switch (cat) {
+                case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
+                case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
+                case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
+                case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
+                case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
+                case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
+                case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
+                case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
+                case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
+                case 'loyer': return lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'
+                case 'electricite': return lang === 'fr' ? 'Électricité' : 'Electricity'
+                case 'eau': return lang === 'fr' ? 'Eau' : 'Water'
+                case 'connexion': return lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'
+                case 'gps_puce': return lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM'
+                case 'salaires': return lang === 'fr' ? 'Salaires / Personnel' : 'Salaries / Staff'
+                default: return lang === 'fr' ? 'Autre' : 'Other'
               }
-              const labelA = getCategoryLabel(a)
-              const labelB = getCategoryLabel(b)
-              return labelA.localeCompare(labelB)
-            })
+            }
 
-            return sortedKeys.map((catKey) => {
-              const catRows = groups[catKey]
-              // Sort inside each group by date DESC
-              const sortedCatRows = [...catRows].sort((a, b) => {
-                const dateCompare = b.date.localeCompare(a.date)
-                if (dateCompare !== 0) return dateCompare
-                return b.createdAt.localeCompare(a.createdAt)
+            if (flowFilter === 'all') {
+              const dateGroups: Record<string, typeof filtered> = {}
+              filtered.forEach(row => {
+                const key = row.date
+                if (!dateGroups[key]) dateGroups[key] = []
+                dateGroups[key].push(row)
               })
 
-              const dailyOutflow = sortedCatRows.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0)
-              const dailyInflow = sortedCatRows.filter(r => r.type === 'inflow').reduce((s, r) => s + r.collectedAmount, 0)
+              const sortedDates = Object.keys(dateGroups).sort((a, b) => b.localeCompare(a))
 
-              let categoryMeta = CATEGORY_META[catKey] || {
-                label: getInfractionLabel(catKey, lang),
-                emoji: '📦',
-                color: '#fbbf24',
-                bg: 'rgba(251,191,36,0.12)',
-                border: 'rgba(251,191,36,0.24)',
-              }
+              return sortedDates.map((dateKey) => {
+                const dateRows = dateGroups[dateKey]
+                const sortedDateRows = [...dateRows].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                const dayOutflow = sortedDateRows.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0)
+                const dayInflow = sortedDateRows.filter(r => r.type === 'inflow').reduce((s, r) => s + r.collectedAmount, 0)
 
-              const getCategoryLabel = (cat: string) => {
-                switch (cat) {
-                  case 'rental_revenue': return lang === 'fr' ? 'Revenus Locatifs' : 'Rental Revenue'
-                  case 'maintenance': return lang === 'fr' ? 'Entretien Véhicule' : 'Vehicle Maintenance'
-                  case 'fuel': return lang === 'fr' ? 'Carburant Flotte' : 'Fleet Fuel'
-                  case 'insurance': return lang === 'fr' ? 'Assurance' : 'Insurance'
-                  case 'cleaning': return lang === 'fr' ? 'Nettoyage' : 'Cleaning'
-                  case 'incident': return lang === 'fr' ? 'Indemnité Incident' : 'Incident Indemnity'
-                  case 'damage_repair': return lang === 'fr' ? 'Réparation Dégâts' : 'Damage Repair'
-                  case 'installment_tranche': return lang === 'fr' ? 'Tranche de Paiement' : 'Installment Tranche'
-                  case 'late_return_penalty': return lang === 'fr' ? 'Pénalité de Retard' : 'Late Return Penalty'
-                  case 'loyer': return lang === 'fr' ? 'Loyer / Bureau' : 'Rent / Office'
-                  case 'electricite': return lang === 'fr' ? 'Électricité' : 'Electricity'
-                  case 'eau': return lang === 'fr' ? 'Eau' : 'Water'
-                  case 'connexion': return lang === 'fr' ? 'Connexion / Internet' : 'Connection / Internet'
-                  case 'gps_puce': return lang === 'fr' ? 'GPS / Puce' : 'GPS / SIM'
-                  case 'salaires': return lang === 'fr' ? 'Salaires / Personnel' : 'Salaries / Staff'
-                  default: return lang === 'fr' ? 'Autre' : 'Other'
-                }
-              }
-
-              const categoryTitle = categoryMeta.emoji + ' ' + getCategoryLabel(catKey)
-
-              return (
-                <div
-                  key={catKey}
-                  className="glass-panel"
-                  style={{
-                    padding: '1.25rem 1.35rem',
-                    borderRadius: '14px',
-                    border: `1px solid ${categoryMeta.border}`,
-                    background: 'rgba(10, 8, 7, 0.85)',
-                    boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
-                    marginBottom: '1.25rem',
-                  }}
-                >
-                  {/* ── Category Header matrix ── */}
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '0.75rem',
-                    marginBottom: '1rem',
-                    paddingBottom: '0.85rem',
-                    borderBottom: '1px dashed rgba(229,193,125,0.15)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: categoryMeta.color, boxShadow: `0 0 10px ${categoryMeta.color}` }} />
-                      <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '0.01em' }}>
-                        {categoryTitle}
-                      </span>
-                      <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginLeft: '0.25rem' }}>
-                        · {sortedCatRows.length} {sortedCatRows.length > 1 ? t('preset.transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}
-                      </span>
+                return (
+                  <div key={dateKey} className="glass-panel" style={{ padding: '1.25rem 1.35rem', borderRadius: '14px', border: '1px solid rgba(229, 193, 125, 0.15)', background: 'rgba(10, 8, 7, 0.85)', boxShadow: '0 4px 24px rgba(0,0,0,0.25)', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px dashed rgba(229,193,125,0.15)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--accent-gold)', boxShadow: '0 0 10px var(--accent-gold)' }} />
+                        <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '0.01em' }}>{fmtDate(dateKey)}</span>
+                        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginLeft: '0.25rem' }}>· {sortedDateRows.length} {sortedDateRows.length > 1 ? t('preset.transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
+                        {dayInflow > 0 && <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.32rem 0.7rem', borderRadius: '999px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399', fontSize: '0.78rem', fontWeight: 700 }}><TrendingUp size={12} /><span>+{dayInflow.toFixed(2)} DT</span></div>}
+                        {dayOutflow > 0 && <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', padding: '0.4rem 0.85rem', borderRadius: '999px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.32)', color: '#f87171', fontSize: '0.82rem', fontWeight: 800, letterSpacing: '0.02em', boxShadow: '0 0 14px rgba(239,68,68,0.18), inset 0 0 4px rgba(239,68,68,0.04)' }}><TrendingDown size={13} /><span style={{ opacity: 0.85 }}>{lang === 'fr' ? 'Total' : 'Total'}</span><span>-{dayOutflow.toFixed(2)} DT</span></div>}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
-                      {dailyInflow > 0 && (
-                        <div style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                          padding: '0.32rem 0.7rem', borderRadius: '999px',
-                          background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)',
-                          color: '#34d399', fontSize: '0.78rem', fontWeight: 700,
-                        }}>
-                          <TrendingUp size={12} />
-                          <span>+{dailyInflow.toFixed(2)} DT</span>
-                        </div>
-                      )}
-                      {dailyOutflow > 0 && (
-                        <div style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-                          padding: '0.4rem 0.85rem', borderRadius: '999px',
-                          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.32)',
-                          color: '#f87171', fontSize: '0.82rem', fontWeight: 800,
-                          letterSpacing: '0.02em',
-                          boxShadow: '0 0 14px rgba(239,68,68,0.18), inset 0 0 4px rgba(239,68,68,0.04)',
-                        }}>
-                          <TrendingDown size={13} />
-                          <span style={{ opacity: 0.85 }}>{lang === 'fr' ? 'Total' : 'Total'}</span>
-                          <span>-{dailyOutflow.toFixed(2)} DT</span>
-                        </div>
-                      )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                      {sortedDateRows.map((row) => {
+                        const isDamageClaim = row.category === 'damage_repair' || row.claimType === 'damage_repair'
+                        const liableClient = (isDamageClaim && row.clients && row.clients.id) ? row.clients : null
+                        let categoryMeta = CATEGORY_META[row.category || 'other'] || { label: 'Other', emoji: '📦', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.24)' }
+                        return (
+                          <div key={row.id} className="ledger-grid-row" style={{ gap: '1rem', padding: '0.95rem 1.15rem', background: 'rgba(255,255,255,0.025)', border: liableClient ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', alignItems: 'center', transition: 'all 0.2s' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}><Calendar size={13} style={{ color: 'var(--accent-gold)' }} /><span>{fmtDate(row.date)}</span></div>
+                              <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>{fmtLegalDate(row.createdAt)}</span>
+                            </div>
+                            <div>
+                              {row.licensePlate ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'stretch', width: 'fit-content', background: 'linear-gradient(180deg, #1f1f1f 0%, #111 100%)', border: '1.5px solid rgba(229,193,125,0.3)', borderRadius: '6px', fontSize: '0.78rem', fontFamily: "'Courier New', Courier, monospace", fontWeight: 800, color: '#fff', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}><div style={{ background: 'linear-gradient(135deg, #c5a059, #e5c17d)', color: '#000', padding: '0.15rem 0.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 900, letterSpacing: '0.05em' }}>TN</div><div style={{ padding: '0.15rem 0.5rem', display: 'flex', alignItems: 'center', letterSpacing: '0.05em', textShadow: '0 0 4px rgba(255,255,255,0.2)' }}>{row.licensePlate}</div></div>
+                                  <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{row.vehicleLabel}</span>
+                                </div>
+                              ) : <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>{lang === 'fr' ? 'Dépense Générale' : 'General Expense'}</span>}
+                            </div>
+                            <div>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.2rem 0.55rem', borderRadius: '6px', background: categoryMeta.bg, border: `1px solid ${categoryMeta.border}`, color: categoryMeta.color, fontSize: '0.66rem', fontWeight: 800, width: 'fit-content', marginBottom: '0.45rem' }}><span>{categoryMeta.emoji}</span><span>{getCategoryLabel(row.category || 'other')}</span></div>
+                              {liableClient ? (
+                                <div style={{ padding: '0.5rem 0.65rem', background: 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(255,255,255,0.01))', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.6rem', fontWeight: 800, color: '#f87171', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.2rem' }}><ShieldAlertIcon size={11} /><span>{lang === 'fr' ? 'Client Responsable' : 'Responsible Client'}</span></div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(229,193,125,0.3), rgba(255,255,255,0.05))', border: '1px solid rgba(229,193,125,0.35)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>{getInitials(liableClient.full_name || 'XX')}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{liableClient.full_name}</div>{row.description && <div style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description}>{row.description}</div>}</div>
+                                  </div>
+                                </div>
+                              ) : <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}><span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>{row.entity}</span>{row.description && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>{row.description}</span>}</div>}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.7rem', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                {row.type === 'outflow' ? <span style={{ color: '#f87171', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>-{row.amount.toFixed(2)} DT</span> : <><span style={{ color: '#10b981', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>+{row.collectedAmount.toFixed(2)} DT</span>{row.remainingAmount > 0 && <span style={{ fontSize: '0.66rem', color: '#f87171', fontWeight: 700 }}>{t('bookings.remaining')}: {row.remainingAmount.toFixed(2)} DT</span>}</>}
+                              </div>
+                              {row.type === 'outflow' && row.rawRef === 'expense' && (
+                                <div style={{ display: 'flex', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
+                                  {row.maintenance_id ? <div title={lang === 'fr' ? 'Géré par le module Entretien — modifiez depuis la page Entretien' : 'Managed by Maintenance module — edit from the Maintenance page'} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '6px', background: 'rgba(229,193,125,0.08)', border: '1px solid rgba(229,193,125,0.2)', color: 'rgba(229,193,125,0.6)', fontSize: '0.62rem', fontWeight: 700, cursor: 'default', whiteSpace: 'nowrap' }}>🔒 {lang === 'fr' ? 'Entretien' : 'Maint.'}</div> : <><button className="icon-btn" onClick={() => setEditingExpense(row)} title={lang === 'fr' ? 'Modifier' : 'Edit'}><Edit2 size={13} /></button><button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))} title={lang === 'fr' ? 'Supprimer' : 'Delete'}><Trash2 size={13} /></button></>}
+                                </div>
+                              )}
+                              {row.type === 'inflow' && (row.remainingAmount > 0 ? <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.25rem 0.55rem', borderRadius: '999px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', fontSize: '0.65rem', fontWeight: 700 }}>{lang === 'fr' ? 'IMPAYÉ' : 'UNPAID'}</div> : <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.25rem 0.55rem', borderRadius: '999px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399', fontSize: '0.65rem', fontWeight: 700 }}>{lang === 'fr' ? 'RÉGLÉ' : 'SETTLED'}</div>)}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
+                )
+              })
+            } else {
+              const sortedCatRows = [...filtered].sort((a, b) => { const dateCompare = b.date.localeCompare(a.date); if (dateCompare !== 0) return dateCompare; return b.createdAt.localeCompare(a.createdAt); });
+              const categoryMeta = CATEGORY_META[flowFilter] || { label: 'Other', emoji: '📦', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.24)' };
+              const categoryTitle = categoryMeta.emoji + ' ' + getCategoryLabel(flowFilter);
+              const totalOutflowSum = sortedCatRows.filter(r => r.type === 'outflow').reduce((s, r) => s + r.amount, 0);
+              const totalInflowSum = sortedCatRows.filter(r => r.type === 'inflow').reduce((s, r) => s + r.collectedAmount, 0);
 
-                  {/* ── Itemized rows ── */}
+              return (
+                <div className="glass-panel" style={{ padding: '1.25rem 1.35rem', borderRadius: '14px', border: `1px solid ${categoryMeta.border}`, background: 'rgba(10, 8, 7, 0.85)', boxShadow: '0 4px 24px rgba(0,0,0,0.25)', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px dashed rgba(229,193,125,0.15)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: categoryMeta.color, boxShadow: `0 0 10px ${categoryMeta.color}` }} />
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '0.01em' }}>{categoryTitle}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginLeft: '0.25rem' }}>· {sortedCatRows.length} {sortedCatRows.length > 1 ? t('preset.transactions') : (lang === 'fr' ? 'transaction' : 'transaction')}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', flexWrap: 'wrap' }}>
+                      {totalInflowSum > 0 && <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.32rem 0.7rem', borderRadius: '999px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399', fontSize: '0.78rem', fontWeight: 700 }}><TrendingUp size={12} /><span>+{totalInflowSum.toFixed(2)} DT</span></div>}
+                      {totalOutflowSum > 0 && <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', padding: '0.4rem 0.85rem', borderRadius: '999px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.32)', color: '#f87171', fontSize: '0.82rem', fontWeight: 800, letterSpacing: '0.02em', boxShadow: '0 0 14px rgba(239,68,68,0.18), inset 0 0 4px rgba(239,68,68,0.04)' }}><TrendingDown size={13} /><span style={{ opacity: 0.85 }}>{lang === 'fr' ? 'Total' : 'Total'}</span><span>-{totalOutflowSum.toFixed(2)} DT</span></div>}
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                     {sortedCatRows.map((row) => {
-                      const isDamageClaim =
-                        row.category === 'damage_repair' ||
-                        row.claimType === 'damage_repair'
-                      const liableClient = (isDamageClaim && row.clients && row.clients.id) ? row.clients : null
-
+                      const isDamageClaim = row.category === 'damage_repair' || row.claimType === 'damage_repair';
+                      const liableClient = (isDamageClaim && row.clients && row.clients.id) ? row.clients : null;
                       return (
-                        <div
-                          key={row.id}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '120px minmax(140px, 1fr) minmax(220px, 1.5fr) minmax(220px, 1fr)',
-                            gap: '1rem',
-                            padding: '0.95rem 1.15rem',
-                            background: 'rgba(255,255,255,0.025)',
-                            border: liableClient
-                              ? '1px solid rgba(239,68,68,0.2)'
-                              : '1px solid rgba(255,255,255,0.05)',
-                            borderRadius: '10px',
-                            alignItems: 'center',
-                            transition: 'all 0.2s',
-                          }}
-                        >
-                          {/* ── Column 1: Date ── */}
+                        <div key={row.id} className="ledger-grid-row" style={{ gap: '1rem', padding: '0.95rem 1.15rem', background: 'rgba(255,255,255,0.025)', border: liableClient ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', alignItems: 'center', transition: 'all 0.2s' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}>
-                              <Calendar size={13} style={{ color: 'var(--accent-gold)' }} />
-                              <span>{fmtDate(row.date)}</span>
-                            </div>
-                            <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
-                              {fmtLegalDate(row.createdAt)}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}><Calendar size={13} style={{ color: 'var(--accent-gold)' }} /><span>{fmtDate(row.date)}</span></div>
+                            <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>{fmtLegalDate(row.createdAt)}</span>
                           </div>
-
-                          {/* ── Column 2: Vehicle & Plate ── */}
                           <div>
                             {row.licensePlate ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                <div style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'stretch',
-                                  width: 'fit-content',
-                                  background: 'linear-gradient(180deg, #1f1f1f 0%, #111 100%)',
-                                  border: '1.5px solid rgba(229,193,125,0.3)',
-                                  borderRadius: '6px',
-                                  fontSize: '0.78rem',
-                                  fontFamily: "'Courier New', Courier, monospace",
-                                  fontWeight: 800,
-                                  color: '#fff',
-                                  overflow: 'hidden',
-                                  boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-                                }}>
-                                  <div style={{
-                                    background: 'linear-gradient(135deg, #c5a059, #e5c17d)',
-                                    color: '#000',
-                                    padding: '0.15rem 0.4rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.6rem',
-                                    fontWeight: 900,
-                                    letterSpacing: '0.05em',
-                                  }}>TN</div>
-                                  <div style={{
-                                    padding: '0.15rem 0.5rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    letterSpacing: '0.05em',
-                                    textShadow: '0 0 4px rgba(255,255,255,0.2)',
-                                  }}>{row.licensePlate}</div>
-                                </div>
-                                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
-                                  {row.vehicleLabel}
-                                </span>
+                                <div style={{ display: 'inline-flex', alignItems: 'stretch', width: 'fit-content', background: 'linear-gradient(180deg, #1f1f1f 0%, #111 100%)', border: '1.5px solid rgba(229,193,125,0.3)', borderRadius: '6px', fontSize: '0.78rem', fontFamily: "'Courier New', Courier, monospace", fontWeight: 800, color: '#fff', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}><div style={{ background: 'linear-gradient(135deg, #c5a059, #e5c17d)', color: '#000', padding: '0.15rem 0.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 900, letterSpacing: '0.05em' }}>TN</div><div style={{ padding: '0.15rem 0.5rem', display: 'flex', alignItems: 'center', letterSpacing: '0.05em', textShadow: '0 0 4px rgba(255,255,255,0.2)' }}>{row.licensePlate}</div></div>
+                                <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{row.vehicleLabel}</span>
                               </div>
-                            ) : (
-                              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>
-                                {lang === 'fr' ? 'Dépense Générale' : 'General Expense'}
-                              </span>
-                            )}
+                            ) : <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>{lang === 'fr' ? 'Dépense Générale' : 'General Expense'}</span>}
                           </div>
-
-                          {/* ── Column 3: Description & Context (Entity) ── */}
                           <div>
                             {liableClient ? (
-                              <div style={{
-                                padding: '0.5rem 0.65rem',
-                                background: 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(255,255,255,0.01))',
-                                border: '1px solid rgba(239,68,68,0.2)',
-                                borderRadius: '8px',
-                              }}>
-                                <div style={{
-                                  display: 'flex', alignItems: 'center', gap: '0.35rem',
-                                  fontSize: '0.6rem', fontWeight: 800, color: '#f87171',
-                                  letterSpacing: '0.05em', textTransform: 'uppercase',
-                                  marginBottom: '0.2rem',
-                                }}>
-                                  <ShieldAlertIcon size={11} />
-                                  <span>{lang === 'fr' ? 'Client Responsable' : 'Responsible Client'}</span>
-                                </div>
+                              <div style={{ padding: '0.5rem 0.65rem', background: 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(255,255,255,0.01))', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.6rem', fontWeight: 800, color: '#f87171', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.2rem' }}><ShieldAlertIcon size={11} /><span>{lang === 'fr' ? 'Client Responsable' : 'Responsible Client'}</span></div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <div style={{
-                                    width: '24px', height: '24px', borderRadius: '50%',
-                                    background: 'linear-gradient(135deg, rgba(229,193,125,0.3), rgba(255,255,255,0.05))',
-                                    border: '1px solid rgba(229,193,125,0.35)',
-                                    display: 'grid', placeItems: 'center',
-                                    color: '#fff', fontWeight: 800, fontSize: '0.65rem',
-                                    flexShrink: 0,
-                                  }}>
-                                    {getInitials(liableClient.full_name || 'XX')}
-                                  </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{
-                                      fontSize: '0.8rem', fontWeight: 700, color: '#fff',
-                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    }}>
-                                      {liableClient.full_name}
-                                    </div>
-                                    {row.description && (
-                                      <div style={{
-                                        fontSize: '0.66rem', color: 'rgba(255,255,255,0.45)',
-                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                      }} title={row.description}>
-                                        {row.description}
-                                      </div>
-                                    )}
-                                  </div>
+                                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(229,193,125,0.3), rgba(255,255,255,0.05))', border: '1px solid rgba(229,193,125,0.35)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 800, fontSize: '0.65rem', flexShrink: 0 }}>{getInitials(liableClient.full_name || 'XX')}</div>
+                                  <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{liableClient.full_name}</div>{row.description && <div style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.description}>{row.description}</div>}</div>
                                 </div>
                               </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
-                                  {row.entity}
-                                </span>
-                                {row.description && (
-                                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
-                                    {row.description}
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                            ) : <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}><span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>{row.entity}</span>{row.description && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>{row.description}</span>}</div>}
                           </div>
-
-                          {/* ── Column 4: Ledger Accounting & Actions ── */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.7rem', flexWrap: 'wrap' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                              {row.type === 'outflow' ? (
-                                <span style={{ color: '#f87171', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>
-                                  -{row.amount.toFixed(2)} DT
-                                </span>
-                              ) : (
-                                <>
-                                  <span style={{ color: '#10b981', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>
-                                    +{row.collectedAmount.toFixed(2)} DT
-                                  </span>
-                                  {row.remainingAmount > 0 && (
-                                    <span style={{ fontSize: '0.66rem', color: '#f87171', fontWeight: 700 }}>
-                                      {t('bookings.remaining')}: {row.remainingAmount.toFixed(2)} DT
-                                    </span>
-                                  )}
-                                </>
-                              )}
+                              {row.type === 'outflow' ? <span style={{ color: '#f87171', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>-{row.amount.toFixed(2)} DT</span> : <><span style={{ color: '#10b981', fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>+{row.collectedAmount.toFixed(2)} DT</span>{row.remainingAmount > 0 && <span style={{ fontSize: '0.66rem', color: '#f87171', fontWeight: 700 }}>{t('bookings.remaining')}: {row.remainingAmount.toFixed(2)} DT</span>}</>}
                             </div>
-                            
                             {row.type === 'outflow' && row.rawRef === 'expense' && (
                               <div style={{ display: 'flex', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
-                                <button className="icon-btn" onClick={() => setEditingExpense(row)} title={lang === 'fr' ? "Modifier" : "Edit"}><Edit2 size={13} /></button>
-                                <button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))} title={lang === 'fr' ? "Supprimer" : "Delete"}><Trash2 size={13} /></button>
+                                {row.maintenance_id ? (
+                                  <div title={lang === 'fr' ? 'Géré par le module Entretien — modifiez depuis la page Entretien' : 'Managed by Maintenance module — edit from the Maintenance page'} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '6px', background: 'rgba(229,193,125,0.08)', border: '1px solid rgba(229,193,125,0.2)', color: 'rgba(229,193,125,0.6)', fontSize: '0.62rem', fontWeight: 700, cursor: 'default', whiteSpace: 'nowrap' }}>🔒 {lang === 'fr' ? 'Entretien' : 'Maint.'}</div>
+                                ) : (
+                                  <><button className="icon-btn" onClick={() => setEditingExpense(row)} title={lang === 'fr' ? 'Modifier' : 'Edit'}><Edit2 size={13} /></button><button className="icon-btn text-danger" onClick={() => handleDelete(row.id.replace('expense-', ''))} title={lang === 'fr' ? 'Supprimer' : 'Delete'}><Trash2 size={13} /></button></>
+                                )}
                               </div>
                             )}
 
@@ -1505,7 +1414,7 @@ export default function ExpensesClient({
                   </div>
                 </div>
               )
-            })
+            }
           })()}
         </div>
       )}

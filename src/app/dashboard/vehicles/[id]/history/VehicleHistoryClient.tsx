@@ -47,7 +47,7 @@ interface LegalDoc {
 
 interface Booking {
   id: string
-  client_name: string
+  client_name?: string
   client_phone?: string
   client_cin_passport?: string
   start_date: string
@@ -56,6 +56,8 @@ interface Booking {
   return_time?: string
   total_amount: number
   amount_paid?: number
+  acompte_paid?: number
+  installments?: any[]
   accident_reported?: boolean
   owner_remarks?: string
   status: string
@@ -70,6 +72,7 @@ interface Maintenance {
   mechanic_notes?: string
   km_at_service?: number
   service_type?: string
+  vehicle_id?: string
 }
 
 interface VehicleHistoryClientProps {
@@ -268,10 +271,13 @@ export default function VehicleHistoryClient({
     return sum + acompte + paidInstallments
   }, 0)
 
-  // 3. Coûts Alloués — vehicle-linked expenses (does NOT affect revenue)
-  const totalExpenses = expenses.reduce(
-    (sum, e) => sum + (Number(e.amount) || 0), 0
-  )
+  // 3. Coûts Alloués — vehicle-linked expenses only (maintenance is mirrored into expenses)
+  // Claims (damage_repair, installment_tranche, late_return_penalty) are receivables, not outflows.
+  const CLAIM_CATEGORIES = ['damage_repair', 'installment_tranche', 'late_return_penalty']
+  const totalExpenses = expenses.reduce((sum, e) => {
+    const isClaim = CLAIM_CATEGORIES.includes(e.category)
+    return isClaim ? sum : sum + (Number(e.amount) || 0)
+  }, 0)
 
   // 4. Bénéfice Net Réel — cash-based, not contractual
   const netProfit = revenuEncaisse - totalExpenses

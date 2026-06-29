@@ -727,8 +727,37 @@ export async function updateBookingStatus(id: string, status: string) {
     await recalculateClientTrustScore(booking.secondary_client_id)
   }
 
-  revalidatePath('/dashboard/bookings')
-  revalidatePath('/dashboard')
+  let primaryScore: number | null = null
+  let secondaryScore: number | null = null
+
+  if (booking && booking.client_id) {
+    const { data: cData } = await supabase
+      .from('clients')
+      .select('trust_score')
+      .eq('id', booking.client_id)
+      .eq('owner_id', user.id)
+      .single()
+    if (cData) primaryScore = cData.trust_score
+  }
+
+  if (booking && booking.secondary_client_id) {
+    const { data: cData } = await supabase
+      .from('clients')
+      .select('trust_score')
+      .eq('id', booking.secondary_client_id)
+      .eq('owner_id', user.id)
+      .single()
+    if (cData) secondaryScore = cData.trust_score
+  }
+
+  return {
+    bookingId: id,
+    status,
+    primaryClientId: booking?.client_id || null,
+    primaryClientScore: primaryScore,
+    secondaryClientId: booking?.secondary_client_id || null,
+    secondaryClientScore: secondaryScore,
+  }
 }
 
 // ─── Historical update / installment cascade ────────────────────────────────
@@ -943,6 +972,21 @@ export async function updateBookingHistoricalDetails(
   revalidatePath('/dashboard/revenues')
   revalidatePath('/dashboard')
   revalidatePath('/dashboard/expenses')
+
+  // Fetch and return the fully updated booking with joined primary/secondary client data
+  const { data: updatedBooking } = await supabase
+    .from('bookings')
+    .select(`
+      *,
+      vehicles(id, brand, model, license_plate, price_per_day),
+      installments:booking_installments(*),
+      primary_client:clients!client_id(*),
+      secondary_client:clients!secondary_client_id(*)
+    `)
+    .eq('id', bookingId)
+    .single()
+
+  return updatedBooking
 }
 
 // ─── Installment & ledger settlement ────────────────────────────────────────

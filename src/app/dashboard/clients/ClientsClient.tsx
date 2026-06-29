@@ -1,20 +1,22 @@
 'use client'
 
 import { useState, useEffect, Fragment, useMemo, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, UserPlus, Search, Mail, Phone, CreditCard,
   Calendar, History, Edit, Trash2, X, FileText, CheckCircle2, ShieldAlert, Loader2,
-  ChevronRight, ChevronDown, ShieldAlert as ShieldIcon, Star, Shield, MapPin, Cake
+  ChevronRight, ChevronDown, ShieldAlert as ShieldIcon, Star, Shield, MapPin, Cake,
+  MessageSquare, SlidersHorizontal
 } from 'lucide-react'
-import { addClient, updateClient, deleteClient } from '@/app/actions'
+import { addClient, updateClient, deleteClient, updateClientNotesScore } from '@/app/actions'
 import { useToast } from '@/components/Toast'
 import { useConfirm } from '@/components/ConfirmDialog'
 import { Client, Booking, Expense } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
+import { getEffectiveClientScore, getClientRiskLevelFromScore, getManualScoreAdjustmentFromTarget } from '@/lib/clientScore'
 import { useLanguage } from '@/lib/i18n'
 import Fuse from 'fuse.js'
+import ModalPortal from '@/components/ModalPortal'
 
 function normalizeText(str: string): string {
   return str
@@ -123,8 +125,13 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+
+  // Quick Note / Score modal state
+  const [quickModalClient, setQuickModalClient] = useState<Client | null>(null)
+  const [quickNote, setQuickNote] = useState('')
+  const [quickTargetScore, setQuickTargetScore] = useState('')
+  const [quickLoading, setQuickLoading] = useState(false)
+  const [quickMessage, setQuickMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Form states
   const [fullName, setFullName] = useState('')
@@ -139,6 +146,9 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   const [cinDelivreLe, setCinDelivreLe] = useState('')
   const [permisNumero, setPermisNumero] = useState('')
   const [permisDelivreLe, setPermisDelivreLe] = useState('')
+  // Internal note + manual score for Add / Edit modals
+  const [internalNote, setInternalNote] = useState('')
+  const [targetScoreInput, setTargetScoreInput] = useState('')
 
   // Initials generator for circular premium avatars
   const getInitials = (name: string) => {
@@ -244,34 +254,34 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     }
 
     const clientBookings = Array.from(matchedSet)
+    const clientObj = clients.find(c => c.id === clientId)
 
     if (clientBookings.length === 0) {
+      if (clientObj) {
+        const effectiveScore = getEffectiveClientScore({
+          trust_score: clientObj.trust_score ?? null,
+          manual_score_adjustment: clientObj.manual_score_adjustment ?? null,
+        })
+        const riskLevel = getClientRiskLevelFromScore(effectiveScore)
+        return { score: effectiveScore, riskLevel }
+      }
       return { score: null, riskLevel: 'new_client' as const }
     }
 
     const now = new Date()
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-    const { trustScore: score, hasCriminalOverride } = calculateTrustScore(clientBookings as any, todayStr)
+    const { trustScore: rawScore } = calculateTrustScore(clientBookings as any, todayStr)
 
-    let riskLevel: 'very_low_risk' | 'low_risk' | 'medium_risk' | 'high_risk' | 'very_high_risk' | 'criminal'
-    
-    if (hasCriminalOverride || (score !== null && score < 15.0)) {
-      riskLevel = 'criminal'
-    } else if (score !== null && score >= 92.0) {
-      riskLevel = 'very_low_risk'
-    } else if (score !== null && score >= 80.0) {
-      riskLevel = 'low_risk'
-    } else if (score !== null && score >= 60.0) {
-      riskLevel = 'medium_risk'
-    } else if (score !== null && score >= 45.0) {
-      riskLevel = 'high_risk'
-    } else {
-      riskLevel = 'very_high_risk'
-    }
+    // Prefer the system-owned trust_score column. The live calculation remains a fallback.
+    const effectiveScore = getEffectiveClientScore({
+      trust_score: clientObj?.trust_score ?? rawScore,
+      manual_score_adjustment: clientObj?.manual_score_adjustment ?? null,
+    })
+    const riskLevel = getClientRiskLevelFromScore(effectiveScore)
 
-    return { score, riskLevel }
-  }, [activeBookingsByClient])
+    return { score: effectiveScore, riskLevel }
+  }, [activeBookingsByClient, clients])
 
   const getClientStatsMemoized = useCallback((clientId: string) => {
     const primaryBookings = bookingsByClientId.get(clientId) || []
@@ -427,6 +437,16 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
   // trim any trailing time component so HTML date inputs accept the value.
   const ymd = (s?: string | null): string => (s ? s.split('T')[0] : '')
 
+  const parseTargetScoreInput = (value: string): number | null => {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number(trimmed)
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      throw new Error(t('clientNotes.scoreValidation'))
+    }
+    return parsed
+  }
+
   // Open add modal
   const handleOpenAdd = () => {
     setFullName('')
@@ -439,6 +459,8 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     setCinDelivreLe('')
     setPermisNumero('')
     setPermisDelivreLe('')
+    setInternalNote('')
+    setTargetScoreInput('')
     setMessage(null)
     setIsAddModalOpen(true)
   }
@@ -456,7 +478,63 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
     setCinDelivreLe(ymd(client.cin_delivre_le))
     setPermisNumero(client.permis_numero || '')
     setPermisDelivreLe(ymd(client.permis_delivre_le))
+    setInternalNote(client.internal_note || '')
+    // Show the current effective displayed score as the target placeholder
+    const effScore = getEffectiveClientScore({ trust_score: client.trust_score ?? null, manual_score_adjustment: client.manual_score_adjustment ?? null })
+    setTargetScoreInput(effScore !== null ? String(Math.round(effScore)) : '')
     setMessage(null)
+  }
+
+  // Open quick note/score modal
+  const handleOpenQuickModal = (e: React.MouseEvent, client: Client) => {
+    e.stopPropagation()
+    setQuickModalClient(client)
+    setQuickNote(client.internal_note || '')
+    const effScore = getEffectiveClientScore({ trust_score: client.trust_score ?? null, manual_score_adjustment: client.manual_score_adjustment ?? null })
+    setQuickTargetScore(effScore !== null ? String(Math.round(effScore)) : '')
+    setQuickMessage(null)
+  }
+
+  // Save quick note/score
+  const handleSaveQuickModal = async () => {
+    if (!quickModalClient) return
+    setQuickLoading(true)
+    setQuickMessage(null)
+
+    // Snapshot previous state for rollback
+    const snapshot = [...clients]
+
+    try {
+      const trimmedNote = quickNote.slice(0, 1000).trim() || null
+      const validTarget = parseTargetScoreInput(quickTargetScore)
+      
+      // Calculate manual adjustment optimistically
+      const base = quickModalClient.trust_score ?? 0
+      const adj = validTarget !== null ? validTarget - base : null
+
+      // Optimistic update
+      setClients(prev => prev.map(c => c.id === quickModalClient.id ? {
+        ...c,
+        internal_note: trimmedNote,
+        manual_score_adjustment: adj
+      } : c))
+
+      // Close modal instantly
+      setQuickModalClient(null)
+      showToast(t('clientNotes.updatingNoteScore') || 'Saving updates...', 'info')
+
+      const updated = await updateClientNotesScore(quickModalClient.id, trimmedNote, validTarget)
+      
+      // Merge authoritative server return data
+      setClients(prev => prev.map(c => c.id === quickModalClient.id ? { ...c, ...updated } : c))
+      showToast(t('clientNotes.updated') || 'Client profile updated successfully!', 'success')
+    } catch (err: any) {
+      // Rollback on failure
+      setClients(snapshot)
+      showToast(err.message || t('clientNotes.updateFailed') || 'Failed to update note/score.', 'error')
+    } finally {
+      setQuickLoading(false)
+    }
   }
 
   // Handle Add Client Submit
@@ -477,15 +555,14 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       formData.append('cin_delivre_le', cinDelivreLe)
       formData.append('permis_numero', permisNumero)
       formData.append('permis_delivre_le', permisDelivreLe)
+      formData.append('internal_note', internalNote.slice(0, 1000))
 
-      await addClient(formData)
-      
-      setMessage({ type: 'success', text: 'Client profile registered successfully!' })
+      const newClient = await addClient(formData)
+      if (newClient) {
+        setClients(prev => [newClient, ...prev])
+      }
       showToast('Client registered successfully!', 'success')
-      setTimeout(() => {
-        setIsAddModalOpen(false)
-        router.refresh()
-      }, 600)
+      setIsAddModalOpen(false) // Only close modal after Supabase success
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to register client.' })
     } finally {
@@ -514,14 +591,19 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       formData.append('permis_numero', permisNumero)
       formData.append('permis_delivre_le', permisDelivreLe)
 
-      await updateClient(formData)
+      // Await server update first for data integrity (no fake success / closed modal on validation errors)
+      const updatedProfile = await updateClient(formData)
+
+      // Also update internal_note and target score separately
+      const trimmedNote = internalNote.slice(0, 1000).trim() || null
+      const validTarget = parseTargetScoreInput(targetScoreInput)
+      const updated = await updateClientNotesScore(editingClient.id, trimmedNote, validTarget)
       
-      setMessage({ type: 'success', text: 'Client profile updated successfully!' })
-      showToast('Client profile updated!', 'success')
-      setTimeout(() => {
-        setEditingClient(null)
-        router.refresh()
-      }, 600)
+      // Merge authoritative server return data locally
+      setClients(prev => prev.map(c => c.id === editingClient.id ? { ...c, ...updatedProfile, ...updated } : c))
+      
+      showToast('Client profile updated successfully!', 'success')
+      setEditingClient(null) // Only close modal after successful response
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to update client.' })
     } finally {
@@ -830,8 +912,7 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                 {renderRiskBadge(score, riskLevel)}
                               </div>
 
-                              {/* Tier 3: optional chips — only render when populated, so empty
-                                  rows stay clean and populated rows look intentional. */}
+                              {/* Tier 3: optional chips */}
                               {(client.date_naissance || client.address) && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
                                   {client.date_naissance && (
@@ -882,6 +963,28 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{client.address}</span>
                                     </span>
                                   )}
+                                </div>
+                              )}
+
+                              {/* Internal note badge — owner-only, never in contracts/PDFs */}
+                              {client.internal_note && (
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  marginTop: '0.35rem',
+                                  fontSize: '0.7rem',
+                                  color: '#f59e0b',
+                                  fontStyle: 'italic',
+                                  maxWidth: '260px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  <MessageSquare size={11} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }} title={client.internal_note}>
+                                    {client.internal_note}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -952,6 +1055,15 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
 
                         <td style={{ padding: '1rem 0.75rem', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', position: 'relative', zIndex: 10 }}>
+                            <button
+                              type="button"
+                              className="btn-action-icon"
+                              title={t('clientNotes.title')}
+                              onClick={(e) => handleOpenQuickModal(e, client)}
+                              style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <MessageSquare size={15} />
+                            </button>
                             <button 
                               type="button"
                               className="btn-action-icon" 
@@ -1193,8 +1305,9 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
       </div>
 
       {/* --- ADD CLIENT MODAL --- */}
-      {isAddModalOpen && mounted && createPortal(
-        <div className="modal-overlay">
+      {isAddModalOpen && (
+        <ModalPortal>
+          <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '550px', width: '95%' }}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(229,193,125,0.2)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>Register New Client</h2>
@@ -1348,13 +1461,37 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                 </div>
               </div>
 
+              {/* Internal Note + Score Adjustment (Add modal) */}
+              <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '10px' }}>
+                <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <MessageSquare size={13} />
+                  {t('clientNotes.ownerNote')}
+                </div>
+                <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 500 }}>
+                    {t('clientNotes.internalNote')}{' '}
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                      ({t('clientNotes.ownerOnly')}, {t('clientNotes.neverPrinted')})
+                    </span>
+                  </label>
+                  <textarea
+                    value={internalNote}
+                    onChange={(e) => setInternalNote(e.target.value.slice(0, 1000))}
+                    placeholder={t('clientNotes.addPlaceholder')}
+                    rows={2}
+                    style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', color: '#ffffff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }}
+                  />
+                  <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', textAlign: 'right' }}>{internalNote.length}/1000 {t('clientNotes.characters')}</div>
+                </div>
+              </div>
+
               <div className="modal-footer">
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => setIsAddModalOpen(false)}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -1363,17 +1500,19 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                   {loading ? <Loader2 size={16} className="spinner" /> : null}
-                  <span>Save Client</span>
+                  <span>{t('clients.save')}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
-      , document.body)}
+        </ModalPortal>
+      )}
 
       {/* --- EDIT CLIENT MODAL --- */}
-      {editingClient && mounted && createPortal(
-        <div className="modal-overlay">
+      {editingClient && (
+        <ModalPortal>
+          <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '550px', width: '95%' }}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(229,193,125,0.2)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>Edit Client Details</h2>
@@ -1523,13 +1662,62 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                 </div>
               </div>
 
+              {/* Internal Note + Score Adjustment (Edit modal) */}
+              <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: '10px' }}>
+                <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <MessageSquare size={13} />
+                  {t('clientNotes.sectionTitle')}
+                </div>
+                <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 500 }}>
+                    {t('clientNotes.internalNote')}{' '}
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                      ({t('clientNotes.ownerOnly')}, {t('clientNotes.neverPrinted')})
+                    </span>
+                  </label>
+                  <textarea
+                    value={internalNote}
+                    onChange={(e) => setInternalNote(e.target.value.slice(0, 1000))}
+                    placeholder={t('clientNotes.placeholder')}
+                    rows={2}
+                    style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', color: '#ffffff', outline: 'none', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.9rem' }}
+                  />
+                  <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', textAlign: 'right' }}>{internalNote.length}/1000 {t('clientNotes.characters')}</div>
+                </div>
+                <div className="form-group">
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 500 }}>
+                    {t('clientNotes.targetScore')}{' '}
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>({t('clientNotes.targetScoreHint')})</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={targetScoreInput}
+                    onChange={(e) => setTargetScoreInput(e.target.value)}
+                    placeholder={t('clientNotes.emptyUsesSystem')}
+                    className="form-input"
+                    style={{ width: '100%', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', color: '#ffffff', outline: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setTargetScoreInput('')}
+                    style={{ marginTop: '0.5rem', padding: '0.45rem 0.75rem', fontSize: '0.72rem' }}
+                  >
+                    {t('clientNotes.clearAdjustment')}
+                  </button>
+                </div>
+              </div>
+
               <div className="modal-footer">
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => setEditingClient(null)}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
@@ -1538,13 +1726,140 @@ export default function ClientsClient({ initialClients, bookings, expenses }: Cl
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                   {loading ? <Loader2 size={16} className="spinner" /> : null}
-                  <span>Update Client</span>
+                  <span>{t('clients.update')}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
-      , document.body)}
+        </ModalPortal>
+      )}
+
+      {/* --- QUICK NOTE / SCORE MODAL --- */}
+      {quickModalClient && (
+        <ModalPortal>
+        <div
+          className="modal-overlay"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setQuickModalClient(null)}
+        >
+          <div
+            className="modal-content glass-panel"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <MessageSquare size={18} color="#f59e0b" />
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#ffffff' }}>{t('clientNotes.title')}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                <span style={{ fontSize: '0.85rem', color: '#ae9260', fontWeight: 600 }}>{quickModalClient.full_name}</span>
+                <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>{t('clientNotes.systemScore')}: {quickModalClient.trust_score !== null && quickModalClient.trust_score !== undefined ? quickModalClient.trust_score.toFixed(1) : '-'}</span>
+              </div>
+            </div>
+
+            {/* Internal Note */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 600 }}>
+                {t('clientNotes.internalNote')} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>({t('clientNotes.ownerOnly')})</span>
+              </label>
+              <textarea
+                value={quickNote}
+                onChange={(e) => setQuickNote(e.target.value.slice(0, 1000))}
+                placeholder={t('clientNotes.placeholder')}
+                rows={3}
+                style={{
+                  width: '100%', padding: '0.75rem',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(245,158,11,0.2)',
+                  borderRadius: '8px', color: '#ffffff',
+                  outline: 'none', resize: 'vertical',
+                  fontFamily: 'inherit', fontSize: '0.875rem',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', textAlign: 'right' }}>{quickNote.length}/1000 {t('clientNotes.characters')}</div>
+            </div>
+
+            {/* Target Score */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#ae9260', marginBottom: '0.4rem', fontWeight: 600 }}>
+                {t('clientNotes.targetScore')}
+                <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, marginLeft: '0.4rem' }}>({t('clientNotes.targetScoreHint')})</span>
+              </label>
+              <input
+                type="number"
+                min={0} max={100} step={1}
+                value={quickTargetScore}
+                onChange={(e) => setQuickTargetScore(e.target.value)}
+                placeholder={t('clientNotes.emptyUsesSystem')}
+                style={{
+                  width: '100%', padding: '0.75rem',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(245,158,11,0.2)',
+                  borderRadius: '8px', color: '#ffffff',
+                  outline: 'none', fontFamily: 'inherit',
+                  fontSize: '0.875rem', boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setQuickTargetScore('')}
+                style={{ marginTop: '0.5rem', padding: '0.45rem 0.75rem', fontSize: '0.72rem' }}
+              >
+                {t('clientNotes.clearAdjustment')}
+              </button>
+              {quickTargetScore.trim() !== '' && quickModalClient.trust_score !== null && quickModalClient.trust_score !== undefined && (
+                <div style={{ fontSize: '0.7rem', color: 'rgba(245,158,11,0.7)', marginTop: '0.3rem' }}>
+                  {t('clientNotes.adjustmentPreview')}: {(Math.max(0, Math.min(100, Number(quickTargetScore))) - quickModalClient.trust_score).toFixed(1)} pts
+                  {' | '}{t('clientNotes.effectivePreview')}: {Math.max(0, Math.min(100, Number(quickTargetScore))).toFixed(0)}
+                  {' | '}{t('clientNotes.movesWithSystem')}
+                </div>
+              )}
+            </div>
+
+            {quickMessage && (
+              <div style={{ marginBottom: '0.75rem', padding: '0.6rem 0.75rem', borderRadius: '8px', fontSize: '0.8rem', background: quickMessage.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)', color: quickMessage.type === 'error' ? '#f87171' : '#34d399', border: `1px solid ${quickMessage.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}` }}>
+                {quickMessage.text}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setQuickModalClient(null)}
+                style={{ padding: '0.6rem 1.25rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickModal}
+                disabled={quickLoading}
+                style={{ padding: '0.6rem 1.25rem', background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: 'none', borderRadius: '8px', color: '#000000', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: quickLoading ? 0.7 : 1 }}
+              >
+                {quickLoading && <Loader2 size={14} className="spinner" />}
+                {t('common.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+        </ModalPortal>
+      )}
     </div>
   )
 }

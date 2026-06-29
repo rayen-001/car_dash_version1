@@ -6,14 +6,26 @@ import { useLanguage } from '@/lib/i18n'
 
 interface Booking {
   id: string
-  client_name: string
+  // Legacy flat field (some rows may still have it)
+  client_name?: string
   client_phone?: string
+  client_cin_passport?: string
+  // FK join — actual shape from DB
+  clients?: {
+    id?: string
+    full_name?: string
+    phone?: string
+    cin?: string
+  } | null
   start_date: string
   end_date: string
   pickup_time?: string
   return_time?: string
   total_amount: number
-  amount_paid?: number
+  // Real payment fields
+  acompte_paid?: number
+  amount_paid?: number        // legacy
+  installments?: { status: string; amount: number }[]
   accident_reported?: boolean
   owner_remarks?: string
   status: string
@@ -37,9 +49,18 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
       .substring(0, 2)
   }
 
-  // Financial calculations
+  // Resolve client name and phone from FK join or fallback to legacy flat fields
+  const clientName = booking.clients?.full_name || booking.client_name || 'Client'
+  const clientPhone = booking.clients?.phone || booking.client_phone
+
+  // Financial: acompte_paid + paid installments = total cash collected
   const total = Number(booking.total_amount) || 0
-  const paid = Number(booking.amount_paid) || 0
+  const acompte = Number(booking.acompte_paid) || Number(booking.amount_paid) || 0
+  const paidInstallments = (booking.installments || []).reduce(
+    (sum, inst) => inst.status === 'paid' ? sum + (Number(inst.amount) || 0) : sum,
+    0
+  )
+  const paid = acompte + paidInstallments
   const remaining = Math.max(0, total - paid)
 
   // Formatting dates
@@ -66,14 +87,14 @@ export default function BookingHistoryCard({ booking, onEditBooking }: BookingHi
       <div className={styles['booking-card-header']}>
         <div className={styles['booking-client-info']}>
           <div className={styles['client-avatar-circle']}>
-            {getInitials(booking.client_name)}
+            {getInitials(clientName)}
           </div>
           <div>
-            <div className={styles['client-avatar-name']}>{booking.client_name}</div>
-            {booking.client_phone && (
+            <div className={styles['client-avatar-name']}>{clientName}</div>
+            {clientPhone && (
               <div className={styles['client-phone']}>
                 <Phone size={10} style={{ display: 'inline', marginRight: '4px' }} />
-                {booking.client_phone}
+                {clientPhone}
               </div>
             )}
           </div>

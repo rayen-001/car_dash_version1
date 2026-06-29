@@ -5,6 +5,7 @@ import styles from './dashboard.module.css'
 import DashboardStats from './components/DashboardStats'
 import DashboardCalendar from './components/DashboardCalendar'
 import DashboardCharts from './components/DashboardCharts'
+import VehicleSearchDropdown from './components/VehicleSearchDropdown'
 
 import AlertStrip from './components/AlertStrip'
 import GlobalCommandSearch from './components/GlobalCommandSearch'
@@ -42,14 +43,27 @@ export default function DashboardClient({
   maintenance = []
 }: DashboardClientProps) {
   const { t, lang } = useLanguage()
+  // Local reactive bookings state
+  const [localBookings, setLocalBookings] = useState<any[]>(allBookings)
+  useEffect(() => {
+    setLocalBookings(allBookings)
+  }, [allBookings])
+
   // 1. Shared state for interactive operational alert drilling
   const [activeAlertFilter, setActiveAlertFilter] = useState<'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null>(null)
 
-  // 2. Dynamic Year Selection and Calculations based on owner account data
+  // 2. State for vehicle filtering
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all')
+
+  // 3. Shared state for operations center date period filtering
+  const [operationDateFrom, setOperationDateFrom] = useState<string>('')
+  const [operationDateTo, setOperationDateTo] = useState<string>('')
+
+  // 3. Dynamic Year Selection and Calculations based on owner account data
   const defaultYear = useMemo(() => {
     const sysYear = new Date().getFullYear()
-    if (allBookings && allBookings.length > 0) {
-      const hasSysYear = allBookings.some(b => {
+    if (localBookings && localBookings.length > 0) {
+      const hasSysYear = localBookings.some(b => {
         const dateStr = b.start_date || b.created_at
         return dateStr && dateStr.startsWith(`${sysYear}-`)
       })
@@ -57,7 +71,7 @@ export default function DashboardClient({
         return sysYear
       }
       let maxYear = 0
-      allBookings.forEach(b => {
+      localBookings.forEach(b => {
         const dateStr = b.start_date || b.created_at
         if (dateStr) {
           const yr = parseInt(dateStr.substring(0, 4))
@@ -69,7 +83,7 @@ export default function DashboardClient({
       if (maxYear > 0) return maxYear
     }
     return sysYear
-  }, [allBookings])
+  }, [localBookings])
 
   const [selectedYear, setSelectedYear] = useState<number>(defaultYear)
 
@@ -82,7 +96,7 @@ export default function DashboardClient({
     const currentCalendarYear = new Date().getFullYear()
     yearsSet.add(currentCalendarYear)
     
-    allBookings.forEach(b => {
+    localBookings.forEach(b => {
       const dateStr = b.start_date || b.created_at
       if (dateStr) {
         const yr = parseInt(dateStr.substring(0, 4))
@@ -91,15 +105,42 @@ export default function DashboardClient({
     })
     
     return Array.from(yearsSet).sort((a, b) => b - a)
-  }, [allBookings])
+  }, [localBookings])
+
+  // Filter arrays based on selected vehicle
+  const filteredBookingsForVehicle = useMemo(() => {
+    if (selectedVehicleId === 'all') return localBookings
+    return localBookings.filter(b => b.vehicle_id === selectedVehicleId)
+  }, [localBookings, selectedVehicleId])
+
+  const filteredExpensesForVehicle = useMemo(() => {
+    if (selectedVehicleId === 'all') return expenses
+    return expenses.filter(e => e.vehicle_id === selectedVehicleId)
+  }, [expenses, selectedVehicleId])
+
+  const filteredMaintenanceForVehicle = useMemo(() => {
+    if (selectedVehicleId === 'all') return maintenance
+    return maintenance.filter(m => m.vehicle_id === selectedVehicleId)
+  }, [maintenance, selectedVehicleId])
 
   const dynamicStats = useMemo(() => {
     let revenueYTD = 0
     let expensesYTD = 0
+    let outstandingLiabilities = 0
+    let activeRentals = 0
+    let riskSignalsCount = 0
 
     const targetYear = selectedYear
+    const today = new Date().toISOString().split('T')[0]
 
-    allBookings.forEach((booking) => {
+    // Determine vehicles to count for fleetSize
+    const targetVehicles = selectedVehicleId === 'all' 
+      ? vehicles 
+      : vehicles.filter(v => v.id === selectedVehicleId)
+    const targetVehicleIds = new Set(targetVehicles.map(v => v.id))
+    const fleetSize = targetVehicles.length
+
+    filteredBookingsForVehicle.forEach((booking) => {
       const status = (booking.status || '').toLowerCase()
       const isConfirmed = status === 'confirmed'
       const isCompleted = status === 'completed'
@@ -117,6 +158,12 @@ export default function DashboardClient({
           })
         }
 
+        const remaining = totalAmount - acomptePaid - paidInstallments
+        if (remaining > 0) {
+          outstandingLiabilities += remaining
+        }
+
+        // Cash-basis YTD revenue
         const acompteDateStr = booking.acompte_paid_date || booking.created_at
         const acompteYear = acompteDateStr ? new Date(acompteDateStr).getFullYear() : 0
         if (acompteYear === targetYear && acomptePaid > 0) {
@@ -136,9 +183,18 @@ export default function DashboardClient({
           })
         }
       }
+
+      if (isConfirmed && booking.start_date <= today && booking.end_date >= today && targetVehicleIds.has(booking.vehicle_id)) {
+        activeRentals++
+      }
+
+      if (isConfirmed && booking.end_date < today && targetVehicleIds.has(booking.vehicle_id)) {
+        riskSignalsCount++
+      }
     })
 
-    expenses.forEach((e) => {
+    // Expenses YTD
+    filteredExpensesForVehicle.forEach((e) => {
       const eDateStr = e.created_at
       const eYear = eDateStr ? new Date(eDateStr).getFullYear() : 0
       const isClaim = ['damage_repair', 'installment_tranche', 'late_return_penalty'].includes(e.category)
@@ -147,30 +203,38 @@ export default function DashboardClient({
       }
     })
 
-    maintenance.forEach((m) => {
-      const mDateStr = m.service_date || m.created_at
-      const mYear = mDateStr ? new Date(mDateStr).getFullYear() : 0
-      if (mYear === targetYear) {
-        expensesYTD += Number(m.cost) || 0
+    // All stats must count expenses only. Outflows are not calculated as expenses + maintenance.
+    // Mirrored maintenance expenses are already counted in the expenses table.
+
+    // Legal docs warnings count
+    const targetLegalDocs = vehicleLegalDocs.filter(doc => targetVehicleIds.has(doc.vehicle_id))
+    targetLegalDocs.forEach((doc: any) => {
+      if (doc.expiry_date) {
+        const diffTime = new Date(doc.expiry_date).getTime() - new Date(today).getTime()
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        if (diffDays <= 30) {
+          riskSignalsCount++
+        }
       }
     })
 
     const netProfitYTD = revenueYTD - expensesYTD
+    const utilizationRate = fleetSize > 0 ? (activeRentals / fleetSize) * 100 : 0
 
     return {
       revenueYTD,
       expensesYTD,
       netProfitYTD,
-      fleetSize: stats.fleetSize,
-      activeRentals: stats.activeRentals,
-      utilizationRate: stats.utilizationRate,
-      outstandingLiabilities: stats.outstandingLiabilities,
-      riskSignalsCount: stats.riskSignalsCount,
+      fleetSize,
+      activeRentals,
+      utilizationRate,
+      outstandingLiabilities,
+      riskSignalsCount,
       targetYear: selectedYear
     }
-  }, [allBookings, expenses, maintenance, selectedYear, stats])
+  }, [filteredBookingsForVehicle, filteredExpensesForVehicle, filteredMaintenanceForVehicle, selectedYear, vehicles, vehicleLegalDocs, selectedVehicleId])
 
-  // 2. Strict Cash-Basis Daily Shift Reconciliation Engine (May 21, 2026 Handover)
+  // 4. Strict Cash-Basis Daily Shift Reconciliation Engine
   const [ledgerDateStr, setLedgerDateStr] = useState<string>(() => {
     const today = new Date()
     const yStr = today.getFullYear()
@@ -201,20 +265,17 @@ export default function DashboardClient({
   }
 
   // Daily Cash Intake (strictly collected upfront deposit collections paid on selected date)
-  const dailyCashIntake = allBookings
+  const dailyCashIntake = filteredBookingsForVehicle
     .filter(b => matchLedgerDate(b.acompte_paid_date || b.created_at))
     .reduce((sum, b) => sum + (Number(b.acompte_paid) || 0), 0)
 
   // Daily Expenses (strictly cash/bank outflows committed on selected date)
-  const dailyExpensesOutflow = expenses
+  const dailyExpensesOutflow = filteredExpensesForVehicle
     .filter(e => matchLedgerDate(e.created_at))
     .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
-  const dailyMaintenanceOutflow = maintenance
-    .filter(m => matchLedgerDate(m.service_date) || matchLedgerDate(m.created_at))
-    .reduce((sum, m) => sum + (Number(m.cost) || 0), 0)
-
-  const totalDailyExpenses = dailyExpensesOutflow + dailyMaintenanceOutflow
+  // All stats must count expenses only. Outflows are not calculated as expenses + maintenance.
+  const totalDailyExpenses = dailyExpensesOutflow
   const netCashPosition = dailyCashIntake - totalDailyExpenses
 
   return (
@@ -269,19 +330,26 @@ export default function DashboardClient({
       </div>
 
       <GlobalCommandSearch
-        allBookings={allBookings}
+        allBookings={localBookings}
+        setAllBookings={setLocalBookings}
         activeAlertFilter={activeAlertFilter}
         setActiveAlertFilter={setActiveAlertFilter}
         vehicleLegalDocs={vehicleLegalDocs}
         vehicles={vehicles}
+        operationDateFrom={operationDateFrom}
+        setOperationDateFrom={setOperationDateFrom}
+        operationDateTo={operationDateTo}
+        setOperationDateTo={setOperationDateTo}
       />
 
       <AlertStrip
-        allBookings={allBookings}
+        allBookings={localBookings}
         vehicles={vehicles}
         vehicleLegalDocs={vehicleLegalDocs}
         activeAlertFilter={activeAlertFilter}
         setActiveAlertFilter={setActiveAlertFilter}
+        operationDateFrom={operationDateFrom}
+        operationDateTo={operationDateTo}
       />
 
       {/* ── FINANCIAL HUB SECTION HEADER with Year Selector ── */}
@@ -314,6 +382,21 @@ export default function DashboardClient({
           }}>
             {lang === 'fr' ? 'Analyses & Performances Financières' : 'Financial Analytics & Performance'}
           </h2>
+        </div>
+
+        {/* Premium Vehicle Selector Dropdown */}
+        <div className="no-print" style={{ zIndex: 10, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>
+            {lang === 'fr' ? 'Véhicule :' : 'Vehicle :'}
+          </span>
+          <VehicleSearchDropdown
+            vehicles={vehicles || []}
+            selectedVehicleId={selectedVehicleId}
+            onChange={setSelectedVehicleId}
+            lang={lang}
+            placeholderAll={lang === 'fr' ? 'Tous les véhicules' : 'All Vehicles'}
+            width="220px"
+          />
         </div>
 
         {/* Premium Year Selector Dropdown */}
@@ -488,18 +571,31 @@ export default function DashboardClient({
         </div>
       </div>
 
-      <DashboardCharts recentBookings={recentBookings} allBookings={allBookings} expenses={expenses} maintenance={maintenance} selectedYear={selectedYear} />
+      <DashboardCharts 
+        recentBookings={localBookings
+          .filter(b => selectedVehicleId === 'all' || b.vehicle_id === selectedVehicleId)
+          .sort((a, b) => new Date(b.created_at || b.start_date || 0).getTime() - new Date(a.created_at || a.start_date || 0).getTime())
+          .slice(0, 250)
+        } 
+        allBookings={filteredBookingsForVehicle} 
+        expenses={filteredExpensesForVehicle} 
+        maintenance={filteredMaintenanceForVehicle} 
+        selectedYear={selectedYear} 
+      />
 
       <FleetPerformanceMatrix 
         vehicles={vehicles} 
-        allBookings={allBookings} 
-        expenses={expenses} 
-        maintenance={maintenance} 
+        allBookings={filteredBookingsForVehicle} 
+        expenses={filteredExpensesForVehicle} 
+        maintenance={filteredMaintenanceForVehicle} 
         vehicleLegalDocs={vehicleLegalDocs} 
         selectedYear={selectedYear}
       />
 
-      <DashboardCalendar vehicles={vehicles} allBookings={allBookings} />
+      <DashboardCalendar 
+        vehicles={selectedVehicleId === 'all' ? vehicles : vehicles.filter(v => v.id === selectedVehicleId)} 
+        allBookings={filteredBookingsForVehicle} 
+      />
     </div>
   )
 }

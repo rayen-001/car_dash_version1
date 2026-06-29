@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useRouter } from 'next/navigation'
+import ModalPortal from '@/components/ModalPortal'
 import { Car, Plus, Edit2, X, Upload, Trash, ChevronLeft, ChevronRight, History, Archive, RotateCcw, Check } from 'lucide-react'
 import { addVehicle, updateVehicle, withdrawVehicle, restoreVehicle, executeMechanicalService, updateVehicleMechanicalState, renewVehicleDocument, addExpense, updateManualMechanicalTarget, archiveVehicle, unarchiveVehicle, renewBulkInsurance } from '@/app/actions'
 import { useToast } from '@/components/Toast'
@@ -11,7 +12,7 @@ import { Badge } from '@/components/Badge'
 import { createClient } from '@/utils/supabase/client'
 import { useLanguage } from '@/lib/i18n'
 
-export default function FleetClient({ initialVehicles, fleetStats = [], activeRentals = [], bookings = [], expenses = [] }: { initialVehicles: any[], fleetStats?: any[], activeRentals?: any[], bookings?: any[], expenses?: any[] }) {
+export default function FleetClient({ initialVehicles, fleetStats = [], activeRentals = [], bookings = [], expenses = [], maintenance = [] }: { initialVehicles: any[], fleetStats?: any[], activeRentals?: any[], bookings?: any[], expenses?: any[], maintenance?: any[] }) {
   const { showToast } = useToast()
   const confirm = useConfirm()
   const router = useRouter()
@@ -1259,22 +1260,37 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
             <tbody>
               {filteredVehicles && currentVehicles.length > 0 ? (
                 currentVehicles.map((car) => {
-                  // Use RPC stats if available, otherwise fall back to client-computed
-                  const rpcStat = fleetStats.find((s: any) => s.vehicle_id === car.id)
-                  const cashRevenue = rpcStat
-                    ? Number(rpcStat.cash_revenue || 0)
-                    : bookings
-                        .filter((b: any) => b.vehicle_id === car.id && b.status !== 'cancelled')
-                        .reduce((sum: number, b: any) => sum + (Number(b.acompte_paid) || 0), 0)
-                  const bookingCount = rpcStat
-                    ? Number(rpcStat.booking_count || 0)
-                    : bookings.filter((b: any) => b.vehicle_id === car.id && b.status !== 'cancelled').length
-                  const revenue = cashRevenue
+                  const PAID_STATUSES = ['confirmed', 'completed']
+                  const carBookings = bookings.filter((b: any) => b.vehicle_id === car.id && PAID_STATUSES.includes((b.status || '').toLowerCase()))
                   
+                  // Cash-basis inflows (Acompte + Paid Installments)
+                  let realCashRevenue = 0
+                  carBookings.forEach((b: any) => {
+                    realCashRevenue += Number(b.acompte_paid) || 0
+                    if (b.installments && Array.isArray(b.installments)) {
+                      b.installments.forEach((inst: any) => {
+                        if (inst.status === 'paid') {
+                          realCashRevenue += Number(inst.amount) || 0
+                        }
+                      })
+                    }
+                  })
+
+                  // Contractual Brut revenue
+                  const contractualBrut = carBookings.reduce((sum: number, b: any) => sum + (Number(b.total_amount) || 0), 0)
+
                   const carExpenses = expenses.filter((e: any) => e.vehicle_id === car.id)
-                  const totalExpenses = carExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
-                  
+                  const carClaims = ['damage_repair', 'installment_tranche', 'late_return_penalty']
+                  const realExpensesSum = carExpenses
+                    .filter((e: any) => !carClaims.includes(e.category))
+                    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+
+                  const totalOutflows = realExpensesSum
+                  const revenue = realCashRevenue
+                  const totalExpenses = totalOutflows
                   const netYield = revenue - totalExpenses
+                  const contractualNet = contractualBrut - totalOutflows
+
                   const netYieldColor = netYield < 0 ? '#ef4444' : '#E5C17D'
                   const netYieldTextShadow = netYield < 0 ? '0 0 10px rgba(239,68,68,0.5)' : '0 0 8px rgba(229,193,125,0.15)'
                   const netYieldPrefix = netYield >= 0 ? '+' : ''
@@ -1656,8 +1672,14 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
                               {isRented ? '🔴 Rented' : '🟢 Available'}
                             </Badge>
                           </div>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: netYieldColor, textShadow: netYieldTextShadow }}>
-                            {netYieldPrefix}{netYield.toLocaleString('fr-TN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#E5C17D', textShadow: '0 0 8px rgba(229,193,125,0.15)' }}>
+                            {revenue.toLocaleString('fr-TN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: netYieldColor, textShadow: netYieldTextShadow, fontWeight: 600 }}>
+                            {netYieldPrefix}{netYield.toLocaleString('fr-TN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT Net
+                          </div>
+                          <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.1rem', whiteSpace: 'nowrap' }}>
+                            {lang === 'fr' ? 'Contrats :' : 'Contracts:'} {contractualBrut.toLocaleString('fr-TN', { maximumFractionDigits: 0 })} Brut / {contractualNet.toLocaleString('fr-TN', { maximumFractionDigits: 0 })} Net
                           </div>
                         </div>
                       </td>
@@ -1821,8 +1843,9 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
       </div>
 
       {/* ADD VEHICLE MODAL */}
-      {mounted && isAddModalOpen && createPortal(
-        <div className="modal-overlay">
+      {isAddModalOpen && (
+        <ModalPortal>
+          <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h2>{t('fleet.addTitle')}</h2>
@@ -2038,13 +2061,14 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
               </div>
             </form>
           </div>
-        </div>,
-        document.body
+        </div>
+        </ModalPortal>
       )}
 
       {/* EDIT VEHICLE MODAL */}
-      {mounted && isEditModalOpen && editingVehicle && createPortal(
-        <div className="modal-overlay">
+      {isEditModalOpen && editingVehicle && (
+        <ModalPortal>
+          <div className="modal-overlay">
           <div className="modal-content glass-panel">
             <div className="modal-header">
               <h2>{t('fleet.editTitle')}</h2>
@@ -2256,13 +2280,14 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
               </div>
             </form>
           </div>
-        </div>,
-        document.body
+        </div>
+        </ModalPortal>
       )}
 
       {/* WITHDRAW VEHICLE MODAL */}
-      {mounted && withdrawModalVehicle && createPortal(
-        <div className="modal-overlay">
+      {withdrawModalVehicle && (
+        <ModalPortal>
+          <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '480px' }}>
             <div className="modal-header">
               <h2>{t('fleet.withdrawTitle')}</h2>
@@ -2330,13 +2355,14 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
               </button>
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
+        </ModalPortal>
       )}
 
       {/* RESTORE VEHICLE MODAL */}
-      {mounted && restoreModalVehicle && createPortal(
-        <div className="modal-overlay">
+      {restoreModalVehicle && (
+        <ModalPortal>
+          <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '440px' }}>
             <div className="modal-header">
               <h2>{t('fleet.restoreTitle')}</h2>
@@ -2382,13 +2408,14 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
               </button>
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
+        </ModalPortal>
       )}
 
       {/* BULK INSURANCE RENEWAL MODAL */}
-      {mounted && isBulkModalOpen && createPortal(
-        <div className="modal-overlay" style={{ zIndex: 999 }}>
+      {isBulkModalOpen && (
+        <ModalPortal>
+          <div className="modal-overlay" style={{ zIndex: 999 }}>
           <div className="modal-content glass-panel" style={{ maxWidth: '580px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h2>{lang === 'fr' ? "Renouvellement d'assurance en bloc" : "Bulk Fleet Insurance Renewal"}</h2>
@@ -2579,13 +2606,14 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
               </button>
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
+        </ModalPortal>
       )}
 
       {/* IMAGE LIGHTBOX MODAL */}
-      {mounted && lightboxImages && lightboxImages.length > 0 && createPortal(
-        <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000 }} onClick={() => setLightboxImages(null)}>
+      {lightboxImages && lightboxImages.length > 0 && (
+        <ModalPortal>
+          <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000 }} onClick={() => setLightboxImages(null)}>
           <div 
             className="glass-panel" 
             style={{ 
@@ -2638,8 +2666,8 @@ export default function FleetClient({ initialVehicles, fleetStats = [], activeRe
               )}
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
+        </ModalPortal>
       )}
 
     </div>

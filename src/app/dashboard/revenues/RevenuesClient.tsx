@@ -15,6 +15,7 @@ import { BusinessSettings } from '@/types'
 import { calculateTrustScore } from '@/lib/trustScore'
 import { bookingToRentalInflows, summarizeInflows, type RentalInflow } from '@/lib/rentalInflows'
 import { useLanguage } from '@/lib/i18n'
+import ModalPortal from '@/components/ModalPortal'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1585,9 +1586,8 @@ export default function RevenuesClient({
                       return (
                         <div
                           key={ev.id}
+                          className="revenues-grid-row"
                           style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'minmax(280px, 1.6fr) minmax(180px, 1fr) minmax(180px, 0.9fr)',
                             gap: '1rem',
                             padding: '0.85rem 1rem',
                             background: toneBg,
@@ -1820,50 +1820,58 @@ export default function RevenuesClient({
 
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {isAddModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel">
-            <div className="modal-header">
-              <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
-              <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+              <div className="modal-header">
+                <h2>{lang === 'fr' ? 'Enregistrer une Dépense' : 'Log New Expense'}</h2>
+                <button className="icon-btn" onClick={() => setIsAddModalOpen(false)}><X size={20} /></button>
+              </div>
+              <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
             </div>
-            <ExpenseForm onSubmit={handleAdd} submitLabel={lang === 'fr' ? 'Ajouter la Dépense' : 'Add Expense'} />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {editingExpense && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel">
-            <div className="modal-header">
-              <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
-              <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+              <div className="modal-header">
+                <h2>{lang === 'fr' ? 'Modifier la Dépense' : 'Edit Expense'}</h2>
+                <button className="icon-btn" onClick={() => setEditingExpense(null)}><X size={20} /></button>
+              </div>
+              <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
             </div>
-            <ExpenseForm defaultValues={editingExpense} onSubmit={handleEdit} submitLabel={lang === 'fr' ? 'Enregistrer' : 'Save Changes'} />
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {editingBooking && (
-        <QuickEditBookingModal
-          booking={editingBooking}
-          isOpen={!!editingBooking}
-          onClose={() => setEditingBooking(null)}
-          vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
-        />
+        <ModalPortal>
+          <QuickEditBookingModal
+            booking={editingBooking}
+            isOpen={!!editingBooking}
+            onClose={() => setEditingBooking(null)}
+            vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
+          />
+        </ModalPortal>
       )}
 
       {isReportOpen && (
-        <ExpenseReportModal
-          expenses={expensesOnly}
-          businessSettings={businessSettings}
-          onClose={() => setIsReportOpen(false)}
-          filters={{ category: 'All', vehicle: 'All Vehicles', searchQuery }}
-          stats={{
-            thisMonth: expensesOnly.reduce((s, e) => s + Number(e.amount || 0), 0),
-            overall: initialExpenses.reduce((s, e) => s + Number(e.amount || 0), 0),
-            filtered: expensesOnly.reduce((s, e) => s + Number(e.amount || 0), 0),
-          }}
-        />
+        <ModalPortal>
+          <ExpenseReportModal
+            expenses={expensesOnly}
+            businessSettings={businessSettings}
+            onClose={() => setIsReportOpen(false)}
+            filters={{ category: 'All', vehicle: 'All Vehicles', searchQuery }}
+            stats={{
+              thisMonth: expensesOnly.reduce((s, e) => s + Number(e.amount || 0), 0),
+              overall: initialExpenses.reduce((s, e) => s + Number(e.amount || 0), 0),
+              filtered: expensesOnly.reduce((s, e) => s + Number(e.amount || 0), 0),
+            }}
+          />
+        </ModalPortal>
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `

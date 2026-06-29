@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { X, Calendar, ShieldAlert, Sparkles, ChevronRight, Ban, User, Coins } from 'lucide-react'
 import styles from '../dashboard.module.css'
 import { useRouter } from 'next/navigation'
+import VehicleSearchDropdown from './VehicleSearchDropdown'
+import { useLanguage } from '@/lib/i18n'
 
 interface Installment {
   id: string
@@ -70,6 +72,7 @@ export default function DashboardCalendar({
   allBookings?: Booking[] 
 }) {
   const router = useRouter()
+  const { lang, t } = useLanguage()
   // Interactive Calendar States
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all')
   const todayDate = new Date()
@@ -249,27 +252,17 @@ export default function DashboardCalendar({
         }}>
           {/* Vehicle Selector Dropdown */}
           <div className={styles['selector-wrapper']} style={{ position: 'relative' }}>
-            <label htmlFor="vehicle-filter" className="sr-only">Filter by Vehicle</label>
-            <select
-              id="vehicle-filter"
-              value={selectedVehicleId}
-              onChange={(e) => {
-                setSelectedVehicleId(e.target.value)
+            <VehicleSearchDropdown
+              vehicles={vehicles || []}
+              selectedVehicleId={selectedVehicleId}
+              onChange={(id) => {
+                setSelectedVehicleId(id)
                 setSelectedDay(null)
               }}
-              className={styles['vehicle-dropdown']}
-              style={{
-                minWidth: '220px',
-                borderColor: 'rgba(229,193,125,0.25)'
-              }}
-            >
-              <option value="all">🚗 All Fleet Vehicles</option>
-              {vehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.brand} {v.model} ({v.license_plate})
-                </option>
-              ))}
-            </select>
+              lang={lang}
+              placeholderAll={lang === 'fr' ? 'Tous les véhicules' : 'All Fleet Vehicles'}
+              width="240px"
+            />
           </div>
 
           {/* Phase 19: Date Range Picker Control Strip */}

@@ -1365,16 +1365,29 @@ select option {
     --grid-cols-4: 1fr;
   }
 
-  /* Responsive modal overrides */
+  /* Responsive modal overrides — mobile-only: overlay becomes scrollable container */
   .modal-overlay {
-    padding: 0.5rem !important;
+    align-items: flex-start !important;
+    padding: 1rem 0.5rem !important;
+    overflow-y: auto !important;
   }
-  
+
   .modal-content {
+    margin: auto !important;
     padding: 1.25rem 1rem !important;
     width: 96vw !important;
-    max-height: 96vh !important;
+    max-height: calc(100dvh - 32px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
     border-radius: 12px !important;
+  }
+
+  .edit-modal {
+    margin: auto !important;
+    width: 96vw !important;
+    max-height: calc(100dvh - 32px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   /* Responsive table rows to high-density cards for Command Center results */
@@ -1447,4 +1460,63 @@ select option {
   border: 0 !important;
 }
 
+/* ============================================================
+   MOBILE STABILIZATION LAYER
+   Only applies on mobile/tablet breakpoints.
+   Desktop design is preserved exactly as-is.
+   ============================================================ */
+
+/* Dense table horizontal scrolling — keep internal scroll while body is clipped */
+@media (max-width: 992px) {
+  /* Prevent any child element from causing horizontal body overflow on mobile */
+  * {
+    min-width: 0;
+  }
+
+  .table-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  /* Toolbar/filter stacking on mobile */
+  .page-toolbar,
+  .filters-bar,
+  .action-bar {
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+  }
+
+  /* Revenues grid responsive collapse */
+  .revenues-grid-row {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Ledger grid responsive collapse */
+  .ledger-grid-row {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+}
+
+/* Revenues grid row style for desktop */
+.revenues-grid-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.6fr) minmax(180px, 1fr) minmax(180px, 0.9fr);
+}
+
+/* Ledger grid row style for desktop */
+.ledger-grid-row {
+  display: grid;
+  grid-template-columns: 120px minmax(140px, 1fr) minmax(220px, 1.5fr) minmax(220px, 1fr);
+}
+
+/* Floating action button safe-area bottom padding */
+@media (max-width: 768px) {
+  .fab-btn,
+  .floating-add-btn {
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
 

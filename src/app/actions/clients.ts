@@ -23,6 +23,7 @@ export async function addClient(formData: FormData) {
   const cin_delivre_le = (formData.get('cin_delivre_le') as string) || null
   const permis_numero = (formData.get('permis_numero') as string) || null
   const permis_delivre_le = (formData.get('permis_delivre_le') as string) || null
+  const internal_note_raw = ((formData.get('internal_note') as string) || '').trim()
 
   const nCin = normCIN(cin)
   const nPermis = normPermis(permis_numero || license_number)
@@ -58,7 +59,7 @@ export async function addClient(formData: FormData) {
     }
   }
 
-  const { error } = await supabase.from('clients').insert({
+  const { data: newClient, error } = await supabase.from('clients').insert({
     owner_id: user.id,
     full_name: full_name?.trim(),
     email: email || null,
@@ -70,10 +71,12 @@ export async function addClient(formData: FormData) {
     cin_delivre_le,
     permis_numero: nPermis || null,
     permis_delivre_le,
-  })
+    internal_note: internal_note_raw ? internal_note_raw.slice(0, 1000) : null,
+  }).select('*').single()
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/clients')
+  return newClient
 }
 
 export async function updateClient(formData: FormData) {
@@ -124,7 +127,7 @@ export async function updateClient(formData: FormData) {
     }
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('clients')
     .update({
       full_name: full_name?.trim(),
@@ -140,9 +143,12 @@ export async function updateClient(formData: FormData) {
     })
     .eq('id', id)
     .eq('owner_id', user.id)
+    .select('id, full_name, email, phone, license_number, cin, date_naissance, lieu_naissance, cin_delivre_le, permis_numero, permis_delivre_le')
+    .single()
 
   if (error) throw new Error(error.message)
   revalidatePath('/dashboard/clients')
+  return data
 }
 
 export async function updateClientLegalDetails(
@@ -307,5 +313,73 @@ export async function syncAndRelateClients() {
     } catch (err) {
       console.error(`Failed to recalculate score for ${cid}:`, err)
     }
+  }
+}
+
+/**
+ * Updates a client's internal note and manual score adjustment.
+ * Owner-safe: only updates clients belonging to the authenticated user.
+ *
+ * @param clientId             - The client UUID to update.
+ * @param internalNote         - The owner-only note. Pass null to clear it.
+ * @param targetDisplayedScore - The desired displayed score (0–100) the owner
+ *   wants to show. The adjustment stored is (target - current_trust_score).
+ *   Pass null to remove the manual adjustment and revert to system score.
+ */
+export async function updateClientNotesScore(
+  clientId: string,
+  internalNote: string | null,
+  targetDisplayedScore: number | null
+) {
+  const { supabase, user } = await getAuthedUser()
+
+  const normalizedNote = typeof internalNote === 'string' ? internalNote.trim() : ''
+  if (normalizedNote.length > 1000) {
+    throw new Error('Internal note must be 1000 characters or fewer.')
+  }
+
+  const hasTarget = targetDisplayedScore !== null && targetDisplayedScore !== undefined
+  if (hasTarget && (!Number.isFinite(targetDisplayedScore) || targetDisplayedScore < 0 || targetDisplayedScore > 100)) {
+    throw new Error('Target displayed score must be between 0 and 100.')
+  }
+
+  // Fetch current trust_score so we can compute the stored adjustment delta
+  const { data: clientRow, error: fetchErr } = await supabase
+    .from('clients')
+    .select('trust_score')
+    .eq('id', clientId)
+    .eq('owner_id', user.id)
+    .single()
+
+  if (fetchErr || !clientRow) {
+    throw new Error(fetchErr?.message ?? 'Client not found or access denied.')
+  }
+
+  let manual_score_adjustment: number | null = null
+
+  if (hasTarget) {
+    const clampedTarget = targetDisplayedScore
+    const base = (clientRow.trust_score as number | null) ?? 0
+    manual_score_adjustment = clampedTarget - base
+  }
+  // null → clears adjustment; system trust_score used as-is
+
+  const { error } = await supabase
+    .from('clients')
+    .update({
+      internal_note: normalizedNote || null,
+      manual_score_adjustment,
+    })
+    .eq('id', clientId)
+    .eq('owner_id', user.id)
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/dashboard/clients')
+
+  return {
+    id: clientId,
+    trust_score: (clientRow.trust_score as number | null) ?? null,
+    internal_note: normalizedNote || null,
+    manual_score_adjustment,
   }
 }

@@ -26,23 +26,54 @@ export default function FleetPerformanceMatrix({
   const currentYearPrefix = `${currentYear}-`
 
   const topAssets = useMemo(() => {
-    const vehicleYields: Record<string, { inflows: number; outflows: number; netYield: number; vehicle: any }> = {}
+    const vehicleYields: Record<string, {
+      inflows: number
+      outflows: number
+      netYield: number
+      contractualInflows: number
+      contractualNetYield: number
+      vehicle: any
+    }> = {}
 
     vehicles.forEach(v => {
-      vehicleYields[v.id] = { inflows: 0, outflows: 0, netYield: 0, vehicle: v }
+      vehicleYields[v.id] = { inflows: 0, outflows: 0, netYield: 0, contractualInflows: 0, contractualNetYield: 0, vehicle: v }
     })
 
     const PAID_STATUSES = ['confirmed', 'completed']
 
-    // Aggregate current-year Inflows
+    // Aggregate current-year Inflows (Cash-Basis & Contractual)
     allBookings.forEach(b => {
       if (b.vehicle_id && vehicleYields[b.vehicle_id]) {
         const status = (b.status || '').toLowerCase()
         if (PAID_STATUSES.includes(status)) {
-          const bDateStr = b.start_date || b.created_at
-          if (bDateStr && bDateStr.startsWith(currentYearPrefix)) {
-            const totalAmount = Number(b.total_amount) || 0
-            vehicleYields[b.vehicle_id].inflows += totalAmount
+          // Cash-Basis Inflows
+          const acompteAmt = Number(b.acompte_paid) || 0
+          if (acompteAmt > 0) {
+            const acompteDate = b.acompte_paid_date || b.created_at
+            if (acompteDate && acompteDate.startsWith(currentYearPrefix)) {
+              vehicleYields[b.vehicle_id].inflows += acompteAmt
+            }
+          }
+
+          if (b.installments && Array.isArray(b.installments)) {
+            b.installments.forEach((inst: any) => {
+              if (inst.status === 'paid') {
+                const instAmt = Number(inst.amount) || 0
+                const instDate = inst.paid_date || inst.due_date
+                if (instDate && instDate.startsWith(currentYearPrefix)) {
+                  vehicleYields[b.vehicle_id].inflows += instAmt
+                }
+              }
+            })
+          }
+
+          // Contractual CA
+          const totalAmt = Number(b.total_amount) || 0
+          if (totalAmt > 0) {
+            const bookingDate = b.start_date || b.created_at
+            if (bookingDate && bookingDate.startsWith(currentYearPrefix)) {
+              vehicleYields[b.vehicle_id].contractualInflows += totalAmt
+            }
           }
         }
       }
@@ -61,19 +92,13 @@ export default function FleetPerformanceMatrix({
       }
     })
 
-    // Aggregate current-year Outflows (Maintenance)
-    maintenance.forEach(m => {
-      if (m.vehicle_id && vehicleYields[m.vehicle_id]) {
-        const mDateStr = m.service_date || m.created_at
-        if (mDateStr && mDateStr.startsWith(currentYearPrefix)) {
-          vehicleYields[m.vehicle_id].outflows += (Number(m.cost) || 0)
-        }
-      }
-    })
+    // All stats must count expenses only. Outflows are not calculated as expenses + maintenance.
+    // The mirrored maintenance expenses are already included in the expenses list.
 
-    // Calculate Net Yield
+    // Calculate Net Yields
     Object.keys(vehicleYields).forEach(vid => {
       vehicleYields[vid].netYield = vehicleYields[vid].inflows - vehicleYields[vid].outflows
+      vehicleYields[vid].contractualNetYield = vehicleYields[vid].contractualInflows - vehicleYields[vid].outflows
     })
 
     // Sort and take top 3
@@ -199,12 +224,15 @@ export default function FleetPerformanceMatrix({
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
-                  <span style={{ color: '#10B981', fontWeight: 700, fontSize: '0.95rem', letterSpacing: '-0.02em' }}>
-                    + {asset.netYield.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} DT
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.15rem' }}>
+                  <span style={{ color: '#E5C17D', fontWeight: 700, fontSize: '0.95rem', letterSpacing: '-0.02em' }}>
+                    {asset.inflows.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} DT
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>
-                    {asset.inflows} In / {asset.outflows} Out
+                  <span style={{ color: asset.netYield < 0 ? '#ef4444' : '#10B981', fontWeight: 600, fontSize: '0.75rem' }}>
+                    {asset.netYield >= 0 ? '+' : ''}{asset.netYield.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} DT Net
+                  </span>
+                  <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.05rem' }}>
+                    {lang === 'fr' ? 'Contrats :' : 'Contracts:'} {asset.contractualInflows.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Brut / {asset.contractualNetYield.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Net
                   </span>
                 </div>
               </div>

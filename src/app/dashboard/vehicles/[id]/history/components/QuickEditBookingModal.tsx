@@ -28,13 +28,15 @@ interface QuickEditBookingModalProps {
   isOpen: boolean
   onClose: () => void
   vehiclePricePerDay?: number
+  onBookingUpdated?: (updatedBooking: any) => void
 }
 
 export default function QuickEditBookingModal({
   booking,
   isOpen,
   onClose,
-  vehiclePricePerDay
+  vehiclePricePerDay,
+  onBookingUpdated
 }: QuickEditBookingModalProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -318,9 +320,12 @@ export default function QuickEditBookingModal({
           payload.rental_days_text = newRentalDaysText
         }
 
-        await updateBookingHistoricalDetails(booking.id, booking.vehicle_id, payload)
-        
-        router.refresh()
+        const updated = await updateBookingHistoricalDetails(booking.id, booking.vehicle_id, payload)
+        if (onBookingUpdated) {
+          onBookingUpdated(updated)
+        } else {
+          router.refresh()
+        }
         onClose()
       } catch (err: any) {
         setError(err.message || (lang === 'fr' ? 'Échec de la mise à jour des détails de retour.' : 'Failed to update return details.'))
@@ -347,8 +352,12 @@ export default function QuickEditBookingModal({
           amount_collected_now: 0,
           incident_penalties: 0,
         }
-        await updateBookingHistoricalDetails(booking.id, booking.vehicle_id, payload)
-        router.refresh()
+        const updated = await updateBookingHistoricalDetails(booking.id, booking.vehicle_id, payload)
+        if (onBookingUpdated) {
+          onBookingUpdated(updated)
+        } else {
+          router.refresh()
+        }
         onClose()
       } catch (err: any) {
         setError(err.message || (lang === 'fr' ? 'Échec de la clôture rapide du contrat.' : 'Failed to fast close contract.'))

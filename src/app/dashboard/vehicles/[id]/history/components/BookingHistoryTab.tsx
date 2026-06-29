@@ -8,7 +8,7 @@ import { useLanguage } from '@/lib/i18n'
 
 interface Booking {
   id: string
-  client_name: string
+  client_name?: string
   client_phone?: string
   client_cin_passport?: string
   start_date: string

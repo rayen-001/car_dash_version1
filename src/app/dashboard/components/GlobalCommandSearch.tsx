@@ -4,6 +4,8 @@ import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Calendar, X, AlertTriangle, Edit2, ShieldAlert, ShieldCheck, ShieldAlert as ShieldIcon, Star, Plane, Hotel, MapPin } from 'lucide-react'
 import { useLanguage } from '@/lib/i18n'
+import { Edit } from 'lucide-react'
+import { ClientNoteScoreModal, ClientInternalNoteBadge, ClientEffectiveScoreBadge } from '@/components/ClientNoteScoreModal'
 import Fuse from 'fuse.js'
 import QuickEditBookingModal from '@/app/dashboard/vehicles/[id]/history/components/QuickEditBookingModal'
 import { updateBookingStatus } from '@/app/actions'
@@ -34,6 +36,7 @@ function isNonNameQuery(query: string): boolean {
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface OmniBooking {
   id: string
+  client_id?: string
   vehicle_id: string
   start_date: string
   end_date: string
@@ -94,6 +97,8 @@ interface OmniBooking {
     permis_numero?: string
     permis_delivre_le?: string
     trust_score?: number | null
+    manual_score_adjustment?: number | null
+    internal_note?: string | null
   }
   secondary_client?: {
     id?: string
@@ -107,15 +112,22 @@ interface OmniBooking {
     permis_numero?: string
     permis_delivre_le?: string
     trust_score?: number | null
+    manual_score_adjustment?: number | null
+    internal_note?: string | null
   }
 }
 
 interface GlobalCommandSearchProps {
   allBookings: OmniBooking[]
+  setAllBookings?: React.Dispatch<React.SetStateAction<OmniBooking[]>>
   activeAlertFilter: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null
   setActiveAlertFilter: (val: 'overdue' | 'balances' | 'expiring' | 'returns-today' | 'pickups-today' | 'tranches' | 'latest-250' | null) => void
   vehicleLegalDocs?: any[]
   vehicles?: any[]
+  operationDateFrom?: string
+  setOperationDateFrom?: (val: string) => void
+  operationDateTo?: string
+  setOperationDateTo?: (val: string) => void
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
@@ -153,7 +165,40 @@ const getClientRiskProfile = (
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-  const { trustScore: score, hasCriminalOverride } = calculateTrustScore(clientBookings as any, todayStr)
+  const { trustScore, hasCriminalOverride } = calculateTrustScore(clientBookings as any, todayStr)
+
+  // Find manual_score_adjustment from joined primary_client or secondary_client
+  let manualAdj: number | null = null
+  const bookingWithClient = allBookings.find(b => 
+    (clientId && b.primary_client?.id === clientId) || 
+    (clientId && b.secondary_client?.id === clientId) ||
+    (clientName && b.primary_client?.full_name === clientName) ||
+    (clientName && b.secondary_client?.full_name === clientName)
+  )
+  if (bookingWithClient) {
+    if (clientId) {
+      if (bookingWithClient.primary_client?.id === clientId) {
+        manualAdj = bookingWithClient.primary_client.manual_score_adjustment ?? null
+      } else if (bookingWithClient.secondary_client?.id === clientId) {
+        manualAdj = bookingWithClient.secondary_client.manual_score_adjustment ?? null
+      }
+    } else if (clientName) {
+      if (bookingWithClient.primary_client?.full_name === clientName) {
+        manualAdj = bookingWithClient.primary_client.manual_score_adjustment ?? null
+      } else if (bookingWithClient.secondary_client?.full_name === clientName) {
+        manualAdj = bookingWithClient.secondary_client.manual_score_adjustment ?? null
+      }
+    }
+  }
+
+  // Calculate effective score
+  const baselineScore = trustScore
+  let score = baselineScore
+  if (manualAdj !== null && baselineScore !== null) {
+    score = Math.max(0, Math.min(100, baselineScore + Number(manualAdj)))
+  } else if (manualAdj !== null && baselineScore === null) {
+    score = Math.max(0, Math.min(100, Number(manualAdj)))
+  }
 
   let riskLevel: 'very_low_risk' | 'low_risk' | 'medium_risk' | 'high_risk' | 'very_high_risk' | 'criminal'
   
@@ -230,10 +275,15 @@ const DamageNoteView = ({ note }: { note: string }) => {
 /* ─── Component ──────────────────────────────────────────────────── */
 export default function GlobalCommandSearch({
   allBookings,
+  setAllBookings,
   activeAlertFilter,
   setActiveAlertFilter,
   vehicleLegalDocs = [],
-  vehicles = []
+  vehicles = [],
+  operationDateFrom = '',
+  setOperationDateFrom = () => {},
+  operationDateTo = '',
+  setOperationDateTo = () => {}
 }: GlobalCommandSearchProps) {
   const { t, lang } = useLanguage()
   const [textQuery, setTextQuery]       = useState('')
@@ -242,6 +292,7 @@ export default function GlobalCommandSearch({
   const [returnFrom, setReturnFrom] = useState('')
   const [returnTo, setReturnTo] = useState('')
   const [editingBooking, setEditingBooking] = useState<OmniBooking | null>(null)
+  const [noteScoreModalClient, setNoteScoreModalClient] = useState<any | null>(null)
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null)
 
   // Pagination states
@@ -1128,6 +1179,8 @@ export default function GlobalCommandSearch({
               isFineHighlight={!!interceptDate}
               onEdit={() => setEditingBooking(booking)}
               allBookings={allBookings}
+              setAllBookings={setAllBookings}
+              onOpenNotesModal={setNoteScoreModalClient}
             />
           ))}
 
@@ -1232,7 +1285,48 @@ export default function GlobalCommandSearch({
         isOpen={!!editingBooking}
         onClose={() => setEditingBooking(null)}
         vehiclePricePerDay={editingBooking?.vehicles?.price_per_day}
+        onBookingUpdated={(updatedBooking) => {
+          if (setAllBookings) {
+            setAllBookings((prev) =>
+              prev.map((b) => (b.id === updatedBooking.id ? { ...b, ...updatedBooking } : b))
+            )
+          }
+        }}
       />
+
+      {noteScoreModalClient && (
+        <ClientNoteScoreModal
+          isOpen={!!noteScoreModalClient}
+          onClose={() => setNoteScoreModalClient(null)}
+          client={noteScoreModalClient}
+          onClientUpdated={(updatedClient) => {
+            if (setAllBookings) {
+              setAllBookings((prev) =>
+                prev.map((b) => {
+                  let updatedBooking = { ...b }
+                  if (updatedBooking.primary_client && updatedBooking.primary_client.id === updatedClient.id) {
+                    updatedBooking.primary_client = {
+                      ...updatedBooking.primary_client,
+                      internal_note: updatedClient.internal_note,
+                      manual_score_adjustment: updatedClient.manual_score_adjustment,
+                      trust_score: updatedClient.trust_score
+                    }
+                  }
+                  if (updatedBooking.secondary_client && updatedBooking.secondary_client.id === updatedClient.id) {
+                    updatedBooking.secondary_client = {
+                      ...updatedBooking.secondary_client,
+                      internal_note: updatedClient.internal_note,
+                      manual_score_adjustment: updatedClient.manual_score_adjustment,
+                      trust_score: updatedClient.trust_score
+                    }
+                  }
+                  return updatedBooking
+                })
+              )
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1243,22 +1337,60 @@ function OmniResultCard({
   isFineHighlight,
   onEdit,
   allBookings,
+  setAllBookings,
+  onOpenNotesModal,
 }: {
   booking: OmniBooking
   isFineHighlight: boolean
   onEdit: () => void
   allBookings: OmniBooking[]
+  setAllBookings?: React.Dispatch<React.SetStateAction<OmniBooking[]>>
+  onOpenNotesModal: (client: any) => void
 }) {
   const router = useRouter()
+  const { t } = useLanguage()
   const { showToast } = useToast()
   const [loadingStatus, setLoadingStatus] = useState(false)
+  const [localStatus, setLocalStatus] = useState(booking.status)
+
+  useEffect(() => {
+    setLocalStatus(booking.status)
+  }, [booking.status])
+
   const handleStatusChange = async (newStatus: string) => {
+    const oldStatus = localStatus
+    setLocalStatus(newStatus)
     setLoadingStatus(true)
     try {
-      await updateBookingStatus(booking.id, newStatus)
+      const res = await updateBookingStatus(booking.id, newStatus)
+      
+      // Update local state without re-fetching full page
+      if (res && setAllBookings) {
+        setAllBookings((prev) =>
+          prev.map((b) => {
+            let updated = { ...b }
+            if (b.id === booking.id) {
+              updated.status = res.status
+            }
+            if (updated.primary_client && res.primaryClientId === updated.primary_client.id) {
+              updated.primary_client = {
+                ...updated.primary_client,
+                trust_score: res.primaryClientScore
+              }
+            }
+            if (updated.secondary_client && res.secondaryClientId === updated.secondary_client.id) {
+              updated.secondary_client = {
+                ...updated.secondary_client,
+                trust_score: res.secondaryClientScore
+              }
+            }
+            return updated
+          })
+        )
+      }
       showToast(`Booking status updated to ${newStatus} successfully!`, 'success')
-      router.refresh()
     } catch (err: any) {
+      setLocalStatus(oldStatus)
       showToast(err.message || 'Error updating status', 'error')
     } finally {
       setLoadingStatus(false)
@@ -1515,14 +1647,34 @@ function OmniResultCard({
             }}>
               {initials(booking.primary_client?.full_name)}
             </div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                 {booking.primary_client?.full_name || 'Unknown'}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    onOpenNotesModal(booking.primary_client || {
+                      id: booking.client_id,
+                      full_name: booking.client_name,
+                      trust_score: null,
+                      internal_note: null,
+                      manual_score_adjustment: null
+                    })
+                  }}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', color: '#ae9260' }}
+                  title={t('clientNotes.title')}
+                >
+                  <Edit size={12} style={{ color: 'rgba(229,193,125,0.6)' }} />
+                </button>
               </div>
               <div style={{ fontSize: '0.75rem', color: 'rgba(229,193,125,0.5)', marginBottom: '0.2rem' }}>
                 {booking.primary_client?.phone || '—'}
               </div>
-              {renderTrustBadge(booking.primary_client?.id, booking.primary_client?.full_name || booking.client_name)}
+              <ClientInternalNoteBadge note={booking.primary_client?.internal_note} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start', marginTop: '0.25rem' }}>
+                {renderTrustBadge(booking.primary_client?.id, booking.primary_client?.full_name || booking.client_name)}
+              </div>
             </div>
           </div>
 
@@ -1538,15 +1690,39 @@ function OmniResultCard({
               }}>
                 {initials(booking.secondary_client.full_name)}
               </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   {booking.secondary_client.full_name}
-                  <span style={{ fontSize: '0.6rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', background: 'rgba(229,193,125,0.05)', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>Co-Driver</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      if (booking.secondary_client) {
+                        onOpenNotesModal({
+                          id: booking.secondary_client.id || '',
+                          full_name: booking.secondary_client.full_name || 'Unknown',
+                          trust_score: booking.secondary_client.trust_score !== undefined ? booking.secondary_client.trust_score : null,
+                          internal_note: booking.secondary_client.internal_note !== undefined ? booking.secondary_client.internal_note : null,
+                          manual_score_adjustment: booking.secondary_client.manual_score_adjustment !== undefined ? booking.secondary_client.manual_score_adjustment : null
+                        })
+                      }
+                    }}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', color: '#ae9260' }}
+                    title={t('clientNotes.title')}
+                  >
+                    <Edit size={11} style={{ color: 'rgba(229,193,125,0.6)' }} />
+                  </button>
                 </div>
-                <div style={{ fontSize: '0.7rem', color: 'rgba(229,193,125,0.4)', marginBottom: '0.2rem' }}>
-                  {booking.secondary_client.phone || '—'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem', marginTop: '0.1rem' }}>
+                  <span style={{ fontSize: '0.6rem', color: 'rgba(229,193,125,0.5)', textTransform: 'uppercase', background: 'rgba(229,193,125,0.08)', padding: '0.1rem 0.3rem', borderRadius: '4px', fontWeight: 600 }}>Co-Driver</span>
+                  <span style={{ fontSize: '0.7rem', color: 'rgba(229,193,125,0.4)' }}>
+                    {booking.secondary_client.phone || '—'}
+                  </span>
                 </div>
-                {renderTrustBadge(booking.secondary_client.id, booking.secondary_client.full_name)}
+                <ClientInternalNoteBadge note={booking.secondary_client.internal_note} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start', marginTop: '0.25rem' }}>
+                  {renderTrustBadge(booking.secondary_client.id, booking.secondary_client.full_name)}
+                </div>
               </div>
             </div>
           )}
@@ -1783,23 +1959,23 @@ function OmniResultCard({
         <Label>Status</Label>
         <div style={{ position: 'relative', width: '100%', marginTop: '0.2rem' }}>
           <select
-            value={booking.status?.toLowerCase() || 'pending'}
+            value={localStatus?.toLowerCase() || 'pending'}
             onChange={(e) => handleStatusChange(e.target.value)}
             disabled={loadingStatus}
             style={{
               width: '100%',
-              background: booking.status?.toLowerCase() === 'confirmed' ? 'rgba(16, 185, 129, 0.08)' :
-                          booking.status?.toLowerCase() === 'completed' ? 'rgba(229, 193, 125, 0.08)' :
-                          booking.status?.toLowerCase() === 'cancelled' ? 'rgba(239, 68, 68, 0.08)' :
+              background: localStatus?.toLowerCase() === 'confirmed' ? 'rgba(16, 185, 129, 0.08)' :
+                          localStatus?.toLowerCase() === 'completed' ? 'rgba(229, 193, 125, 0.08)' :
+                          localStatus?.toLowerCase() === 'cancelled' ? 'rgba(239, 68, 68, 0.08)' :
                           'rgba(245, 158, 11, 0.08)',
-              color: booking.status?.toLowerCase() === 'confirmed' ? '#34d399' :
-                     booking.status?.toLowerCase() === 'completed' ? '#E5C17D' :
-                     booking.status?.toLowerCase() === 'cancelled' ? '#f87171' :
+              color: localStatus?.toLowerCase() === 'confirmed' ? '#34d399' :
+                     localStatus?.toLowerCase() === 'completed' ? '#E5C17D' :
+                     localStatus?.toLowerCase() === 'cancelled' ? '#f87171' :
                      '#fbbf24',
               border: `1px solid ${
-                booking.status?.toLowerCase() === 'confirmed' ? 'rgba(16, 185, 129, 0.3)' :
-                booking.status?.toLowerCase() === 'completed' ? 'rgba(229, 193, 125, 0.3)' :
-                booking.status?.toLowerCase() === 'cancelled' ? 'rgba(239, 68, 68, 0.3)' :
+                localStatus?.toLowerCase() === 'confirmed' ? 'rgba(16, 185, 129, 0.3)' :
+                localStatus?.toLowerCase() === 'completed' ? 'rgba(229, 193, 125, 0.3)' :
+                localStatus?.toLowerCase() === 'cancelled' ? 'rgba(239, 68, 68, 0.3)' :
                 'rgba(245, 158, 11, 0.3)'
               }`,
               borderRadius: '8px',

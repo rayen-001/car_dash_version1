@@ -48,6 +48,7 @@ export {
   updateClientLegalDetails,
   deleteClient,
   syncAndRelateClients,
+  updateClientNotesScore,
 } from './clients'
 
 export {

@@ -23,7 +23,7 @@ export default async function OwnerDashboardPage() {
       .eq('owner_id', user.id),
     supabase
       .from('expenses')
-      .select('id, amount, category, description, created_at, client_id, vehicle_id')
+      .select('id, amount, category, description, created_at, vehicle_id')
       .eq('owner_id', user.id),
     supabase
       .from('maintenance')
@@ -41,14 +41,14 @@ export default async function OwnerDashboardPage() {
       primary_client:clients!client_id(
         id,
         full_name, phone, license_number, cin, address,
-        trust_score,
+        trust_score, internal_note, manual_score_adjustment,
         date_naissance, cin_delivre_le,
         permis_numero, permis_delivre_le
       ),
       secondary_client:clients!secondary_client_id(
         id,
         full_name, phone, license_number, cin, address,
-        trust_score,
+        trust_score, internal_note, manual_score_adjustment,
         date_naissance, cin_delivre_le,
         permis_numero, permis_delivre_le
       ),
@@ -155,15 +155,8 @@ export default async function OwnerDashboardPage() {
     })
   }
 
-  if (maintenance) {
-    maintenance.forEach((m) => {
-      const mDateStr = m.service_date || m.created_at
-      const mYear = mDateStr ? new Date(mDateStr).getFullYear() : 0
-      if (mYear === targetYear) {
-        expensesYTD += Number(m.cost) || 0
-      }
-    })
-  }
+  // All stats must count expenses only. Outflows are not calculated as expenses + maintenance.
+  // The mirrored maintenance expenses are already included in the expenses list.
 
   if (activeVehicleLegalDocs) {
     activeVehicleLegalDocs.forEach((doc: any) => {

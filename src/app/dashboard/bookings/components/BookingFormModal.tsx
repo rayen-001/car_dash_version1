@@ -9,6 +9,7 @@ import SearchableCombobox from '@/components/SearchableCombobox'
 import ManualClientNameInput from '@/components/ManualClientNameInput'
 import { useSearchParams } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n'
+import { getClientRiskLevelFromScore, getEffectiveClientScore } from '@/lib/clientScore'
 
 // ---------------------------------------------------------------------------
 // Normalization helpers for duplicate detection
@@ -289,13 +290,15 @@ export default function BookingFormModal({
   // Blacklist Evaluation Engine
   const isPrimaryBlacklisted = useMemo(() => {
     if (!clientId || clientId === 'manual') return false
-    const score = clients.find(c => c.id === clientId)?.trust_score
+    const client = clients.find(c => c.id === clientId)
+    const score = client ? getEffectiveClientScore(client) : null
     return score !== null && score !== undefined && score < 30
   }, [clientId, clients])
 
   const isSecondaryBlacklisted = useMemo(() => {
     if (!secondaryClientId || secondaryClientId === 'manual') return false
-    const score = clients.find(c => c.id === secondaryClientId)?.trust_score
+    const client = clients.find(c => c.id === secondaryClientId)
+    const score = client ? getEffectiveClientScore(client) : null
     return score !== null && score !== undefined && score < 30
   }, [secondaryClientId, clients])
 
@@ -816,13 +819,44 @@ export default function BookingFormModal({
                     </div>
                     {(() => {
                       const c = clients.find(cl => cl.id === clientId)
-                      const score = c?.trust_score
+                      const score = c ? getEffectiveClientScore(c) : null
                       if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>{t('bookingForm.statusLabel')} {t('dri.unrated')}</div>
-                      const statusText = score >= 80 ? t('dri.excellent') : score >= 60 ? t('dri.standard') : score >= 30 ? t('dri.watch') : t('dri.blacklisted')
+                      const riskLevel = getClientRiskLevelFromScore(score)
+                      const statusText =
+                        riskLevel === 'criminal' ? t('dri.blacklisted') :
+                        riskLevel === 'very_high_risk' || riskLevel === 'high_risk' ? t('dri.watch') :
+                        riskLevel === 'very_low_risk' ? t('dri.excellent') :
+                        t('dri.standard')
                       return (
-                        <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
-                          {t('bookingForm.statusLabel')} {statusText} ({score} DRI)
-                        </div>
+                        <>
+                          <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
+                            {t('bookingForm.statusLabel')} {statusText} ({score.toFixed(1)} DRI)
+                          </div>
+                          {c?.internal_note && (
+                            <div
+                              title={c.internal_note}
+                              style={{
+                                color: '#fff',
+                                fontSize: '0.78rem',
+                                background: 'rgba(229, 193, 125, 0.08)',
+                                border: '1px solid rgba(229, 193, 125, 0.25)',
+                                borderRadius: '6px',
+                                padding: '0.4rem 0.6rem',
+                                lineHeight: 1.4,
+                                overflow: 'hidden',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                marginTop: '0.3rem',
+                              }}
+                            >
+                              <span style={{ color: 'var(--accent-gold)', fontWeight: 700 }}>
+                                {t('clientNotes.ownerNote')}:{' '}
+                              </span>
+                              <span style={{ fontWeight: 700 }}>{c.internal_note}</span>
+                            </div>
+                          )}
+                        </>
                       )
                     })()}
                   </div>
@@ -897,13 +931,44 @@ export default function BookingFormModal({
                     </div>
                     {(() => {
                       const c = clients.find(cl => cl.id === secondaryClientId)
-                      const score = c?.trust_score
+                      const score = c ? getEffectiveClientScore(c) : null
                       if (score === null || score === undefined) return <div style={{ color: 'var(--text-muted)' }}>{t('bookingForm.statusLabel')} {t('dri.unrated')}</div>
-                      const statusText = score >= 80 ? t('dri.excellent') : score >= 60 ? t('dri.standard') : score >= 30 ? t('dri.watch') : t('dri.blacklisted')
+                      const riskLevel = getClientRiskLevelFromScore(score)
+                      const statusText =
+                        riskLevel === 'criminal' ? t('dri.blacklisted') :
+                        riskLevel === 'very_high_risk' || riskLevel === 'high_risk' ? t('dri.watch') :
+                        riskLevel === 'very_low_risk' ? t('dri.excellent') :
+                        t('dri.standard')
                       return (
-                        <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
-                          {t('bookingForm.statusLabel')} {statusText} ({score} DRI)
-                        </div>
+                        <>
+                          <div style={{ color: score >= 60 ? '#4ade80' : score >= 30 ? '#fbbf24' : '#ef4444', fontWeight: 600 }}>
+                            {t('bookingForm.statusLabel')} {statusText} ({score.toFixed(1)} DRI)
+                          </div>
+                          {c?.internal_note && (
+                            <div
+                              title={c.internal_note}
+                              style={{
+                                color: '#fff',
+                                fontSize: '0.78rem',
+                                background: 'rgba(229, 193, 125, 0.08)',
+                                border: '1px solid rgba(229, 193, 125, 0.25)',
+                                borderRadius: '6px',
+                                padding: '0.4rem 0.6rem',
+                                lineHeight: 1.4,
+                                overflow: 'hidden',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                marginTop: '0.3rem',
+                              }}
+                            >
+                              <span style={{ color: 'var(--accent-gold)', fontWeight: 700 }}>
+                                {t('clientNotes.ownerNote')}:{' '}
+                              </span>
+                              <span style={{ fontWeight: 700 }}>{c.internal_note}</span>
+                            </div>
+                          )}
+                        </>
                       )
                     })()}
                   </div>

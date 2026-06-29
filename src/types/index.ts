@@ -31,6 +31,14 @@ export interface Client {
   cin?: string | null
   address?: string | null
   trust_score?: number | null
+  /** Owner-only internal note. Never shown in contracts/invoices/PDFs. */
+  internal_note?: string | null
+  /**
+   * Numeric offset applied on top of trust_score for display.
+   * effective_score = clamp(trust_score + manual_score_adjustment, 0, 100)
+   * NULL means no adjustment; system trust_score is used as-is.
+   */
+  manual_score_adjustment?: number | null
   date_naissance?: string
   lieu_naissance?: string | null
   cin_delivre_le?: string
