@@ -564,3 +564,95 @@ CREATE POLICY "Admins can insert all maintenance" ON public.maintenance FOR INSE
 DROP POLICY IF EXISTS "Admins can delete all maintenance" ON public.maintenance;
 CREATE POLICY "Admins can delete all maintenance" ON public.maintenance FOR DELETE USING (public.is_admin(auth.uid()));
 
+-- Clients Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all clients" ON public.clients;
+CREATE POLICY "Admins can view all clients" ON public.clients FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all clients" ON public.clients;
+CREATE POLICY "Admins can update all clients" ON public.clients FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all clients" ON public.clients;
+CREATE POLICY "Admins can insert all clients" ON public.clients FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all clients" ON public.clients;
+CREATE POLICY "Admins can delete all clients" ON public.clients FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Booking Installments Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all installments" ON public.booking_installments;
+CREATE POLICY "Admins can view all installments" ON public.booking_installments FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all installments" ON public.booking_installments;
+CREATE POLICY "Admins can update all installments" ON public.booking_installments FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all installments" ON public.booking_installments;
+CREATE POLICY "Admins can insert all installments" ON public.booking_installments FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all installments" ON public.booking_installments;
+CREATE POLICY "Admins can delete all installments" ON public.booking_installments FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Vehicle Legal Docs Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all legal docs" ON public.vehicle_legal_docs;
+CREATE POLICY "Admins can view all legal docs" ON public.vehicle_legal_docs FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all legal docs" ON public.vehicle_legal_docs;
+CREATE POLICY "Admins can update all legal docs" ON public.vehicle_legal_docs FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all legal docs" ON public.vehicle_legal_docs;
+CREATE POLICY "Admins can insert all legal docs" ON public.vehicle_legal_docs FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all legal docs" ON public.vehicle_legal_docs;
+CREATE POLICY "Admins can delete all legal docs" ON public.vehicle_legal_docs FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Vehicle Handovers Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all handovers" ON public.vehicle_handovers;
+CREATE POLICY "Admins can view all handovers" ON public.vehicle_handovers FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all handovers" ON public.vehicle_handovers;
+CREATE POLICY "Admins can update all handovers" ON public.vehicle_handovers FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all handovers" ON public.vehicle_handovers;
+CREATE POLICY "Admins can insert all handovers" ON public.vehicle_handovers FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all handovers" ON public.vehicle_handovers;
+CREATE POLICY "Admins can delete all handovers" ON public.vehicle_handovers FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Business Settings Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all business settings" ON public.business_settings;
+CREATE POLICY "Admins can view all business settings" ON public.business_settings FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all business settings" ON public.business_settings;
+CREATE POLICY "Admins can update all business settings" ON public.business_settings FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all business settings" ON public.business_settings;
+CREATE POLICY "Admins can insert all business settings" ON public.business_settings FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all business settings" ON public.business_settings;
+CREATE POLICY "Admins can delete all business settings" ON public.business_settings FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Import Batches Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all import batches" ON public.import_batches;
+CREATE POLICY "Admins can view all import batches" ON public.import_batches FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all import batches" ON public.import_batches;
+CREATE POLICY "Admins can update all import batches" ON public.import_batches FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all import batches" ON public.import_batches;
+CREATE POLICY "Admins can insert all import batches" ON public.import_batches FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all import batches" ON public.import_batches;
+CREATE POLICY "Admins can delete all import batches" ON public.import_batches FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Todos Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all todos" ON public.todos;
+CREATE POLICY "Admins can view all todos" ON public.todos FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all todos" ON public.todos;
+CREATE POLICY "Admins can update all todos" ON public.todos FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all todos" ON public.todos;
+CREATE POLICY "Admins can insert all todos" ON public.todos FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all todos" ON public.todos;
+CREATE POLICY "Admins can delete all todos" ON public.todos FOR DELETE USING (public.is_admin(auth.uid()));
+
+
