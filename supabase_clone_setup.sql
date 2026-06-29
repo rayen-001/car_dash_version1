@@ -85,7 +85,9 @@ CREATE TABLE IF NOT EXISTS public.clients (
   cin TEXT NULL,
   address TEXT NULL,
   lieu_naissance TEXT NULL,
-  archived_at TIMESTAMPTZ NULL
+  archived_at TIMESTAMPTZ NULL,
+  internal_note TEXT NULL,
+  manual_score_adjustment NUMERIC NULL
 );
 
 -- ==========================================
@@ -159,6 +161,7 @@ CREATE TABLE IF NOT EXISTS public.expenses (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   owner_id UUID NOT NULL,
   vehicle_id UUID NULL,
+  maintenance_id UUID NULL,
   amount DECIMAL(10,2) NOT NULL,
   category TEXT NOT NULL,
   description TEXT NULL,
@@ -310,6 +313,10 @@ ALTER TABLE public.expenses
 ALTER TABLE public.expenses
   DROP CONSTRAINT IF EXISTS fk_expenses_vehicle_id,
   ADD CONSTRAINT fk_expenses_vehicle_id FOREIGN KEY (vehicle_id) REFERENCES public.vehicles(id) ON DELETE CASCADE;
+
+ALTER TABLE public.expenses
+  DROP CONSTRAINT IF EXISTS fk_expenses_maintenance_id,
+  ADD CONSTRAINT fk_expenses_maintenance_id FOREIGN KEY (maintenance_id) REFERENCES public.maintenance(id) ON DELETE CASCADE;
 
 ALTER TABLE public.maintenance
   DROP CONSTRAINT IF EXISTS fk_maintenance_owner_id,
@@ -482,3 +489,8 @@ ON public.clients (owner_id, permis_numero)
 WHERE permis_numero IS NOT NULL 
   AND permis_numero <> '' 
   AND upper(trim(permis_numero)) NOT IN ('N/A', 'NA', 'UNKNOWN', '0', '*', '-');
+
+-- Enforce unique maintenance expense link (ignoring NULLs)
+CREATE UNIQUE INDEX IF NOT EXISTS unique_maintenance_expense 
+ON public.expenses (maintenance_id) 
+WHERE maintenance_id IS NOT NULL;
