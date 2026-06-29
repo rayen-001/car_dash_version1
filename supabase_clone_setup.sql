@@ -494,3 +494,73 @@ WHERE permis_numero IS NOT NULL
 CREATE UNIQUE INDEX IF NOT EXISTS unique_maintenance_expense 
 ON public.expenses (maintenance_id) 
 WHERE maintenance_id IS NOT NULL;
+
+-- =========================================================================
+-- 6. SUPERADMIN ACCESS POLICIES (Bypass RLS for Admins on all tables)
+-- =========================================================================
+
+-- Profiles Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
+CREATE POLICY "Admins can view all profiles" ON public.profiles FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all profiles" ON public.profiles;
+CREATE POLICY "Admins can update all profiles" ON public.profiles FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert profiles" ON public.profiles;
+CREATE POLICY "Admins can insert profiles" ON public.profiles FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete profiles" ON public.profiles;
+CREATE POLICY "Admins can delete profiles" ON public.profiles FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Vehicles Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all vehicles" ON public.vehicles;
+CREATE POLICY "Admins can view all vehicles" ON public.vehicles FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all vehicles" ON public.vehicles;
+CREATE POLICY "Admins can update all vehicles" ON public.vehicles FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all vehicles" ON public.vehicles;
+CREATE POLICY "Admins can insert all vehicles" ON public.vehicles FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all vehicles" ON public.vehicles;
+CREATE POLICY "Admins can delete all vehicles" ON public.vehicles FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Bookings Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all bookings" ON public.bookings;
+CREATE POLICY "Admins can view all bookings" ON public.bookings FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all bookings" ON public.bookings;
+CREATE POLICY "Admins can update all bookings" ON public.bookings FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all bookings" ON public.bookings;
+CREATE POLICY "Admins can insert all bookings" ON public.bookings FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all bookings" ON public.bookings;
+CREATE POLICY "Admins can delete all bookings" ON public.bookings FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Expenses Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all expenses" ON public.expenses;
+CREATE POLICY "Admins can view all expenses" ON public.expenses FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all expenses" ON public.expenses;
+CREATE POLICY "Admins can update all expenses" ON public.expenses FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all expenses" ON public.expenses;
+CREATE POLICY "Admins can insert all expenses" ON public.expenses FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all expenses" ON public.expenses;
+CREATE POLICY "Admins can delete all expenses" ON public.expenses FOR DELETE USING (public.is_admin(auth.uid()));
+
+-- Maintenance Table - Admin Policies
+DROP POLICY IF EXISTS "Admins can view all maintenance" ON public.maintenance;
+CREATE POLICY "Admins can view all maintenance" ON public.maintenance FOR SELECT USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can update all maintenance" ON public.maintenance;
+CREATE POLICY "Admins can update all maintenance" ON public.maintenance FOR UPDATE USING (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can insert all maintenance" ON public.maintenance;
+CREATE POLICY "Admins can insert all maintenance" ON public.maintenance FOR INSERT WITH CHECK (public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete all maintenance" ON public.maintenance;
+CREATE POLICY "Admins can delete all maintenance" ON public.maintenance FOR DELETE USING (public.is_admin(auth.uid()));
+
